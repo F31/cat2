@@ -500,6 +500,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/membership/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 会员报价（年费锚点 × 年限 × 折扣系数） */
+        get: operations["quoteMembership"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/membership/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 开通/续费会员（创建 trade 订单，支付成功后由 OrderFulfiller 开通） */
+        post: operations["openMembership"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/membership/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 我的会员状态 */
+        get: operations["getMyMembership"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/membership/sub-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 子账号列表（企业版主账号） */
+        get: operations["listSubAccounts"];
+        put?: never;
+        /** 邀请子账号（企业版；须目标已实名；上限 3） */
+        post: operations["inviteSubAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/membership/sub-accounts/{subUserID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** 移除子账号（企业版主账号） */
+        delete: operations["removeSubAccount"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/dict/{dimension}": {
         parameters: {
             query?: never;
@@ -782,6 +868,42 @@ export interface components {
             name: string;
             parent_code?: string | null;
             sort?: number;
+        };
+        MembershipQuote: {
+            /** @description 1 VIP / 3 企业版（2 SVIP 预留不上架） */
+            level: number;
+            years: number;
+            /** @description 年费单价（分） */
+            unit_fen: number;
+            /** @description 单价 × 年限 */
+            original_fen: number;
+            /** @description 折扣系数万分比（10000=无折扣；3 年 9000 / 5 年 8000） */
+            discount_rate: number;
+            /** @description 折后价 */
+            total_fen: number;
+        };
+        MembershipMember: {
+            user_id: string;
+            level: number;
+            /** @description 1生效中/2已过期 */
+            status: number;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        OpenMembershipInput: {
+            /** @enum {integer} */
+            level: 1 | 3;
+            /** @description 默认 1；3/5 年享折扣 */
+            years?: number;
+        };
+        SubAccount: {
+            id: string;
+            master_id: string;
+            sub_user_id: string;
+            /** @description 1生效/2已移除 */
+            status: number;
+            /** Format: date-time */
+            invited_at?: string;
         };
     };
     responses: {
@@ -1742,6 +1864,153 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+        };
+    };
+    quoteMembership: {
+        parameters: {
+            query: {
+                level: number;
+                years?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 报价 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["MembershipQuote"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    openMembership: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenMembershipInput"];
+            };
+        };
+        responses: {
+            /** @description 开通订单 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            order_id?: string;
+                            amount_fen?: number;
+                            original_fen?: number;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getMyMembership: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 会员状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            active?: boolean;
+                            member?: components["schemas"]["MembershipMember"];
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listSubAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 子账号列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["SubAccount"][];
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    inviteSubAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    sub_user_id: string;
+                };
+            };
+        };
+        responses: {
+            200: components["responses"]["OkEmpty"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    removeSubAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subUserID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["OkEmpty"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listDict: {

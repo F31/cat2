@@ -75,7 +75,29 @@ func (m *Module) Register(r *module.Registry) error {
 	)
 	// CapabilityProvider：账号状态（实名能力在 verify 注册，此处恒 false）
 	r.CapProviders = append(r.CapProviders, capProvider{m})
+	// 会员权益变化 → 递增授权版本，消除令牌陈旧窗口（topic 按契约；R0 不 import membership R3）
+	r.EventSubs = append(r.EventSubs,
+		eventbus.Subscription{Topic: memberActivatedTopic, Handler: m.onMembershipChange},
+		eventbus.Subscription{Topic: memberExpiredTopic, Handler: m.onMembershipChange},
+	)
 	return nil
+}
+
+// 会员事件 topic（与 membership 契约一致，避免跨阶 import）。
+const (
+	memberActivatedTopic = "membership.MemberActivated.v1"
+	memberExpiredTopic   = "membership.MemberExpired.v1"
+)
+
+// onMembershipChange 会员生效/过期 → AuthzBump。
+func (m *Module) onMembershipChange(ctx context.Context, e eventbus.Event) error {
+	var p struct {
+		UserID int64 `json:"user_id,string"`
+	}
+	if err := json.Unmarshal(e.Payload, &p); err != nil || p.UserID == 0 {
+		return nil
+	}
+	return m.AuthzBump(ctx, p.UserID)
 }
 
 func (m *Module) Migrations() string { return migrations }

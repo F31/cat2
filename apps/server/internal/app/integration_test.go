@@ -18,6 +18,8 @@ import (
 
 	"catcube/internal/kernel/config"
 	"catcube/internal/kernel/obs"
+	"catcube/internal/modules/membership"
+	"catcube/internal/modules/trade"
 )
 
 type envelope struct {
@@ -766,6 +768,152 @@ func TestIntegrationTradeFlow(t *testing.T) {
 	_ = h.app.Pool.QueryRow(context.Background(), `SELECT count(1) FROM sys_outbox WHERE topic='trade.RefundSucceeded.v1'`).Scan(&refundEvents)
 	if refundEvents == 0 {
 		t.Fatal("应发布 RefundSucceeded")
+	}
+}
+
+// 会员 R3：报价 → 开通下单 → 支付履约 → 会员生效 → 权益能力 → 子账号/企业版门槛。
+func TestIntegrationMembershipFlow(t *testing.T) {
+	h := newTestApp(t)
+	ctx := context.Background()
+	phone := randPhone()
+	_, env := h.do(http.MethodPost, "/api/mp/v1/auth/wechat", "", map[string]string{"code": "wx-" + phone, "phone_code": phone})
+	var login struct {
+		UserID int64 `json:"user_id,string"`
+		Tokens struct {
+			AccessToken string `json:"access_token"`
+		} `json:"tokens"`
+	}
+	_ = json.Unmarshal(env.Data, &login)
+	token, uid := login.Tokens.AccessToken, login.UserID
+
+	// 报价：1 年无折扣、3 年 0.9、5 年 0.8
+	type quote struct {
+		OriginalFen  int64 `json:"original_fen"`
+		DiscountRate int   `json:"discount_rate"`
+		TotalFen     int64 `json:"total_fen"`
+	}
+	var q1, q3, q5 quote
+	_, env = h.do(http.MethodGet, "/api/mp/v1/membership/quote?level=1&years=1", "", nil)
+	_ = json.Unmarshal(env.Data, &q1)
+	if q1.TotalFen != 9900 || q1.DiscountRate != 10000 {
+		t.Fatalf("1 年报价不符: %+v", q1)
+	}
+	_, env = h.do(http.MethodGet, "/api/mp/v1/membership/quote?level=1&years=3", "", nil)
+	_ = json.Unmarshal(env.Data, &q3)
+	if q3.OriginalFen != 29700 || q3.TotalFen != 26730 || q3.DiscountRate != 9000 {
+		t.Fatalf("3 年报价不符: %+v", q3)
+	}
+	_, env = h.do(http.MethodGet, "/api/mp/v1/membership/quote?level=1&years=5", "", nil)
+	_ = json.Unmarshal(env.Data, &q5)
+	if q5.TotalFen != 39600 || q5.DiscountRate != 8000 {
+		t.Fatalf("5 年报价不符: %+v", q5)
+	}
+	// 预留档位 SVIP（level=2）不上架
+	if status, env := h.do(http.MethodGet, "/api/mp/v1/membership/quote?level=2&years=1", "", nil); status != http.StatusBadRequest || env.Code != 120001 {
+		t.Fatalf("SVIP 报价应 120001/400: %d %+v", status, env)
+	}
+	// 未登录
+	if status, env := h.do(http.MethodGet, "/api/mp/v1/membership/me", "", nil); status != http.StatusUnauthorized {
+		t.Fatalf("未登录应 401: %d %+v", status, env)
+	}
+	// 开通前无会员权益
+	if ok, _ := h.app.Policy.Has(ctx, h.app.Policy.NewActor(uid, 1), "member.active"); ok {
+		t.Fatal("开通前不应具备 member.active")
+	}
+
+	// 开通 VIP 1 年 → 下单
+	_, env = h.do(http.MethodPost, "/api/mp/v1/membership/orders", token, map[string]any{"level": 1, "years": 1})
+	var opened struct {
+		OrderID   int64 `json:"order_id,string"`
+		AmountFen int64 `json:"amount_fen"`
+	}
+	_ = json.Unmarshal(env.Data, &opened)
+	if opened.OrderID == 0 || opened.AmountFen != 9900 {
+		t.Fatalf("开通下单失败: %+v", opened)
+	}
+
+	// 支付 + 回调，然后驱动履约（测试不启 scheduler）
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/orders/%d/pay", opened.OrderID), token, nil)
+	var payParams struct {
+		OutTradeNo string `json:"out_trade_no"`
+	}
+	_ = json.Unmarshal(env.Data, &payParams)
+	if status, env := h.do(http.MethodPost, "/api/mp/v1/pay/notify", "", map[string]any{
+		"out_trade_no": payParams.OutTradeNo, "amount_fen": 9900, "sign": "ok",
+	}); status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("支付回调失败: %d %+v", status, env)
+	}
+	fulfillMemberOrder(t, h, opened.OrderID)
+
+	// 会员生效
+	_, env = h.do(http.MethodGet, "/api/mp/v1/membership/me", token, nil)
+	var me struct {
+		Active bool `json:"active"`
+		Member struct {
+			Level     int16  `json:"level"`
+			Status    int16  `json:"status"`
+			ExpiresAt string `json:"expires_at"`
+		} `json:"member"`
+	}
+	_ = json.Unmarshal(env.Data, &me)
+	if !me.Active || me.Member.Level != 1 || me.Member.Status != 1 || me.Member.ExpiresAt == "" {
+		t.Fatalf("会员应已生效: %+v", me)
+	}
+	if ok, _ := h.app.Policy.Has(ctx, h.app.Policy.NewActor(uid, 1), "member.active"); !ok {
+		t.Fatal("开通后应具备 member.active")
+	}
+
+	// 子账号：非企业版主账号不可管理
+	other := randPhone()
+	_, env = h.do(http.MethodPost, "/api/mp/v1/auth/wechat", "", map[string]string{"code": "wx-" + other, "phone_code": other})
+	var login2 struct {
+		UserID int64 `json:"user_id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &login2)
+	if status, env := h.do(http.MethodPost, "/api/mp/v1/membership/sub-accounts", token, map[string]any{"sub_user_id": fmt.Sprintf("%d", login2.UserID)}); status != http.StatusForbidden || env.Code != 120004 {
+		t.Fatalf("非企业版管理子账号应 120004/403: %d %+v", status, env)
+	}
+
+	// 企业版门槛：未认证企业不可开通
+	if status, env := h.do(http.MethodPost, "/api/mp/v1/membership/orders", token, map[string]any{"level": 3, "years": 1}); status != http.StatusForbidden || env.Code != 120003 {
+		t.Fatalf("未认证企业开通企业版应 120003/403: %d %+v", status, env)
+	}
+
+	// 退款报价：剩余完整 1 年 × 年费 × 系数 = 9900
+	var mm *membership.Module
+	for _, m := range h.app.Modules {
+		if v, ok := m.(*membership.Module); ok {
+			mm = v
+		}
+	}
+	amount, err := mm.RefundQuote(ctx, opened.OrderID)
+	if err != nil || amount != 9900 {
+		t.Fatalf("退款报价应 9900: %d %v", amount, err)
+	}
+}
+
+func fulfillMemberOrder(t *testing.T, h *testApp, orderID int64) {
+	t.Helper()
+	ctx := context.Background()
+	var tm *trade.Module
+	var mm *membership.Module
+	for _, m := range h.app.Modules {
+		switch v := m.(type) {
+		case *trade.Module:
+			tm = v
+		case *membership.Module:
+			mm = v
+		}
+	}
+	if tm == nil || mm == nil {
+		t.Fatal("trade/membership 模块未装载")
+	}
+	order, err := tm.Facade().GetOrder(ctx, orderID)
+	if err != nil {
+		t.Fatalf("查询订单失败: %v", err)
+	}
+	if err := mm.Fulfill(ctx, order); err != nil {
+		t.Fatalf("会员履约失败: %v", err)
 	}
 }
 

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/membership.SubAccountChanged.v1.json",
+  "title": "membership.SubAccountChanged.v1",
+  "description": "会员事件：企业版子账号邀请或移除。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "membership.SubAccountChanged.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["master_id", "sub_user_id", "action"],
+      "additionalProperties": false,
+      "properties": {
+        "master_id": { "type": "string" },
+        "sub_user_id": { "type": "string" },
+        "action": { "type": "string", "enum": ["invite", "remove"] }
+      }
+    }
+  },
+  "additionalProperties": false
+}

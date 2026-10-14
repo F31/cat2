@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/membership.MemberExpired.v1.json",
+  "title": "membership.MemberExpired.v1",
+  "description": "会员事件：会员到期回落（identity 订阅后 AuthzBump）。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "membership.MemberExpired.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["user_id", "level"],
+      "additionalProperties": false,
+      "properties": {
+        "user_id": { "type": "string" },
+        "level": { "type": "integer" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

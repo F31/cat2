@@ -119,6 +119,24 @@ func (e FavoriteItemKind) Valid() bool {
 	}
 }
 
+// Defines values for OpenMembershipInputLevel.
+const (
+	N1 OpenMembershipInputLevel = 1
+	N3 OpenMembershipInputLevel = 3
+)
+
+// Valid indicates whether the value is a known member of the OpenMembershipInputLevel enum.
+func (e OpenMembershipInputLevel) Valid() bool {
+	switch e {
+	case N1:
+		return true
+	case N3:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ReportInputReasonCode.
 const (
 	Abuse    ReportInputReasonCode = "abuse"
@@ -462,6 +480,46 @@ type LoginData struct {
 	UserId string `json:"user_id"`
 }
 
+// MembershipMember defines model for MembershipMember.
+type MembershipMember struct {
+	ExpiresAt time.Time `json:"expires_at"`
+	Level     int       `json:"level"`
+
+	// Status 1生效中/2已过期
+	Status int    `json:"status"`
+	UserId string `json:"user_id"`
+}
+
+// MembershipQuote defines model for MembershipQuote.
+type MembershipQuote struct {
+	// DiscountRate 折扣系数万分比（10000=无折扣；3 年 9000 / 5 年 8000）
+	DiscountRate int `json:"discount_rate"`
+
+	// Level 1 VIP / 3 企业版（2 SVIP 预留不上架）
+	Level int `json:"level"`
+
+	// OriginalFen 单价 × 年限
+	OriginalFen int `json:"original_fen"`
+
+	// TotalFen 折后价
+	TotalFen int `json:"total_fen"`
+
+	// UnitFen 年费单价（分）
+	UnitFen int `json:"unit_fen"`
+	Years   int `json:"years"`
+}
+
+// OpenMembershipInput defines model for OpenMembershipInput.
+type OpenMembershipInput struct {
+	Level OpenMembershipInputLevel `json:"level"`
+
+	// Years 默认 1；3/5 年享折扣
+	Years *int `json:"years,omitempty"`
+}
+
+// OpenMembershipInputLevel defines model for OpenMembershipInput.Level.
+type OpenMembershipInputLevel int
+
 // Order defines model for Order.
 type Order struct {
 	// AmountFen 金额（分）
@@ -506,6 +564,17 @@ type ReportInputReasonCode string
 type ReportReason struct {
 	Code  string `json:"code"`
 	Label string `json:"label"`
+}
+
+// SubAccount defines model for SubAccount.
+type SubAccount struct {
+	Id        string     `json:"id"`
+	InvitedAt *time.Time `json:"invited_at,omitempty"`
+	MasterId  string     `json:"master_id"`
+
+	// Status 1生效/2已移除
+	Status    int    `json:"status"`
+	SubUserId string `json:"sub_user_id"`
 }
 
 // TagSet defines model for TagSet.
@@ -696,6 +765,17 @@ type CreateUploadParams struct {
 // CreateUploadJSONBodyContentType defines parameters for CreateUpload.
 type CreateUploadJSONBodyContentType string
 
+// QuoteMembershipParams defines parameters for QuoteMembership.
+type QuoteMembershipParams struct {
+	Level int  `form:"level" json:"level"`
+	Years *int `form:"years,omitempty" json:"years,omitempty"`
+}
+
+// InviteSubAccountJSONBody defines parameters for InviteSubAccount.
+type InviteSubAccountJSONBody struct {
+	SubUserId string `json:"sub_user_id"`
+}
+
 // CreateOrderParams defines parameters for CreateOrder.
 type CreateOrderParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
@@ -743,6 +823,12 @@ type FollowTargetJSONRequestBody = TargetRefInput
 
 // CreateUploadJSONRequestBody defines body for CreateUpload for application/json ContentType.
 type CreateUploadJSONRequestBody CreateUploadJSONBody
+
+// OpenMembershipJSONRequestBody defines body for OpenMembership for application/json ContentType.
+type OpenMembershipJSONRequestBody = OpenMembershipInput
+
+// InviteSubAccountJSONRequestBody defines body for InviteSubAccount for application/json ContentType.
+type InviteSubAccountJSONRequestBody InviteSubAccountJSONBody
 
 // CreateOrderJSONRequestBody defines body for CreateOrder for application/json ContentType.
 type CreateOrderJSONRequestBody = CreateOrderInput
@@ -833,6 +919,24 @@ type ServerInterface interface {
 	// CreateUpload 申请预签名上传（JPG/PNG ≤5MB）
 	// (POST /media/uploads)
 	CreateUpload(w http.ResponseWriter, r *http.Request, params CreateUploadParams)
+	// GetMyMembership 我的会员状态
+	// (GET /membership/me)
+	GetMyMembership(w http.ResponseWriter, r *http.Request)
+	// OpenMembership 开通/续费会员（创建 trade 订单，支付成功后由 OrderFulfiller 开通）
+	// (POST /membership/orders)
+	OpenMembership(w http.ResponseWriter, r *http.Request)
+	// QuoteMembership 会员报价（年费锚点 × 年限 × 折扣系数）
+	// (GET /membership/quote)
+	QuoteMembership(w http.ResponseWriter, r *http.Request, params QuoteMembershipParams)
+	// ListSubAccounts 子账号列表（企业版主账号）
+	// (GET /membership/sub-accounts)
+	ListSubAccounts(w http.ResponseWriter, r *http.Request)
+	// InviteSubAccount 邀请子账号（企业版；须目标已实名；上限 3）
+	// (POST /membership/sub-accounts)
+	InviteSubAccount(w http.ResponseWriter, r *http.Request)
+	// RemoveSubAccount 移除子账号（企业版主账号）
+	// (DELETE /membership/sub-accounts/{subUserID})
+	RemoveSubAccount(w http.ResponseWriter, r *http.Request, subUserID string)
 	// CreateOrder 创建订单（金额由业务模块计算并给快照；强制 Idempotency-Key）
 	// (POST /orders)
 	CreateOrder(w http.ResponseWriter, r *http.Request, params CreateOrderParams)
@@ -1680,6 +1784,134 @@ func (siw *ServerInterfaceWrapper) CreateUpload(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// GetMyMembership operation middleware
+func (siw *ServerInterfaceWrapper) GetMyMembership(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyMembership(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OpenMembership operation middleware
+func (siw *ServerInterfaceWrapper) OpenMembership(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OpenMembership(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// QuoteMembership operation middleware
+func (siw *ServerInterfaceWrapper) QuoteMembership(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params QuoteMembershipParams
+
+	// ------------- Required query parameter "level" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "level", r.URL.Query(), &params.Level, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "level"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "level", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "years" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "years", r.URL.Query(), &params.Years, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "years"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "years", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.QuoteMembership(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSubAccounts operation middleware
+func (siw *ServerInterfaceWrapper) ListSubAccounts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSubAccounts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// InviteSubAccount operation middleware
+func (siw *ServerInterfaceWrapper) InviteSubAccount(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InviteSubAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveSubAccount operation middleware
+func (siw *ServerInterfaceWrapper) RemoveSubAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "subUserID" -------------
+	var subUserID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subUserID", r.PathValue("subUserID"), &subUserID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subUserID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveSubAccount(w, r, subUserID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateOrder operation middleware
 func (siw *ServerInterfaceWrapper) CreateOrder(w http.ResponseWriter, r *http.Request) {
 
@@ -2061,6 +2293,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/orders/{id}", wrapper.GetOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/orders/{id}/pay", wrapper.PayOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/pay/notify", wrapper.PayNotify)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/membership/quote", wrapper.QuoteMembership)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/membership/orders", wrapper.OpenMembership)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/membership/me", wrapper.GetMyMembership)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/membership/sub-accounts", wrapper.ListSubAccounts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/membership/sub-accounts", wrapper.InviteSubAccount)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/membership/sub-accounts/{subUserID}", wrapper.RemoveSubAccount)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/dict/{dimension}", wrapper.ListDict)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/media/uploads", wrapper.CreateUpload)
 

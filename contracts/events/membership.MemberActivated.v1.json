@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/membership.MemberActivated.v1.json",
+  "title": "membership.MemberActivated.v1",
+  "description": "会员事件：会员开通或续期生效（identity 订阅后 AuthzBump）。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "membership.MemberActivated.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["user_id", "level", "expires_at"],
+      "additionalProperties": false,
+      "properties": {
+        "user_id": { "type": "string" },
+        "level": { "type": "integer", "description": "1 VIP / 3 企业版" },
+        "expires_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

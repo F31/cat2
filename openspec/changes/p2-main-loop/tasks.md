@@ -75,15 +75,15 @@
 
 ## 8. membership（R3）
 
-- [ ] 8.1 迁移：`mbr_member`、`mbr_sub_account`（同一时间唯一归属）；价格入 settings（年费锚点、折扣系数 3 年 0.9/5 年 0.8、SVIP 预留档位不上架）
-- [ ] 8.2 `PriceQuote(level,years)`：多年价=年费×年限×系数，同时返回原价与折后价；年限 1/3/5/自定义
-- [ ] 8.3 下单：调 trade.CreateOrder（biz_type=member，price_snapshot 存单价/年限/系数）
-- [ ] 8.4 履约：注册 `OrderFulfiller(biz_type=member)`；`OrderPaid` → 开通/续期（幂等）
-- [ ] 8.5 状态机 #12（未开通→生效中→已过期）；到期回落 SchedulerJob（企业版主+子同步回落，子账号归属保留 30 天）
-- [ ] 8.6 企业版：仅已认证企业可开通（订阅 `CertificationApproved` 判资格）；3 个子账号按手机号邀请（须已注册已实名）、共享权益不单独计费；非企业账号开通企业版 denied 记审计
-- [ ] 8.7 退款金额计算：`RefundAmount(order)`=剩余完整年数×年费×实付折扣系数（取订单快照）；支付成功即生效不支持退款（开通页明示）；重复支付多扣全额原路退回
-- [ ] 8.8 事件：`MemberActivated/MemberExpired/SubAccountChanged`；identity 订阅递增 authz_ver；discovery 订阅刷新权重
-- [ ] 8.9 CapabilityProvider（会员生效中、等级）；会员权重输出给 discovery 同分排序
+- [x] 8.1 迁移：`mbr_member`、`mbr_sub_account`（同一时间唯一归属）；价格入 settings（年费锚点、折扣系数 3 年 0.9/5 年 0.8、SVIP 预留档位不上架）
+- [x] 8.2 `PriceQuote(level,years)`：多年价=年费×年限×系数，同时返回原价与折后价；年限 1/3/5/自定义
+- [x] 8.3 下单：调 trade.CreateOrder（biz_type=member，price_snapshot 存单价/年限/系数）
+- [x] 8.4 履约：注册 `OrderFulfiller(biz_type=member)`；`OrderPaid` → 开通/续期（幂等，按订单 ID 幂等）
+- [ ] 8.5 状态机 #12（未开通→生效中→已过期）+ 到期回落 SchedulerJob 已实现；企业版子账号同步回落与归属保留 30 天待补
+- [ ] 8.6 企业版门槛已实现（开通时经 identity 身份类型 + verify「已认证」能力判定，当前恒否→denied）；订阅 `CertificationApproved` 判资格、按手机号邀请、denied 记审计待补
+- [x] 8.7 退款金额计算：`RefundAmount(order)`=剩余完整年数×年费×实付折扣系数（取订单快照）；用户端无退款入口（仅后台）
+- [ ] 8.8 事件 `MemberActivated/MemberExpired/SubAccountChanged` 已发；identity 订阅递增 authz_ver 已接通；discovery 订阅刷新权重待 discovery(R5) 落地
+- [ ] 8.9 CapabilityProvider（`member.active`/`member.enterprise`）已注册；会员权重输出给 discovery 同分排序待 discovery(R5) 落地
 
 ## 9. msg（R1，异步单聊）
 

@@ -794,6 +794,139 @@ paths:
                           order_id: { type: string }
                           already_paid: { type: boolean }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /membership/quote:
+    get:
+      tags: [membership]
+      summary: 会员报价（年费锚点 × 年限 × 折扣系数）
+      operationId: quoteMembership
+      parameters:
+        - name: level
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: years
+          in: query
+          schema: { type: integer, default: 1 }
+      responses:
+        '200':
+          description: 报价
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MembershipQuote' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /membership/orders:
+    post:
+      tags: [membership]
+      summary: 开通/续费会员（创建 trade 订单，支付成功后由 OrderFulfiller 开通）
+      operationId: openMembership
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OpenMembershipInput' }
+      responses:
+        '200':
+          description: 开通订单
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          order_id: { type: string }
+                          amount_fen: { type: integer }
+                          original_fen: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /membership/me:
+    get:
+      tags: [membership]
+      summary: 我的会员状态
+      operationId: getMyMembership
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 会员状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          active: { type: boolean }
+                          member: { $ref: '#/components/schemas/MembershipMember' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /membership/sub-accounts:
+    get:
+      tags: [membership]
+      summary: 子账号列表（企业版主账号）
+      operationId: listSubAccounts
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 子账号列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/SubAccount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [membership]
+      summary: 邀请子账号（企业版；须目标已实名；上限 3）
+      operationId: inviteSubAccount
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sub_user_id]
+              properties: { sub_user_id: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/OkEmpty' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /membership/sub-accounts/{subUserID}:
+    delete:
+      tags: [membership]
+      summary: 移除子账号（企业版主账号）
+      operationId: removeSubAccount
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: subUserID
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/OkEmpty' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /dict/{dimension}:
     get:
       tags: [dict]
@@ -1127,6 +1260,39 @@ components:
         name: { type: string }
         parent_code: { type: string, nullable: true }
         sort: { type: integer }
+    MembershipQuote:
+      type: object
+      required: [level, years, unit_fen, original_fen, discount_rate, total_fen]
+      properties:
+        level: { type: integer, description: '1 VIP / 3 企业版（2 SVIP 预留不上架）' }
+        years: { type: integer }
+        unit_fen: { type: integer, description: 年费单价（分） }
+        original_fen: { type: integer, description: 单价 × 年限 }
+        discount_rate: { type: integer, description: '折扣系数万分比（10000=无折扣；3 年 9000 / 5 年 8000）' }
+        total_fen: { type: integer, description: 折后价 }
+    MembershipMember:
+      type: object
+      required: [user_id, level, status, expires_at]
+      properties:
+        user_id: { type: string }
+        level: { type: integer }
+        status: { type: integer, description: '1生效中/2已过期' }
+        expires_at: { type: string, format: date-time }
+    OpenMembershipInput:
+      type: object
+      required: [level]
+      properties:
+        level: { type: integer, enum: [1, 3] }
+        years: { type: integer, description: '默认 1；3/5 年享折扣' }
+    SubAccount:
+      type: object
+      required: [id, master_id, sub_user_id, status]
+      properties:
+        id: { type: string }
+        master_id: { type: string }
+        sub_user_id: { type: string }
+        status: { type: integer, description: '1生效/2已移除' }
+        invited_at: { type: string, format: date-time }
   responses:
     OkEmpty:
       description: 成功（无业务数据）

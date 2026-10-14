@@ -7,6 +7,7 @@ import (
 	"catcube/internal/kernel/module"
 	"catcube/internal/modules/content"
 	"catcube/internal/modules/identity"
+	"catcube/internal/modules/membership"
 	"catcube/internal/modules/profile"
 	"catcube/internal/modules/social"
 	"catcube/internal/modules/trade"
@@ -28,6 +29,7 @@ func TestRealModulesLoad(t *testing.T) {
 		content.New(content.Deps{}),
 		social.New(social.Deps{}),
 		trade.New(trade.Deps{}),
+		membership.New(membership.Deps{}),
 	}
 	ordered, err := module.Load(mods)
 	if err != nil {

@@ -25,9 +25,11 @@ import (
 	"catcube/internal/kernel/policy"
 	"catcube/internal/kernel/scheduler"
 	"catcube/internal/kernel/sensitive"
+	"catcube/internal/kernel/settings"
 	"catcube/internal/modules/content"
 	contentcontract "catcube/internal/modules/content/contract"
 	"catcube/internal/modules/identity"
+	"catcube/internal/modules/membership"
 	"catcube/internal/modules/profile"
 	"catcube/internal/modules/social"
 	"catcube/internal/modules/trade"
@@ -141,6 +143,11 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	tradeMod := trade.New(trade.Deps{
 		Pool: pool, Bus: bus, Pay: pay.NewDevClient(), Identity: identityMod.Facade(),
 	})
+	settingsReg := settings.NewRegistry(nil)
+	membershipMod := membership.New(membership.Deps{
+		Pool: pool, Bus: bus, Trade: tradeMod.Facade(), Verify: verifyMod.Facade(),
+		Identity: identityMod.Facade(), Settings: settingsReg, Policy: policyEngine,
+	})
 	mods := []module.Module{
 		dictMod,
 		mediaMod,
@@ -151,6 +158,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		contentMod,
 		socialMod,
 		tradeMod,
+		membershipMod,
 	}
 
 	// 依赖拓扑装载：缺依赖启动即失败
@@ -173,8 +181,12 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		bus.Register(reg.EventSubs)
 		policyEngine.RegisterProviders(reg.CapProviders)
 		policyEngine.RegisterRules(reg.PolicyRules)
+		settingsReg.Register(reg.Settings)
 		a.scheduler().Register(toSchedulerJobs(reg.Jobs))
 	}
+
+	// 履约能力注册（装配根唯一装配扩展点）：会员开通/续期由 trade 支付成功回调触发
+	tradeMod.RegisterFulfiller(membershipMod)
 
 	// 跨模块扩展点装配（装配根唯一 import 所有模块）：审核对象提供者
 	trustMod.RegisterSubjectProvider(profileMod)
