@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/trust.AccountRestricted.v1.json",
+  "title": "trust.AccountRestricted.v1",
+  "description": "账号被限制发布/封禁。identity 等模块订阅后同步账号状态（如有需要）。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "trust.AccountRestricted.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["user_id", "type", "days"],
+      "additionalProperties": false,
+      "properties": {
+        "user_id": { "type": "string" },
+        "type": { "type": "integer", "description": "1限制发布/2封禁" },
+        "days": { "type": "integer" },
+        "reason": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

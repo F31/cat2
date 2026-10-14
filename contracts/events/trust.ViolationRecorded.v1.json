@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/trust.ViolationRecorded.v1.json",
+  "title": "trust.ViolationRecorded.v1",
+  "description": "违规记分记录（累计达阈值触发 AccountRestricted）。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "trust.ViolationRecorded.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["user_id", "points", "total"],
+      "additionalProperties": false,
+      "properties": {
+        "user_id": { "type": "string" },
+        "points": { "type": "integer" },
+        "total": { "type": "integer" },
+        "source_task_id": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

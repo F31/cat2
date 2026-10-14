@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/verify.CertificationApproved.v1.json",
+  "title": "verify.CertificationApproved.v1",
+  "description": "认证通过。Payload 不得包含真实姓名、证件号、材料图片等敏感字段。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "verify.CertificationApproved.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string", "description": "站点维度预留，一期恒为 default" },
+    "payload": {
+      "type": "object",
+      "required": ["user_id", "cert_type"],
+      "additionalProperties": false,
+      "properties": {
+        "user_id": { "type": "string", "description": "int64 字符串" },
+        "cert_type": { "type": "integer" },
+        "org_id": { "type": "string" },
+        "badge_code": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

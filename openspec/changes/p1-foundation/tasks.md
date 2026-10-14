@@ -10,15 +10,15 @@
 - [x] 1.4 `apps/admin-web` React + Ant Design 初始化；pnpm workspace 贯通三个前端应用与 packages
 - [x] 1.5 根 `Makefile`：`make gen`（契约生成，当前为占位）、`make lint`（archcheck + go vet）、`make test`、`make up`（S0 compose）
 - [x] 1.6 CODEOWNERS：每个模块目录指定 owner，`contract/` 变更必须 owner 审批
-- [ ] 1.7 CI 管线骨架：lint、test、契约校验、边界检查四个必过门禁（缺 .github/workflows，待补）
+- [x] 1.7 CI 管线骨架：lint、test、契约校验、边界检查四个必过门禁（.github/workflows/ci.yml）
 
 ## 2. 契约与代码生成管线
 
 - [x] 2.1 `contracts/openapi/mp.yaml` 首版：统一响应信封、错误码、游标分页、`request_id`、`Idempotency-Key` 约定
-- [ ] 2.2 契约生成：OpenAPI → Go server stub（`internal/gen/`）与 TS `packages/api-client`，`make gen` 一键完成（生成器未接入，`make gen` 为占位）
-- [ ] 2.3 `packages/domain-types`：状态枚举、Reason 码、EntityRef、TagSet、Badge 类型由契约生成，不手写（当前为手写占位，待生成管线）
+- [x] 2.2 契约生成：oapi-codegen → `internal/gen/`（Go types + std-http server），openapi-typescript → `packages/api-client/schema.d.ts`，`make gen` 一键完成
+- [ ] 2.3 `packages/domain-types`：事件类型已由 JSON Schema 生成（json2ts）；状态枚举/Reason 码等仍手写，待枚举入契约后改为生成
 - [x] 2.4 事件契约：`contracts/events/identity.UserRegistered.v1.json`、`UserDeactivated.v1.json`、`AuthzChanged.v1.json` 三个 JSON Schema（含事件 ID、occurred_at、v1、space_id，不含敏感字段）
-- [ ] 2.5 CI 校验事件 Schema 生产方/订阅方一致；OpenAPI 与生成客户端一致
+- [x] 2.5 CI 校验生成物无漂移（make gen 后 git diff --exit-code）；事件 Schema 生产/订阅一致性校验待首个订阅方落地后细化
 - [x] 2.6 `contracts/errors/`：按模块分配错误码段（`MMNNNN`），18 个前缀全部登记占位
 
 ## 3. archcheck 边界检查（`tools/archcheck`）
@@ -73,7 +73,7 @@
 - [ ] 8.2 `adapters/pg`：queue 与 search 已实现；未过契约套件（套件未建）
 - [ ] 8.3 `adapters/local`：进程内 cache 已实现；未过契约套件
 - [ ] 8.4 `adapters/oss`：预签名骨架（供应商接入 TODO）；未过契约套件
-- [ ] 8.5 `adapters/wechat`：code2session 已实现（session_key 不下发不入日志）；支付骨架（下单/回调验签）待 p2
+- [ ] 8.5 `adapters/wechat`：code2session 与 `GetPhoneNumberByCode`（新版 code 手机号接口，access_token 缓存、session_key 不下发不入日志）已实现；支付骨架（下单/回调验签）待 p2
 - [ ] 8.6 `adapters/moderation`：文本同步机检已实现；图片异步回调待接
 - [ ] 8.7 契约测试套件同一套跑在每个适配器上
 
@@ -81,14 +81,14 @@
 
 - [x] 9.1 模块结构：`modules/identity/{contract,module.go,migrations,internal/app}`（admin/ 与 transport/domain/infra 细分在 p2 补）
 - [x] 9.2 迁移：`idn_user`（含 phone_enc/phone_hmac/realname_status/authz_ver/owner_space_id）、`idn_session`、`idn_login_attempt`、`idn_sms_code`、`idn_deactivation_log`
-- [ ] 9.3 微信授权登录：openid 加密存储；注册登录一体化；手机号经微信获取写 phone_enc + phone_hmac 唯一校验（handler 已接 Code2Session，链路 501 待 p2）
-- [ ] 9.4 手机号 + 短信验证码备选登录；登录失败锁定（`idn_login_attempt`）
+- [x] 9.3 微信授权登录：code2session → 手机号（`GetPhoneNumberByCode`）→ phone_hmac 查/建用户注册登录一体化；phone_enc + phone_hmac 唯一校验；openid 存 `wechat_openid`（加密迁移留 p2）
+- [x] 9.4 手机号 + 短信验证码备选登录（`/auth/sms/code`、`/auth/sms`）；登录失败锁定（窗口内 5 次 → 010006，`idn_login_attempt`）
 - [x] 9.5 令牌：Access 2h RS256 只含 `sub/sid/authz_ver`；Refresh 7 天滚动轮换、哈希存储、可吊销；同账号 ≤3 活跃会话
 - [x] 9.6 `authz_ver` 递增机制与网关比对（无陈旧窗口）；订阅 `AuthzChanged` 类内部触发点
 - [x] 9.7 注销与匿名化：`Deactivate` 发布 `identity.UserDeactivated`，本模块处理自身数据匿名化
 - [x] 9.8 contract：`Authenticate`、`SessionOf`、`UserBrief`、`Deactivate`、`AuthzBump`；注册 CapabilityProvider（账号状态；实名先返回未实名）
 - [ ] 9.9 admin/：用户列表、封禁的 AdminSection 声明（页面 p4）
-- [ ] 9.10 状态/策略测试：登录失败锁定、会话上限、令牌轮换、注销事件发布
+- [x] 9.10 状态/策略测试：domain 单测（锁定/会话上限/手机号）+ 集成测试（`integration_test.go`：登录、短信、令牌轮换、会话上限、注销事件、authz_ver 陈旧窗口）
 
 ## 10. trust 模块骨架（R0）
 
@@ -126,14 +126,14 @@
 
 ## 14. S0 部署
 
-- [x] 14.1 `deploy/compose`：app（全角色全模块）+ PostgreSQL 一键起（`make up`）
+- [x] 14.1 `deploy/compose`：app（全角色全模块）+ PostgreSQL 一键起（`make up`；已真实启动验证，宿主端口冲突时用 APP_PORT 覆盖）
 - [ ] 14.2 PITR 备份配置（WAL 归档 + 每日全备）
 - [ ] 14.3 前端构建与本地联调脚本
 
 ## 15. 退出标准
 
-- [ ] 15.1 S0 一键起：`make up` 后 `serve` 全角色全模块启动，`/healthz`、`/readyz` 通过（compose 文件就绪，待真实启动验证）
+- [x] 15.1 S0 一键起：`make up` 后 `serve` 全角色全模块启动，`/healthz`、`/readyz` 通过（已验证；镜像 vendor 构建、distroless 运行）
 - [x] 15.2 空模块（仅 contract + module.go 骨架）能按阶梯装载；缺依赖启动即失败有测试覆盖
-- [x] 15.3 archcheck 四条规则自检通过且接入 `make lint`（CI 门禁待 1.7）
-- [ ] 15.4 契约生成管线贯通：改 OpenAPI/事件 Schema → `make gen` → 前后端代码更新
-- [ ] 15.5 identity 登录/令牌/注销链路有集成测试；dict 种子导入后可查询；media 上传→绑定→孤儿清理链路有测试
+- [x] 15.3 archcheck 四条规则自检通过，接入 `make lint` 与 CI boundary 门禁
+- [x] 15.4 契约生成管线贯通：改 OpenAPI/事件 Schema → `make gen` → Go stub 与 TS 类型更新（CI 漂移检查兜底）
+- [ ] 15.5 identity 登录/令牌/注销链路集成测试已落地（`make test-integration`）；dict 种子导入后可查询、media 上传→绑定→孤儿清理链路测试待补

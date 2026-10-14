@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/social.FolloweePublished.v1.json",
+  "title": "social.FolloweePublished.v1",
+  "description": "关注=订阅：被关注者发布新内容时向关注者产生的一条系统通知事件（供 notice 消费）。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "social.FolloweePublished.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["user_id", "author_id", "item_id", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "user_id": { "type": "string", "description": "接收者（关注者）" },
+        "author_id": { "type": "string", "description": "发布者" },
+        "item_id": { "type": "string" },
+        "kind": { "type": "string" },
+        "title": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

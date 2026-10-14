@@ -17,6 +17,11 @@ servers:
   - url: /api/mp/v1
 tags:
   - name: auth
+  - name: profile
+  - name: verify
+  - name: content
+  - name: trust
+  - name: social
   - name: dict
   - name: media
 paths:
@@ -36,8 +41,10 @@ paths:
               required: [code]
               properties:
                 code: { type: string, description: wx.login 返回的 code }
-                encrypted_data: { type: string, description: 手机号加密数据（getPhoneNumber） }
+                phone_code: { type: string, description: 手机号快速验证 code（getPhoneNumber 事件返回） }
+                encrypted_data: { type: string, description: 手机号加密数据（旧版 getPhoneNumber，兼容保留） }
                 iv: { type: string }
+                device: { type: string, description: 设备标识（会话审计） }
       responses:
         '200':
           description: 登录成功
@@ -48,14 +55,71 @@ paths:
                   - $ref: '#/components/schemas/Envelope'
                   - type: object
                     properties:
+                      data: { $ref: '#/components/schemas/LoginData' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '502': { $ref: '#/components/responses/UpstreamError' }
+  /auth/phone/code:
+    post:
+      tags: [auth]
+      summary: 发送短信验证码（备选登录通道）
+      operationId: sendPhoneCode
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone: { type: string, description: 中国大陆手机号 }
+      responses:
+        '200':
+          description: 已发送（无论号码是否已注册都返回成功，防枚举）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
                       data:
                         type: object
                         properties:
-                          user_id: { type: string, description: int64 字符串 }
-                          new: { type: boolean, description: 是否新注册 }
-                          tokens: { $ref: '#/components/schemas/Tokens' }
+                          sent: { type: boolean }
         '400': { $ref: '#/components/responses/BadRequest' }
-        '502': { $ref: '#/components/responses/UpstreamError' }
+  /auth/phone:
+    post:
+      tags: [auth]
+      summary: 手机号 + 短信验证码登录（备选通道，注册/登录一体化）
+      operationId: phoneLogin
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone: { type: string }
+                code: { type: string }
+                device: { type: string }
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/LoginData' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
   /auth/refresh:
     post:
       tags: [auth]
@@ -82,6 +146,24 @@ paths:
                     properties:
                       data: { $ref: '#/components/schemas/Tokens' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /users/me:
+    get:
+      tags: [auth]
+      summary: 当前用户摘要
+      operationId: getMe
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 用户摘要
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/UserBrief' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /users/me/deactivate:
     post:
       tags: [auth]
@@ -93,6 +175,525 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/OkEmpty' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /cards/me:
+    get:
+      tags: [profile]
+      summary: 我的名片（本人视图，不做展示过滤）
+      operationId: getMyCard
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 我的名片
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Card' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    put:
+      tags: [profile]
+      summary: 更新我的名片（全量覆盖）
+      operationId: updateMyCard
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CardUpdate' }
+      responses:
+        '200':
+          description: 更新后的名片
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Card' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /cards/me/completion:
+    get:
+      tags: [profile]
+      summary: 画像完成度（第二层五项任一为空即未完成；驱动「完善资料」提示条）
+      operationId: getCardCompletion
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 完成度
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Completion' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /cards/me/share:
+    post:
+      tags: [profile]
+      summary: 生成名片分享（小程序分享路径）
+      operationId: shareMyCard
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 分享信息
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          share_path: { type: string }
+                          title: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /cards/{ref}:
+    get:
+      tags: [profile]
+      summary: 他人名片（游客可访问；按对外展示设置过滤敏感字段）
+      operationId: getCardByRef
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          schema: { type: string, description: '实体引用 type:id，如 user:123 / org:456' }
+      responses:
+        '200':
+          description: 名片（对外视图）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Card' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /certs:
+    post:
+      tags: [verify]
+      summary: 提交认证（一期实名：真实姓名+身份证号+协议勾选，第三方二要素实时核验）
+      operationId: submitCert
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CertifyInput' }
+      responses:
+        '200':
+          description: 认证结果（status=1 已通过 / 2 已驳回，驳回带 reject_reason 可重提）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Cert' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /certs/mine:
+    get:
+      tags: [verify]
+      summary: 我的认证记录
+      operationId: getMyCerts
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 认证记录列表（新→旧）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/Cert' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /contents:
+    post:
+      tags: [content]
+      summary: 创建内容（草稿=审核中；kind 区分四类，Fields 按 ContentKind schema 校验）
+      operationId: publishContent
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContentPublishInput' }
+      responses:
+        '200':
+          description: 已创建（审核中）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContentItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /contents/mine:
+    get:
+      tags: [content]
+      summary: 我的发布（可按 kind 过滤）
+      operationId: listMyContents
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: kind
+          in: query
+          schema: { type: string, enum: [project, product, meeting, event] }
+      responses:
+        '200':
+          description: 我的内容列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/ContentItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /contents/{id}/submit:
+    post:
+      tags: [content]
+      summary: 提交审核（发布门槛：已实名；审核结论驱动状态机 #2）
+      operationId: submitContent
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 提交结果（已展示/已下架）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContentItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /contents/{id}:
+    get:
+      tags: [content]
+      summary: 内容详情（未展示内容非本人不可见；非会员过滤会员可见字段）
+      operationId: getContent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 内容详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContentItem' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /contents/{id}/close:
+    post:
+      tags: [content]
+      summary: 本人关闭内容（展示中→已下架）
+      operationId: closeContent
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 已下架
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContentItem' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /report-reasons:
+    get:
+      tags: [trust]
+      summary: 举报原因枚举
+      operationId: listReportReasons
+      responses:
+        '200':
+          description: 举报原因列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/ReportReason' }
+  /reports:
+    post:
+      tags: [trust]
+      summary: 举报（入人工复核队列，24h SLA）
+      operationId: reportTarget
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportInput' }
+      responses:
+        '200':
+          description: 已提交举报
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          reported: { type: boolean }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /follows:
+    post:
+      tags: [social]
+      summary: 关注（幂等；目标为 EntityRef）
+      operationId: followTarget
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TargetRefInput' }
+      responses:
+        '200':
+          description: 关注状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties: { following: { type: boolean } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    get:
+      tags: [social]
+      summary: 我关注的
+      operationId: listFollowing
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 关注列表（含 EntityResolver 回填标题）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/FollowItem' }
+  /follows/{ref}:
+    delete:
+      tags: [social]
+      summary: 取关（幂等）
+      operationId: unfollowTarget
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          schema: { type: string, description: 'EntityRef type:id' }
+      responses:
+        '200':
+          description: 取关状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties: { following: { type: boolean } }
+  /followers:
+    get:
+      tags: [social]
+      summary: 关注我的人（不设互相关注统计）
+      operationId: listFollowers
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 粉丝列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/FollowItem' }
+  /favorites:
+    post:
+      tags: [social]
+      summary: 收藏（幂等；kind 由目标类型推导）
+      operationId: favoriteTarget
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TargetRefInput' }
+      responses:
+        '200':
+          description: 收藏状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties: { favorited: { type: boolean } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+    get:
+      tags: [social]
+      summary: 我的收藏（六类分 Tab）
+      operationId: listFavorites
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: type
+          in: query
+          schema: { type: string, enum: [person, company, project, product, meeting, event] }
+      responses:
+        '200':
+          description: 收藏列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/FavoriteItem' }
+  /favorites/{ref}:
+    delete:
+      tags: [social]
+      summary: 取消收藏
+      operationId: unfavoriteTarget
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 收藏状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties: { favorited: { type: boolean } }
+  /follow-unread:
+    get:
+      tags: [social]
+      summary: 关注动态未读数
+      operationId: getFollowUnread
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 未读数
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties: { unread: { type: integer } }
   /dict/{dimension}:
     get:
       tags: [dict]
@@ -204,6 +805,188 @@ components:
         access_token: { type: string }
         refresh_token: { type: string }
         expires_in: { type: integer, description: access token 秒数 }
+    LoginData:
+      type: object
+      required: [user_id, new, tokens]
+      properties:
+        user_id: { type: string, description: int64 字符串 }
+        new: { type: boolean, description: 是否新注册 }
+        tokens: { $ref: '#/components/schemas/Tokens' }
+    UserBrief:
+      type: object
+      required: [id, nickname, status]
+      properties:
+        id: { type: string, description: int64 字符串 }
+        nickname: { type: string }
+        avatar_file_id: { type: string }
+        status: { type: integer, description: 0正常/1限制/2封禁/3已注销 }
+    Card:
+      type: object
+      required: [user_id, identity_type, name, profile_tier]
+      properties:
+        user_id: { type: string }
+        subject_type_code: { type: string }
+        identity_type: { type: integer, description: 1个人/2组织 }
+        name: { type: string }
+        avatar_file_id: { type: string }
+        region_code: { type: string }
+        industry_codes: { type: array, items: { type: string } }
+        need_codes: { type: array, items: { type: string } }
+        offer_codes: { type: array, items: { type: string } }
+        advantage_field: { type: string }
+        background: { type: string }
+        target_customers: { type: string }
+        target_channels: { type: string }
+        core_strength: { type: string }
+        intro: { type: string }
+        profile_tier: { type: integer, description: 1第一层/2第二层完整/3含增值画像 }
+        has_contact: { type: boolean, description: 是否已配置联系方式（明文永不下发） }
+    CardUpdate:
+      type: object
+      required: [name]
+      properties:
+        subject_type_code: { type: string }
+        name: { type: string, description: '姓名或组织名称（≤128）' }
+        avatar_file_id: { type: string }
+        region_code: { type: string }
+        industry_codes: { type: array, items: { type: string } }
+        need_codes: { type: array, items: { type: string } }
+        offer_codes: { type: array, items: { type: string } }
+        advantage_field: { type: string }
+        background: { type: string }
+        target_customers: { type: string }
+        target_channels: { type: string }
+        qualification_file_ids: { type: array, items: { type: string }, description: 组织资质证明图片（经 media 绑定） }
+        core_strength: { type: string, description: '核心业务优势（≤2000）' }
+        intro: { type: string, description: '简介（个人≤500 / 组织≤5000）' }
+        contact_phone: { type: string, description: 联系方式（加密存储，会员可见） }
+        visibility_settings:
+          type: object
+          additionalProperties: { type: boolean }
+          description: 字段级对外展示开关（缺省可见）
+    Cert:
+      type: object
+      required: [id, user_id, cert_type, status]
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        cert_type: { type: integer, description: '1实名/2个人/3个人企业身份/4企业/5机构' }
+        target_org_id: { type: string }
+        status: { type: integer, description: '0待审核/1已通过/2已驳回' }
+        reject_reason: { type: string }
+        submitted_at: { type: string, format: date-time }
+        reviewed_at: { type: string, format: date-time, nullable: true }
+    CertifyInput:
+      type: object
+      required: [cert_type, agreed]
+      properties:
+        cert_type: { type: integer }
+        real_name: { type: string }
+        id_card_no: { type: string }
+        agreed: { type: boolean, description: 实名认证服务协议勾选 }
+        target_org_id: { type: string }
+        material_file_ids: { type: array, items: { type: string } }
+        extra: { type: object, additionalProperties: { type: string } }
+    Badge:
+      type: object
+      required: [code, label, level]
+      properties:
+        code: { type: string }
+        label: { type: string }
+        level: { type: integer }
+    Completion:
+      type: object
+      required: [complete, missing, tier]
+      properties:
+        complete: { type: boolean }
+        missing:
+          type: array
+          items: { type: string, enum: [region, industry, need, offer, intro] }
+        tier: { type: integer }
+    TargetRefInput:
+      type: object
+      required: [target_ref]
+      properties:
+        target_ref: { type: string, description: 'EntityRef type:id，如 user:123 / content.project:456' }
+    Target:
+      type: object
+      required: [type, id]
+      properties:
+        type: { type: string }
+        id: { type: string }
+    FollowItem:
+      type: object
+      required: [follower_id, target]
+      properties:
+        follower_id: { type: string }
+        target: { $ref: '#/components/schemas/Target' }
+        title: { type: string }
+        cover: { type: string }
+        created_at: { type: string, format: date-time }
+    FavoriteItem:
+      type: object
+      required: [id, target, kind]
+      properties:
+        id: { type: string }
+        target: { $ref: '#/components/schemas/Target' }
+        kind: { type: string, enum: [person, company, project, product, meeting, event] }
+        title: { type: string }
+        cover: { type: string }
+        created_at: { type: string, format: date-time }
+    ReportReason:
+      type: object
+      required: [code, label]
+      properties:
+        code: { type: string }
+        label: { type: string }
+    ReportInput:
+      type: object
+      required: [target_ref, reason_code]
+      properties:
+        target_ref: { type: string, description: 'EntityRef type:id，如 content.project:123' }
+        reason_code: { type: string, enum: [spam, fraud, porn, abuse, infringe, other] }
+        detail: { type: string, description: '≤500字' }
+    TagSet:
+      type: object
+      properties:
+        industry: { type: array, items: { type: string } }
+        region: { type: string }
+        nature: { type: array, items: { type: string } }
+        need: { type: array, items: { type: string } }
+        offer: { type: array, items: { type: string } }
+        domain: { type: array, items: { type: string } }
+    ContentItem:
+      type: object
+      required: [id, kind, title, status]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [project, product, meeting, event] }
+        owner_ref:
+          type: object
+          properties:
+            type: { type: string }
+            id: { type: string }
+        title: { type: string }
+        cover_file_id: { type: string }
+        region_code: { type: string }
+        tagset: { $ref: '#/components/schemas/TagSet' }
+        status: { type: integer, description: '0审核中/1展示中/2已下架' }
+        reject_reason: { type: string }
+        published_at: { type: string, format: date-time, nullable: true }
+        fields: { type: object, additionalProperties: true, description: 类型子表字段（非会员不含会员可见字段） }
+        member_gate: { type: array, items: { type: string }, description: 因非会员被隐藏的字段 }
+        unlock_reason: { type: string }
+    ContentPublishInput:
+      type: object
+      required: [kind, title]
+      properties:
+        kind: { type: string, enum: [project, product, meeting, event] }
+        title: { type: string, description: '≤50字' }
+        cover_file_id: { type: string }
+        region_code: { type: string }
+        tagset: { $ref: '#/components/schemas/TagSet' }
+        org_ref: { type: string }
+        fields: { type: object, additionalProperties: true }
     DictItem:
       type: object
       required: [code, name]
@@ -218,6 +1001,11 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Envelope' }
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
     BadRequest:
       description: 参数错误
       content:
@@ -225,6 +1013,21 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
     Unauthorized:
       description: 未认证或令牌失效
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: 无权限或权限门未满足（如发布需实名）
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: 状态冲突（如已完成实名）
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    TooManyRequests:
+      description: 限流或登录尝试过于频繁
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }

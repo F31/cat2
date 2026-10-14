@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/verify.CertificationRejected.v1.json",
+  "title": "verify.CertificationRejected.v1",
+  "description": "认证驳回/核验失败。Payload 不得包含真实姓名、证件号等敏感字段。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "verify.CertificationRejected.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string", "description": "站点维度预留，一期恒为 default" },
+    "payload": {
+      "type": "object",
+      "required": ["user_id", "cert_type", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "user_id": { "type": "string", "description": "int64 字符串" },
+        "cert_type": { "type": "integer" },
+        "org_id": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

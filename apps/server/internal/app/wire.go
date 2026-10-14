@@ -4,12 +4,16 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"catcube/internal/adapters/local"
 	"catcube/internal/adapters/oss"
 	"catcube/internal/adapters/pg"
+	"catcube/internal/adapters/realname"
 	"catcube/internal/adapters/wechat"
 	"catcube/internal/kernel/config"
 	"catcube/internal/kernel/db"
@@ -19,22 +23,43 @@ import (
 	"catcube/internal/kernel/obs"
 	"catcube/internal/kernel/policy"
 	"catcube/internal/kernel/scheduler"
+	"catcube/internal/kernel/sensitive"
+	"catcube/internal/modules/content"
+	contentcontract "catcube/internal/modules/content/contract"
 	"catcube/internal/modules/identity"
+	"catcube/internal/modules/profile"
+	"catcube/internal/modules/social"
 	"catcube/internal/modules/trust"
+	"catcube/internal/modules/verify"
 	"catcube/internal/shared/dict"
+	"catcube/internal/shared/entityref"
 	"catcube/internal/shared/media"
 )
 
+// decodeHexKey 解析 hex 密钥；未配置时使用开发派生密钥并告警（生产必须配置）。
+func decodeHexKey(hexKey, devSeed string) []byte {
+	if hexKey != "" {
+		if b, err := hex.DecodeString(hexKey); err == nil && len(b) == 32 {
+			return b
+		}
+		slog.Warn("密钥格式非法（需 64 位十六进制），已回退开发密钥")
+	} else {
+		slog.Warn("未配置密钥，使用开发派生密钥（不可用于生产）")
+	}
+	sum := sha256.Sum256([]byte(devSeed))
+	return sum[:]
+}
+
 // App 装配结果。
 type App struct {
-	Config   config.Config
-	Pool     *db.Pool
-	Bus      *eventbus.Bus
-	Policy   *policy.Engine
-	Modules  []module.Module
-	Mux      *http.ServeMux
-	Sched    *scheduler.Runner
-	ready    bool
+	Config  config.Config
+	Pool    *db.Pool
+	Bus     *eventbus.Bus
+	Policy  *policy.Engine
+	Modules []module.Module
+	Mux     *http.ServeMux
+	Sched   *scheduler.Runner
+	ready   bool
 }
 
 // Wire 装配。
@@ -49,22 +74,77 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	_ = queue
 	cache := local.NewCache()
 	_ = cache
-	wechatAuth := wechat.NewAuthClient("", "") // appid/secret 经启动配置注入
-	storage := oss.NewClient("", "default", "", "", "")
+	// 敏感数据密钥：生产必配（缺失时开发态告警并使用派生密钥）
+	encKey := decodeHexKey(cfg.IdentityEncKey, "catcube-dev-enc-key-32bytes!!")
+	blindKey := decodeHexKey(cfg.BlindKey, "catcube-dev-blind-key-32bytes")
+	encryptor, err := sensitive.NewEncryptor(encKey)
+	if err != nil {
+		return nil, err
+	}
 
 	// 内核机制
 	outbox := pg.NewOutbox(pool)
 	bus := eventbus.NewBus(outbox, pg.NewProcessed(pool))
 	policyEngine := policy.NewEngine()
 
-	// 模块（一期：shared + R0 骨架）
-	trustMod := trust.New(trust.Deps{Pool: pool, Moderation: nil})
-	identityMod := identity.New(identity.Deps{Pool: pool, WeChat: wechatAuth, Bus: bus})
+	// 微信：配了 appid/secret 走真实接口，否则开发态假实现（登录链路可端到端跑通）
+	identityDeps := identity.Deps{
+		Pool: pool, Bus: bus, Encryptor: encryptor, BlindKey: blindKey, DevSMSCode: cfg.DevSMSCode,
+	}
+	if cfg.WeChatAppID != "" && cfg.WeChatAppSecret != "" {
+		authClient := wechat.NewAuthClient(cfg.WeChatAppID, cfg.WeChatAppSecret)
+		identityDeps.WeChat = authClient
+		identityDeps.PhoneCode = authClient
+	} else {
+		dev := wechat.NewDevAuthClient()
+		slog.Info("微信未配置 appid/secret：使用开发态登录实现（不可用于生产）")
+		identityDeps.WeChat = dev
+		identityDeps.PhoneCode = dev
+	}
+	storage := oss.NewClient("", "default", "", "", "")
+
+	// 模块（shared + R0 + R1 + R2）
+	identityMod := identity.New(identityDeps)
+	// 鉴权函数：供 R0 trust 等无法依赖 identity 的同阶模块复用（经装配根注入）
+	authFunc := func(ctx context.Context, token string) (int64, error) {
+		uid, ver, err := identityMod.Facade().Authenticate(ctx, token)
+		if err != nil {
+			return 0, err
+		}
+		b, err := identityMod.Facade().UserBrief(ctx, uid)
+		if err != nil || b.AuthzVer != ver || (b.Status != 0 && b.Status != 1) {
+			return 0, fmt.Errorf("identity: 令牌已失效")
+		}
+		return uid, nil
+	}
+	trustMod := trust.New(trust.Deps{Pool: pool, Moderation: nil, Bus: bus, Auth: authFunc})
+	dictMod := dict.New(pool)
+	mediaMod := media.New(pool, storage)
+	entityReg := entityref.NewRegistry()
+	profileMod := profile.New(profile.Deps{
+		Pool: pool, Bus: bus, Media: mediaMod.Facade(), Dict: dictMod.Facade(),
+		Identity: identityMod.Facade(), Encryptor: encryptor, EntityRegistry: entityReg,
+	})
+	verifyMod := verify.New(verify.Deps{
+		Pool: pool, Bus: bus, Verify: realname.NewDevClient(),
+		Identity: identityMod.Facade(), Encryptor: encryptor,
+	})
+	contentMod := content.New(content.Deps{
+		Pool: pool, Bus: bus, Dict: dictMod.Facade(), Trust: trustMod.Facade(), Media: mediaMod.Facade(),
+		Identity: identityMod.Facade(), Policy: policyEngine, Encryptor: encryptor, EntityRegistry: entityReg,
+	})
+	socialMod := social.New(social.Deps{
+		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Resolver: entityReg,
+	})
 	mods := []module.Module{
-		dict.New(pool),
-		media.New(pool, storage),
+		dictMod,
+		mediaMod,
 		identityMod,
 		trustMod,
+		profileMod,
+		verifyMod,
+		contentMod,
+		socialMod,
 	}
 
 	// 依赖拓扑装载：缺依赖启动即失败
@@ -88,6 +168,13 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		policyEngine.RegisterProviders(reg.CapProviders)
 		policyEngine.RegisterRules(reg.PolicyRules)
 		a.scheduler().Register(toSchedulerJobs(reg.Jobs))
+	}
+
+	// 跨模块扩展点装配（装配根唯一 import 所有模块）：审核对象提供者
+	trustMod.RegisterSubjectProvider(profileMod)
+	trustMod.RegisterSubjectProvider(verifyMod)
+	for _, k := range []string{contentcontract.KindProject, contentcontract.KindProduct, contentcontract.KindMeeting, contentcontract.KindEvent} {
+		trustMod.RegisterSubjectProvider(contentMod.ProviderFor(k))
 	}
 
 	// 健康检查

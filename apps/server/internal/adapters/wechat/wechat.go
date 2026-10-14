@@ -17,6 +17,8 @@ type AuthClient struct {
 	AppID     string
 	AppSecret string
 	HTTP      *http.Client
+
+	tk tokenCache
 }
 
 func NewAuthClient(appID, appSecret string) *AuthClient {

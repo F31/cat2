@@ -20,19 +20,20 @@ type Module struct {
 	svc  *app.Service
 }
 
-// New 由装配根注入数据库池。
-func New(pool *db.Pool) *Module { return &Module{pool: pool} }
+// New 由装配根注入数据库池（服务即时构造，Facade 早于 Register 可用）。
+func New(pool *db.Pool) *Module {
+	return &Module{pool: pool, svc: app.NewService(infra.NewRepo(pool))}
+}
 
-func (m *Module) Name() string          { return "dict" }
-func (m *Module) Rank() module.Rank     { return module.RankShared }
-func (m *Module) DependsOn() []string   { return nil }
+func (m *Module) Name() string        { return "dict" }
+func (m *Module) Rank() module.Rank   { return module.RankShared }
+func (m *Module) DependsOn() []string { return nil }
 
 // Facade 对外契约（其他模块经此调用）。
 func (m *Module) Facade() contract.Facade { return m.svc }
 
 // Register 注册路由与配置。
 func (m *Module) Register(r *module.Registry) error {
-	m.svc = app.NewService(infra.NewRepo(m.pool))
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/dict/options", Handler: m.handleOptions},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/dict/subject-types", Handler: m.handleSubjectTypes},
@@ -62,8 +63,9 @@ func writeJSON(w http.ResponseWriter, v any, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"message": "服务错误"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 9, "message": "服务错误"})
 		return
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"data": v})
+	// 统一信封（contracts/openapi/mp.yaml）：code/message/data；request_id 由 obs 中间件补
+	_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "ok", "data": v})
 }

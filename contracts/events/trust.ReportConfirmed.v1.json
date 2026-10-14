@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/trust.ReportConfirmed.v1.json",
+  "title": "trust.ReportConfirmed.v1",
+  "description": "举报核实成立。生产方模块订阅后下架/处置目标（trust 不直接改他人表）。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "trust.ReportConfirmed.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["target_type", "target_id", "reason_code"],
+      "additionalProperties": false,
+      "properties": {
+        "report_id": { "type": "string" },
+        "target_type": { "type": "string" },
+        "target_id": { "type": "string" },
+        "reason_code": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

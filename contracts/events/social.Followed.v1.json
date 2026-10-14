@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/social.Followed.v1.json",
+  "title": "social.Followed.v1",
+  "description": "关注关系建立（目标为 EntityRef）。供 notice 等模块消费。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "social.Followed.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["follower_id", "target_type", "target_id"],
+      "additionalProperties": false,
+      "properties": {
+        "follower_id": { "type": "string" },
+        "target_type": { "type": "string" },
+        "target_id": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

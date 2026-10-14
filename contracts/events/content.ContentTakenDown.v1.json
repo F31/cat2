@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/content.ContentTakenDown.v1.json",
+  "title": "content.ContentTakenDown.v1",
+  "description": "内容事件：内容下架。载荷不含联系方式等敏感字段。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "content.ContentTakenDown.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": { "$ref": "#/$defs/content" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "content": {
+      "type": "object",
+      "required": ["item_id", "kind", "status", "search_doc_version"],
+      "additionalProperties": false,
+      "properties": {
+        "item_id": { "type": "string" },
+        "kind": { "type": "string", "enum": ["project", "product", "meeting", "event"] },
+        "owner_ref": { "type": "object", "additionalProperties": true },
+        "title": { "type": "string" },
+        "cover_file_id": { "type": "string" },
+        "region_code": { "type": "string" },
+        "tagset": { "type": "object", "additionalProperties": true },
+        "status": { "type": "integer" },
+        "search_doc_version": { "type": "integer" },
+        "reason": { "type": "string" }
+      }
+    }
+  }
+}

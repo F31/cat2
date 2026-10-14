@@ -15,8 +15,8 @@ import (
 
 // TokenService RS256 JWT 签发与校验。
 type TokenService struct {
-	key      *rsa.PrivateKey
-	issuer   string
+	key       *rsa.PrivateKey
+	issuer    string
 	accessTTL time.Duration
 }
 
@@ -29,12 +29,15 @@ func NewTokenService() (*TokenService, error) {
 	return &TokenService{key: key, issuer: "catcube", accessTTL: 2 * time.Hour}, nil
 }
 
+// AccessTTL Access 有效期（秒数由 ExpiresIn 输出）。
+func (s *TokenService) AccessTTL() time.Duration { return s.accessTTL }
+
 // Claims 只含 sub/sid/authz_ver（不含任何业务信息）。
 type Claims struct {
-	Sub      int64 `json:"sub"`
-	Sid      int64 `json:"sid"`
-	AuthzVer int   `json:"authz_ver"`
-	Exp      int64 `json:"exp"`
+	Sub      int64  `json:"sub"`
+	Sid      int64  `json:"sid"`
+	AuthzVer int    `json:"authz_ver"`
+	Exp      int64  `json:"exp"`
 	Iss      string `json:"iss"`
 }
 

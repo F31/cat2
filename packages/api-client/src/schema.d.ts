@@ -21,6 +21,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/phone/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 发送短信验证码（备选登录通道） */
+        post: operations["sendPhoneCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/phone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 手机号 + 短信验证码登录（备选通道，注册/登录一体化） */
+        post: operations["phoneLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/refresh": {
         parameters: {
             query?: never;
@@ -38,6 +72,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 当前用户摘要 */
+        get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/me/deactivate": {
         parameters: {
             query?: never;
@@ -49,6 +100,332 @@ export interface paths {
         put?: never;
         /** 账号注销（匿名化，其他模块订阅 UserDeactivated 各自清理） */
         post: operations["deactivateAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cards/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 我的名片（本人视图，不做展示过滤） */
+        get: operations["getMyCard"];
+        /** 更新我的名片（全量覆盖） */
+        put: operations["updateMyCard"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cards/me/completion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 画像完成度（第二层五项任一为空即未完成；驱动「完善资料」提示条） */
+        get: operations["getCardCompletion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cards/me/share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 生成名片分享（小程序分享路径） */
+        post: operations["shareMyCard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cards/{ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 他人名片（游客可访问；按对外展示设置过滤敏感字段） */
+        get: operations["getCardByRef"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/certs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交认证（一期实名：真实姓名+身份证号+协议勾选，第三方二要素实时核验） */
+        post: operations["submitCert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/certs/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 我的认证记录 */
+        get: operations["getMyCerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 创建内容（草稿=审核中；kind 区分四类，Fields 按 ContentKind schema 校验） */
+        post: operations["publishContent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contents/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 我的发布（可按 kind 过滤） */
+        get: operations["listMyContents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contents/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交审核（发布门槛：已实名；审核结论驱动状态机 */
+        post: operations["submitContent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 内容详情（未展示内容非本人不可见；非会员过滤会员可见字段） */
+        get: operations["getContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contents/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 本人关闭内容（展示中→已下架） */
+        post: operations["closeContent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/report-reasons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 举报原因枚举 */
+        get: operations["listReportReasons"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 举报（入人工复核队列，24h SLA） */
+        post: operations["reportTarget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/follows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 我关注的 */
+        get: operations["listFollowing"];
+        put?: never;
+        /** 关注（幂等；目标为 EntityRef） */
+        post: operations["followTarget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/follows/{ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** 取关（幂等） */
+        delete: operations["unfollowTarget"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/followers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 关注我的人（不设互相关注统计） */
+        get: operations["listFollowers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/favorites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 我的收藏（六类分 Tab） */
+        get: operations["listFavorites"];
+        put?: never;
+        /** 收藏（幂等；kind 由目标类型推导） */
+        post: operations["favoriteTarget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/favorites/{ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** 取消收藏 */
+        delete: operations["unfavoriteTarget"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/follow-unread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 关注动态未读数 */
+        get: operations["getFollowUnread"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -111,6 +488,189 @@ export interface components {
             /** @description access token 秒数 */
             expires_in: number;
         };
+        LoginData: {
+            /** @description int64 字符串 */
+            user_id: string;
+            /** @description 是否新注册 */
+            new: boolean;
+            tokens: components["schemas"]["Tokens"];
+        };
+        UserBrief: {
+            /** @description int64 字符串 */
+            id: string;
+            nickname: string;
+            avatar_file_id?: string;
+            /** @description 0正常/1限制/2封禁/3已注销 */
+            status: number;
+        };
+        Card: {
+            user_id: string;
+            subject_type_code?: string;
+            /** @description 1个人/2组织 */
+            identity_type: number;
+            name: string;
+            avatar_file_id?: string;
+            region_code?: string;
+            industry_codes?: string[];
+            need_codes?: string[];
+            offer_codes?: string[];
+            advantage_field?: string;
+            background?: string;
+            target_customers?: string;
+            target_channels?: string;
+            core_strength?: string;
+            intro?: string;
+            /** @description 1第一层/2第二层完整/3含增值画像 */
+            profile_tier: number;
+            /** @description 是否已配置联系方式（明文永不下发） */
+            has_contact?: boolean;
+        };
+        CardUpdate: {
+            subject_type_code?: string;
+            /** @description 姓名或组织名称（≤128） */
+            name: string;
+            avatar_file_id?: string;
+            region_code?: string;
+            industry_codes?: string[];
+            need_codes?: string[];
+            offer_codes?: string[];
+            advantage_field?: string;
+            background?: string;
+            target_customers?: string;
+            target_channels?: string;
+            /** @description 组织资质证明图片（经 media 绑定） */
+            qualification_file_ids?: string[];
+            /** @description 核心业务优势（≤2000） */
+            core_strength?: string;
+            /** @description 简介（个人≤500 / 组织≤5000） */
+            intro?: string;
+            /** @description 联系方式（加密存储，会员可见） */
+            contact_phone?: string;
+            /** @description 字段级对外展示开关（缺省可见） */
+            visibility_settings?: {
+                [key: string]: boolean;
+            };
+        };
+        Cert: {
+            id: string;
+            user_id: string;
+            /** @description 1实名/2个人/3个人企业身份/4企业/5机构 */
+            cert_type: number;
+            target_org_id?: string;
+            /** @description 0待审核/1已通过/2已驳回 */
+            status: number;
+            reject_reason?: string;
+            /** Format: date-time */
+            submitted_at?: string;
+            /** Format: date-time */
+            reviewed_at?: string | null;
+        };
+        CertifyInput: {
+            cert_type: number;
+            real_name?: string;
+            id_card_no?: string;
+            /** @description 实名认证服务协议勾选 */
+            agreed: boolean;
+            target_org_id?: string;
+            material_file_ids?: string[];
+            extra?: {
+                [key: string]: string;
+            };
+        };
+        Badge: {
+            code: string;
+            label: string;
+            level: number;
+        };
+        Completion: {
+            complete: boolean;
+            missing: ("region" | "industry" | "need" | "offer" | "intro")[];
+            tier: number;
+        };
+        TargetRefInput: {
+            /** @description EntityRef type:id，如 user:123 / content.project:456 */
+            target_ref: string;
+        };
+        Target: {
+            type: string;
+            id: string;
+        };
+        FollowItem: {
+            follower_id: string;
+            target: components["schemas"]["Target"];
+            title?: string;
+            cover?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        FavoriteItem: {
+            id: string;
+            target: components["schemas"]["Target"];
+            /** @enum {string} */
+            kind: "person" | "company" | "project" | "product" | "meeting" | "event";
+            title?: string;
+            cover?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        ReportReason: {
+            code: string;
+            label: string;
+        };
+        ReportInput: {
+            /** @description EntityRef type:id，如 content.project:123 */
+            target_ref: string;
+            /** @enum {string} */
+            reason_code: "spam" | "fraud" | "porn" | "abuse" | "infringe" | "other";
+            /** @description ≤500字 */
+            detail?: string;
+        };
+        TagSet: {
+            industry?: string[];
+            region?: string;
+            nature?: string[];
+            need?: string[];
+            offer?: string[];
+            domain?: string[];
+        };
+        ContentItem: {
+            id: string;
+            /** @enum {string} */
+            kind: "project" | "product" | "meeting" | "event";
+            owner_ref?: {
+                type?: string;
+                id?: string;
+            };
+            title: string;
+            cover_file_id?: string;
+            region_code?: string;
+            tagset?: components["schemas"]["TagSet"];
+            /** @description 0审核中/1展示中/2已下架 */
+            status: number;
+            reject_reason?: string;
+            /** Format: date-time */
+            published_at?: string | null;
+            /** @description 类型子表字段（非会员不含会员可见字段） */
+            fields?: {
+                [key: string]: unknown;
+            };
+            /** @description 因非会员被隐藏的字段 */
+            member_gate?: string[];
+            unlock_reason?: string;
+        };
+        ContentPublishInput: {
+            /** @enum {string} */
+            kind: "project" | "product" | "meeting" | "event";
+            /** @description ≤50字 */
+            title: string;
+            cover_file_id?: string;
+            region_code?: string;
+            tagset?: components["schemas"]["TagSet"];
+            org_ref?: string;
+            fields?: {
+                [key: string]: unknown;
+            };
+        };
         DictItem: {
             code: string;
             name: string;
@@ -128,6 +688,15 @@ export interface components {
                 "application/json": components["schemas"]["Envelope"];
             };
         };
+        /** @description 资源不存在 */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description 参数错误 */
         BadRequest: {
             headers: {
@@ -139,6 +708,33 @@ export interface components {
         };
         /** @description 未认证或令牌失效 */
         Unauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description 无权限或权限门未满足（如发布需实名） */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description 状态冲突（如已完成实名） */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description 限流或登录尝试过于频繁 */
+        TooManyRequests: {
             headers: {
                 [name: string]: unknown;
             };
@@ -181,9 +777,13 @@ export interface operations {
                 "application/json": {
                     /** @description wx.login 返回的 code */
                     code: string;
-                    /** @description 手机号加密数据（getPhoneNumber） */
+                    /** @description 手机号快速验证 code（getPhoneNumber 事件返回） */
+                    phone_code?: string;
+                    /** @description 手机号加密数据（旧版 getPhoneNumber，兼容保留） */
                     encrypted_data?: string;
                     iv?: string;
+                    /** @description 设备标识（会话审计） */
+                    device?: string;
                 };
             };
         };
@@ -195,18 +795,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope"] & {
-                        data?: {
-                            /** @description int64 字符串 */
-                            user_id?: string;
-                            /** @description 是否新注册 */
-                            new?: boolean;
-                            tokens?: components["schemas"]["Tokens"];
-                        };
+                        data?: components["schemas"]["LoginData"];
                     };
                 };
             };
             400: components["responses"]["BadRequest"];
             502: components["responses"]["UpstreamError"];
+        };
+    };
+    sendPhoneCode: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description 中国大陆手机号 */
+                    phone: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 已发送（无论号码是否已注册都返回成功，防枚举） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            sent?: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    phoneLogin: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    phone: string;
+                    code: string;
+                    device?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 登录成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["LoginData"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
     refreshToken: {
@@ -238,6 +900,29 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    getMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 用户摘要 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["UserBrief"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     deactivateAccount: {
         parameters: {
             query?: never;
@@ -251,6 +936,593 @@ export interface operations {
         responses: {
             200: components["responses"]["OkEmpty"];
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    getMyCard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 我的名片 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["Card"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    updateMyCard: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardUpdate"];
+            };
+        };
+        responses: {
+            /** @description 更新后的名片 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["Card"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getCardCompletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 完成度 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["Completion"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    shareMyCard: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 分享信息 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            share_path?: string;
+                            title?: string;
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getCardByRef: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 名片（对外视图） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["Card"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    submitCert: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CertifyInput"];
+            };
+        };
+        responses: {
+            /** @description 认证结果（status=1 已通过 / 2 已驳回，驳回带 reject_reason 可重提） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["Cert"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getMyCerts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 认证记录列表（新→旧） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["Cert"][];
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    publishContent: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContentPublishInput"];
+            };
+        };
+        responses: {
+            /** @description 已创建（审核中） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["ContentItem"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listMyContents: {
+        parameters: {
+            query?: {
+                kind?: "project" | "product" | "meeting" | "event";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 我的内容列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["ContentItem"][];
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    submitContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 提交结果（已展示/已下架） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["ContentItem"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 内容详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["ContentItem"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    closeContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已下架 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["ContentItem"];
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listReportReasons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 举报原因列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["ReportReason"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    reportTarget: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportInput"];
+            };
+        };
+        responses: {
+            /** @description 已提交举报 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            reported?: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listFollowing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 关注列表（含 EntityResolver 回填标题） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["FollowItem"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    followTarget: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TargetRefInput"];
+            };
+        };
+        responses: {
+            /** @description 关注状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            following?: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    unfollowTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 取关状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            following?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    listFollowers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 粉丝列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["FollowItem"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    listFavorites: {
+        parameters: {
+            query?: {
+                type?: "person" | "company" | "project" | "product" | "meeting" | "event";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 收藏列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["FavoriteItem"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    favoriteTarget: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TargetRefInput"];
+            };
+        };
+        responses: {
+            /** @description 收藏状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            favorited?: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    unfavoriteTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 收藏状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            favorited?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    getFollowUnread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 未读数 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            unread?: number;
+                        };
+                    };
+                };
+            };
         };
     };
     listDict: {

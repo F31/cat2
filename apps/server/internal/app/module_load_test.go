@@ -5,8 +5,12 @@ import (
 	"testing"
 
 	"catcube/internal/kernel/module"
+	"catcube/internal/modules/content"
 	"catcube/internal/modules/identity"
+	"catcube/internal/modules/profile"
+	"catcube/internal/modules/social"
 	"catcube/internal/modules/trust"
+	"catcube/internal/modules/verify"
 	"catcube/internal/shared/dict"
 	"catcube/internal/shared/media"
 )
@@ -18,6 +22,10 @@ func TestRealModulesLoad(t *testing.T) {
 		identity.New(identity.Deps{}),
 		trust.New(trust.Deps{}),
 		dict.New(nil),
+		profile.New(profile.Deps{}),
+		verify.New(verify.Deps{}),
+		content.New(content.Deps{}),
+		social.New(social.Deps{}),
 	}
 	ordered, err := module.Load(mods)
 	if err != nil {

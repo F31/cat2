@@ -9,34 +9,224 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for CompletionMissing.
+const (
+	CompletionMissingIndustry CompletionMissing = "industry"
+	CompletionMissingIntro    CompletionMissing = "intro"
+	CompletionMissingNeed     CompletionMissing = "need"
+	CompletionMissingOffer    CompletionMissing = "offer"
+	CompletionMissingRegion   CompletionMissing = "region"
+)
+
+// Valid indicates whether the value is a known member of the CompletionMissing enum.
+func (e CompletionMissing) Valid() bool {
+	switch e {
+	case CompletionMissingIndustry:
+		return true
+	case CompletionMissingIntro:
+		return true
+	case CompletionMissingNeed:
+		return true
+	case CompletionMissingOffer:
+		return true
+	case CompletionMissingRegion:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ContentItemKind.
+const (
+	ContentItemKindEvent   ContentItemKind = "event"
+	ContentItemKindMeeting ContentItemKind = "meeting"
+	ContentItemKindProduct ContentItemKind = "product"
+	ContentItemKindProject ContentItemKind = "project"
+)
+
+// Valid indicates whether the value is a known member of the ContentItemKind enum.
+func (e ContentItemKind) Valid() bool {
+	switch e {
+	case ContentItemKindEvent:
+		return true
+	case ContentItemKindMeeting:
+		return true
+	case ContentItemKindProduct:
+		return true
+	case ContentItemKindProject:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ContentPublishInputKind.
+const (
+	ContentPublishInputKindEvent   ContentPublishInputKind = "event"
+	ContentPublishInputKindMeeting ContentPublishInputKind = "meeting"
+	ContentPublishInputKindProduct ContentPublishInputKind = "product"
+	ContentPublishInputKindProject ContentPublishInputKind = "project"
+)
+
+// Valid indicates whether the value is a known member of the ContentPublishInputKind enum.
+func (e ContentPublishInputKind) Valid() bool {
+	switch e {
+	case ContentPublishInputKindEvent:
+		return true
+	case ContentPublishInputKindMeeting:
+		return true
+	case ContentPublishInputKindProduct:
+		return true
+	case ContentPublishInputKindProject:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FavoriteItemKind.
+const (
+	FavoriteItemKindCompany FavoriteItemKind = "company"
+	FavoriteItemKindEvent   FavoriteItemKind = "event"
+	FavoriteItemKindMeeting FavoriteItemKind = "meeting"
+	FavoriteItemKindPerson  FavoriteItemKind = "person"
+	FavoriteItemKindProduct FavoriteItemKind = "product"
+	FavoriteItemKindProject FavoriteItemKind = "project"
+)
+
+// Valid indicates whether the value is a known member of the FavoriteItemKind enum.
+func (e FavoriteItemKind) Valid() bool {
+	switch e {
+	case FavoriteItemKindCompany:
+		return true
+	case FavoriteItemKindEvent:
+		return true
+	case FavoriteItemKindMeeting:
+		return true
+	case FavoriteItemKindPerson:
+		return true
+	case FavoriteItemKindProduct:
+		return true
+	case FavoriteItemKindProject:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ReportInputReasonCode.
+const (
+	Abuse    ReportInputReasonCode = "abuse"
+	Fraud    ReportInputReasonCode = "fraud"
+	Infringe ReportInputReasonCode = "infringe"
+	Other    ReportInputReasonCode = "other"
+	Porn     ReportInputReasonCode = "porn"
+	Spam     ReportInputReasonCode = "spam"
+)
+
+// Valid indicates whether the value is a known member of the ReportInputReasonCode enum.
+func (e ReportInputReasonCode) Valid() bool {
+	switch e {
+	case Abuse:
+		return true
+	case Fraud:
+		return true
+	case Infringe:
+		return true
+	case Other:
+		return true
+	case Porn:
+		return true
+	case Spam:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListMyContentsParamsKind.
+const (
+	ListMyContentsParamsKindEvent   ListMyContentsParamsKind = "event"
+	ListMyContentsParamsKindMeeting ListMyContentsParamsKind = "meeting"
+	ListMyContentsParamsKindProduct ListMyContentsParamsKind = "product"
+	ListMyContentsParamsKindProject ListMyContentsParamsKind = "project"
+)
+
+// Valid indicates whether the value is a known member of the ListMyContentsParamsKind enum.
+func (e ListMyContentsParamsKind) Valid() bool {
+	switch e {
+	case ListMyContentsParamsKindEvent:
+		return true
+	case ListMyContentsParamsKindMeeting:
+		return true
+	case ListMyContentsParamsKindProduct:
+		return true
+	case ListMyContentsParamsKindProject:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListDictParamsDimension.
 const (
-	CooperationDemand ListDictParamsDimension = "cooperation_demand"
-	CooperationSupply ListDictParamsDimension = "cooperation_supply"
-	Field             ListDictParamsDimension = "field"
-	Industry          ListDictParamsDimension = "industry"
-	Region            ListDictParamsDimension = "region"
-	SubjectType       ListDictParamsDimension = "subject_type"
+	ListDictParamsDimensionCooperationDemand ListDictParamsDimension = "cooperation_demand"
+	ListDictParamsDimensionCooperationSupply ListDictParamsDimension = "cooperation_supply"
+	ListDictParamsDimensionField             ListDictParamsDimension = "field"
+	ListDictParamsDimensionIndustry          ListDictParamsDimension = "industry"
+	ListDictParamsDimensionRegion            ListDictParamsDimension = "region"
+	ListDictParamsDimensionSubjectType       ListDictParamsDimension = "subject_type"
 )
 
 // Valid indicates whether the value is a known member of the ListDictParamsDimension enum.
 func (e ListDictParamsDimension) Valid() bool {
 	switch e {
-	case CooperationDemand:
+	case ListDictParamsDimensionCooperationDemand:
 		return true
-	case CooperationSupply:
+	case ListDictParamsDimensionCooperationSupply:
 		return true
-	case Field:
+	case ListDictParamsDimensionField:
 		return true
-	case Industry:
+	case ListDictParamsDimensionIndustry:
 		return true
-	case Region:
+	case ListDictParamsDimensionRegion:
 		return true
-	case SubjectType:
+	case ListDictParamsDimensionSubjectType:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListFavoritesParamsType.
+const (
+	ListFavoritesParamsTypeCompany ListFavoritesParamsType = "company"
+	ListFavoritesParamsTypeEvent   ListFavoritesParamsType = "event"
+	ListFavoritesParamsTypeMeeting ListFavoritesParamsType = "meeting"
+	ListFavoritesParamsTypePerson  ListFavoritesParamsType = "person"
+	ListFavoritesParamsTypeProduct ListFavoritesParamsType = "product"
+	ListFavoritesParamsTypeProject ListFavoritesParamsType = "project"
+)
+
+// Valid indicates whether the value is a known member of the ListFavoritesParamsType enum.
+func (e ListFavoritesParamsType) Valid() bool {
+	switch e {
+	case ListFavoritesParamsTypeCompany:
+		return true
+	case ListFavoritesParamsTypeEvent:
+		return true
+	case ListFavoritesParamsTypeMeeting:
+		return true
+	case ListFavoritesParamsTypePerson:
+		return true
+	case ListFavoritesParamsTypeProduct:
+		return true
+	case ListFavoritesParamsTypeProject:
 		return true
 	default:
 		return false
@@ -60,6 +250,147 @@ func (e CreateUploadJSONBodyContentType) Valid() bool {
 		return false
 	}
 }
+
+// Card defines model for Card.
+type Card struct {
+	AdvantageField *string `json:"advantage_field,omitempty"`
+	AvatarFileId   *string `json:"avatar_file_id,omitempty"`
+	Background     *string `json:"background,omitempty"`
+	CoreStrength   *string `json:"core_strength,omitempty"`
+
+	// HasContact 是否已配置联系方式（明文永不下发）
+	HasContact *bool `json:"has_contact,omitempty"`
+
+	// IdentityType 1个人/2组织
+	IdentityType  int       `json:"identity_type"`
+	IndustryCodes *[]string `json:"industry_codes,omitempty"`
+	Intro         *string   `json:"intro,omitempty"`
+	Name          string    `json:"name"`
+	NeedCodes     *[]string `json:"need_codes,omitempty"`
+	OfferCodes    *[]string `json:"offer_codes,omitempty"`
+
+	// ProfileTier 1第一层/2第二层完整/3含增值画像
+	ProfileTier     int     `json:"profile_tier"`
+	RegionCode      *string `json:"region_code,omitempty"`
+	SubjectTypeCode *string `json:"subject_type_code,omitempty"`
+	TargetChannels  *string `json:"target_channels,omitempty"`
+	TargetCustomers *string `json:"target_customers,omitempty"`
+	UserId          string  `json:"user_id"`
+}
+
+// CardUpdate defines model for CardUpdate.
+type CardUpdate struct {
+	AdvantageField *string `json:"advantage_field,omitempty"`
+	AvatarFileId   *string `json:"avatar_file_id,omitempty"`
+	Background     *string `json:"background,omitempty"`
+
+	// ContactPhone 联系方式（加密存储，会员可见）
+	ContactPhone *string `json:"contact_phone,omitempty"`
+
+	// CoreStrength 核心业务优势（≤2000）
+	CoreStrength  *string   `json:"core_strength,omitempty"`
+	IndustryCodes *[]string `json:"industry_codes,omitempty"`
+
+	// Intro 简介（个人≤500 / 组织≤5000）
+	Intro *string `json:"intro,omitempty"`
+
+	// Name 姓名或组织名称（≤128）
+	Name       string    `json:"name"`
+	NeedCodes  *[]string `json:"need_codes,omitempty"`
+	OfferCodes *[]string `json:"offer_codes,omitempty"`
+
+	// QualificationFileIds 组织资质证明图片（经 media 绑定）
+	QualificationFileIds *[]string `json:"qualification_file_ids,omitempty"`
+	RegionCode           *string   `json:"region_code,omitempty"`
+	SubjectTypeCode      *string   `json:"subject_type_code,omitempty"`
+	TargetChannels       *string   `json:"target_channels,omitempty"`
+	TargetCustomers      *string   `json:"target_customers,omitempty"`
+
+	// VisibilitySettings 字段级对外展示开关（缺省可见）
+	VisibilitySettings *map[string]bool `json:"visibility_settings,omitempty"`
+}
+
+// Cert defines model for Cert.
+type Cert struct {
+	// CertType 1实名/2个人/3个人企业身份/4企业/5机构
+	CertType     int        `json:"cert_type"`
+	Id           string     `json:"id"`
+	RejectReason *string    `json:"reject_reason,omitempty"`
+	ReviewedAt   *time.Time `json:"reviewed_at,omitempty"`
+
+	// Status 0待审核/1已通过/2已驳回
+	Status      int        `json:"status"`
+	SubmittedAt *time.Time `json:"submitted_at,omitempty"`
+	TargetOrgId *string    `json:"target_org_id,omitempty"`
+	UserId      string     `json:"user_id"`
+}
+
+// CertifyInput defines model for CertifyInput.
+type CertifyInput struct {
+	// Agreed 实名认证服务协议勾选
+	Agreed          bool               `json:"agreed"`
+	CertType        int                `json:"cert_type"`
+	Extra           *map[string]string `json:"extra,omitempty"`
+	IdCardNo        *string            `json:"id_card_no,omitempty"`
+	MaterialFileIds *[]string          `json:"material_file_ids,omitempty"`
+	RealName        *string            `json:"real_name,omitempty"`
+	TargetOrgId     *string            `json:"target_org_id,omitempty"`
+}
+
+// Completion defines model for Completion.
+type Completion struct {
+	Complete bool                `json:"complete"`
+	Missing  []CompletionMissing `json:"missing"`
+	Tier     int                 `json:"tier"`
+}
+
+// CompletionMissing defines model for Completion.Missing.
+type CompletionMissing string
+
+// ContentItem defines model for ContentItem.
+type ContentItem struct {
+	CoverFileId *string `json:"cover_file_id,omitempty"`
+
+	// Fields 类型子表字段（非会员不含会员可见字段）
+	Fields *map[string]interface{} `json:"fields,omitempty"`
+	Id     string                  `json:"id"`
+	Kind   ContentItemKind         `json:"kind"`
+
+	// MemberGate 因非会员被隐藏的字段
+	MemberGate *[]string `json:"member_gate,omitempty"`
+	OwnerRef   *struct {
+		Id   *string `json:"id,omitempty"`
+		Type *string `json:"type,omitempty"`
+	} `json:"owner_ref,omitempty"`
+	PublishedAt  *time.Time `json:"published_at,omitempty"`
+	RegionCode   *string    `json:"region_code,omitempty"`
+	RejectReason *string    `json:"reject_reason,omitempty"`
+
+	// Status 0审核中/1展示中/2已下架
+	Status       int     `json:"status"`
+	Tagset       *TagSet `json:"tagset,omitempty"`
+	Title        string  `json:"title"`
+	UnlockReason *string `json:"unlock_reason,omitempty"`
+}
+
+// ContentItemKind defines model for ContentItem.Kind.
+type ContentItemKind string
+
+// ContentPublishInput defines model for ContentPublishInput.
+type ContentPublishInput struct {
+	CoverFileId *string                 `json:"cover_file_id,omitempty"`
+	Fields      *map[string]interface{} `json:"fields,omitempty"`
+	Kind        ContentPublishInputKind `json:"kind"`
+	OrgRef      *string                 `json:"org_ref,omitempty"`
+	RegionCode  *string                 `json:"region_code,omitempty"`
+	Tagset      *TagSet                 `json:"tagset,omitempty"`
+
+	// Title ≤50字
+	Title string `json:"title"`
+}
+
+// ContentPublishInputKind defines model for ContentPublishInput.Kind.
+type ContentPublishInputKind string
 
 // DictItem defines model for DictItem.
 type DictItem struct {
@@ -85,6 +416,79 @@ type Error struct {
 	RequestId string `json:"request_id"`
 }
 
+// FavoriteItem defines model for FavoriteItem.
+type FavoriteItem struct {
+	Cover     *string          `json:"cover,omitempty"`
+	CreatedAt *time.Time       `json:"created_at,omitempty"`
+	Id        string           `json:"id"`
+	Kind      FavoriteItemKind `json:"kind"`
+	Target    Target           `json:"target"`
+	Title     *string          `json:"title,omitempty"`
+}
+
+// FavoriteItemKind defines model for FavoriteItem.Kind.
+type FavoriteItemKind string
+
+// FollowItem defines model for FollowItem.
+type FollowItem struct {
+	Cover      *string    `json:"cover,omitempty"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	FollowerId string     `json:"follower_id"`
+	Target     Target     `json:"target"`
+	Title      *string    `json:"title,omitempty"`
+}
+
+// LoginData defines model for LoginData.
+type LoginData struct {
+	// New 是否新注册
+	New    bool   `json:"new"`
+	Tokens Tokens `json:"tokens"`
+
+	// UserId int64 字符串
+	UserId string `json:"user_id"`
+}
+
+// ReportInput defines model for ReportInput.
+type ReportInput struct {
+	// Detail ≤500字
+	Detail     *string               `json:"detail,omitempty"`
+	ReasonCode ReportInputReasonCode `json:"reason_code"`
+
+	// TargetRef EntityRef type:id，如 content.project:123
+	TargetRef string `json:"target_ref"`
+}
+
+// ReportInputReasonCode defines model for ReportInput.ReasonCode.
+type ReportInputReasonCode string
+
+// ReportReason defines model for ReportReason.
+type ReportReason struct {
+	Code  string `json:"code"`
+	Label string `json:"label"`
+}
+
+// TagSet defines model for TagSet.
+type TagSet struct {
+	Domain   *[]string `json:"domain,omitempty"`
+	Industry *[]string `json:"industry,omitempty"`
+	Nature   *[]string `json:"nature,omitempty"`
+	Need     *[]string `json:"need,omitempty"`
+	Offer    *[]string `json:"offer,omitempty"`
+	Region   *string   `json:"region,omitempty"`
+}
+
+// Target defines model for Target.
+type Target struct {
+	Id   string `json:"id"`
+	Type string `json:"type"`
+}
+
+// TargetRefInput defines model for TargetRefInput.
+type TargetRefInput struct {
+	// TargetRef EntityRef type:id，如 user:123 / content.project:456
+	TargetRef string `json:"target_ref"`
+}
+
 // Tokens defines model for Tokens.
 type Tokens struct {
 	AccessToken string `json:"access_token"`
@@ -94,20 +498,67 @@ type Tokens struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+// UserBrief defines model for UserBrief.
+type UserBrief struct {
+	AvatarFileId *string `json:"avatar_file_id,omitempty"`
+
+	// Id int64 字符串
+	Id       string `json:"id"`
+	Nickname string `json:"nickname"`
+
+	// Status 0正常/1限制/2封禁/3已注销
+	Status int `json:"status"`
+}
+
 // IdempotencyKey 写操作幂等键；重复提交返回首次结果
 type IdempotencyKey = string
 
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
 
+// Conflict defines model for Conflict.
+type Conflict = Error
+
+// Forbidden defines model for Forbidden.
+type Forbidden = Error
+
+// NotFound defines model for NotFound.
+type NotFound = Error
+
 // OkEmpty defines model for OkEmpty.
 type OkEmpty = Envelope
+
+// TooManyRequests defines model for TooManyRequests.
+type TooManyRequests = Error
 
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Error
 
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Error
+
+// PhoneLoginJSONBody defines parameters for PhoneLogin.
+type PhoneLoginJSONBody struct {
+	Code   string  `json:"code"`
+	Device *string `json:"device,omitempty"`
+	Phone  string  `json:"phone"`
+}
+
+// PhoneLoginParams defines parameters for PhoneLogin.
+type PhoneLoginParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// SendPhoneCodeJSONBody defines parameters for SendPhoneCode.
+type SendPhoneCodeJSONBody struct {
+	// Phone 中国大陆手机号
+	Phone string `json:"phone"`
+}
+
+// SendPhoneCodeParams defines parameters for SendPhoneCode.
+type SendPhoneCodeParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
 
 // RefreshTokenJSONBody defines parameters for RefreshToken.
 type RefreshTokenJSONBody struct {
@@ -119,15 +570,49 @@ type WechatLoginJSONBody struct {
 	// Code wx.login 返回的 code
 	Code string `json:"code"`
 
-	// EncryptedData 手机号加密数据（getPhoneNumber）
+	// Device 设备标识（会话审计）
+	Device *string `json:"device,omitempty"`
+
+	// EncryptedData 手机号加密数据（旧版 getPhoneNumber，兼容保留）
 	EncryptedData *string `json:"encrypted_data,omitempty"`
 	Iv            *string `json:"iv,omitempty"`
+
+	// PhoneCode 手机号快速验证 code（getPhoneNumber 事件返回）
+	PhoneCode *string `json:"phone_code,omitempty"`
 }
 
 // WechatLoginParams defines parameters for WechatLogin.
 type WechatLoginParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
+
+// UpdateMyCardParams defines parameters for UpdateMyCard.
+type UpdateMyCardParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// ShareMyCardParams defines parameters for ShareMyCard.
+type ShareMyCardParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// SubmitCertParams defines parameters for SubmitCert.
+type SubmitCertParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// PublishContentParams defines parameters for PublishContent.
+type PublishContentParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// ListMyContentsParams defines parameters for ListMyContents.
+type ListMyContentsParams struct {
+	Kind *ListMyContentsParamsKind `form:"kind,omitempty" json:"kind,omitempty"`
+}
+
+// ListMyContentsParamsKind defines parameters for ListMyContents.
+type ListMyContentsParamsKind string
 
 // ListDictParams defines parameters for ListDict.
 type ListDictParams struct {
@@ -136,6 +621,24 @@ type ListDictParams struct {
 
 // ListDictParamsDimension defines parameters for ListDict.
 type ListDictParamsDimension string
+
+// ListFavoritesParams defines parameters for ListFavorites.
+type ListFavoritesParams struct {
+	Type *ListFavoritesParamsType `form:"type,omitempty" json:"type,omitempty"`
+}
+
+// ListFavoritesParamsType defines parameters for ListFavorites.
+type ListFavoritesParamsType string
+
+// FavoriteTargetParams defines parameters for FavoriteTarget.
+type FavoriteTargetParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// FollowTargetParams defines parameters for FollowTarget.
+type FollowTargetParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
 
 // CreateUploadJSONBody defines parameters for CreateUpload.
 type CreateUploadJSONBody struct {
@@ -152,10 +655,21 @@ type CreateUploadParams struct {
 // CreateUploadJSONBodyContentType defines parameters for CreateUpload.
 type CreateUploadJSONBodyContentType string
 
+// ReportTargetParams defines parameters for ReportTarget.
+type ReportTargetParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
 // DeactivateAccountParams defines parameters for DeactivateAccount.
 type DeactivateAccountParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
+
+// PhoneLoginJSONRequestBody defines body for PhoneLogin for application/json ContentType.
+type PhoneLoginJSONRequestBody PhoneLoginJSONBody
+
+// SendPhoneCodeJSONRequestBody defines body for SendPhoneCode for application/json ContentType.
+type SendPhoneCodeJSONRequestBody SendPhoneCodeJSONBody
 
 // RefreshTokenJSONRequestBody defines body for RefreshToken for application/json ContentType.
 type RefreshTokenJSONRequestBody RefreshTokenJSONBody
@@ -163,23 +677,116 @@ type RefreshTokenJSONRequestBody RefreshTokenJSONBody
 // WechatLoginJSONRequestBody defines body for WechatLogin for application/json ContentType.
 type WechatLoginJSONRequestBody WechatLoginJSONBody
 
+// UpdateMyCardJSONRequestBody defines body for UpdateMyCard for application/json ContentType.
+type UpdateMyCardJSONRequestBody = CardUpdate
+
+// SubmitCertJSONRequestBody defines body for SubmitCert for application/json ContentType.
+type SubmitCertJSONRequestBody = CertifyInput
+
+// PublishContentJSONRequestBody defines body for PublishContent for application/json ContentType.
+type PublishContentJSONRequestBody = ContentPublishInput
+
+// FavoriteTargetJSONRequestBody defines body for FavoriteTarget for application/json ContentType.
+type FavoriteTargetJSONRequestBody = TargetRefInput
+
+// FollowTargetJSONRequestBody defines body for FollowTarget for application/json ContentType.
+type FollowTargetJSONRequestBody = TargetRefInput
+
 // CreateUploadJSONRequestBody defines body for CreateUpload for application/json ContentType.
 type CreateUploadJSONRequestBody CreateUploadJSONBody
 
+// ReportTargetJSONRequestBody defines body for ReportTarget for application/json ContentType.
+type ReportTargetJSONRequestBody = ReportInput
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// PhoneLogin 手机号 + 短信验证码登录（备选通道，注册/登录一体化）
+	// (POST /auth/phone)
+	PhoneLogin(w http.ResponseWriter, r *http.Request, params PhoneLoginParams)
+	// SendPhoneCode 发送短信验证码（备选登录通道）
+	// (POST /auth/phone/code)
+	SendPhoneCode(w http.ResponseWriter, r *http.Request, params SendPhoneCodeParams)
 	// RefreshToken 刷新访问令牌
 	// (POST /auth/refresh)
 	RefreshToken(w http.ResponseWriter, r *http.Request)
 	// WechatLogin 微信登录（注册/登录一体化）
 	// (POST /auth/wechat)
 	WechatLogin(w http.ResponseWriter, r *http.Request, params WechatLoginParams)
+	// GetMyCard 我的名片（本人视图，不做展示过滤）
+	// (GET /cards/me)
+	GetMyCard(w http.ResponseWriter, r *http.Request)
+	// UpdateMyCard 更新我的名片（全量覆盖）
+	// (PUT /cards/me)
+	UpdateMyCard(w http.ResponseWriter, r *http.Request, params UpdateMyCardParams)
+	// GetCardCompletion 画像完成度（第二层五项任一为空即未完成；驱动「完善资料」提示条）
+	// (GET /cards/me/completion)
+	GetCardCompletion(w http.ResponseWriter, r *http.Request)
+	// ShareMyCard 生成名片分享（小程序分享路径）
+	// (POST /cards/me/share)
+	ShareMyCard(w http.ResponseWriter, r *http.Request, params ShareMyCardParams)
+	// GetCardByRef 他人名片（游客可访问；按对外展示设置过滤敏感字段）
+	// (GET /cards/{ref})
+	GetCardByRef(w http.ResponseWriter, r *http.Request, ref string)
+	// SubmitCert 提交认证（一期实名：真实姓名+身份证号+协议勾选，第三方二要素实时核验）
+	// (POST /certs)
+	SubmitCert(w http.ResponseWriter, r *http.Request, params SubmitCertParams)
+	// GetMyCerts 我的认证记录
+	// (GET /certs/mine)
+	GetMyCerts(w http.ResponseWriter, r *http.Request)
+	// PublishContent 创建内容（草稿=审核中；kind 区分四类，Fields 按 ContentKind schema 校验）
+	// (POST /contents)
+	PublishContent(w http.ResponseWriter, r *http.Request, params PublishContentParams)
+	// ListMyContents 我的发布（可按 kind 过滤）
+	// (GET /contents/mine)
+	ListMyContents(w http.ResponseWriter, r *http.Request, params ListMyContentsParams)
+	// GetContent 内容详情（未展示内容非本人不可见；非会员过滤会员可见字段）
+	// (GET /contents/{id})
+	GetContent(w http.ResponseWriter, r *http.Request, id string)
+	// CloseContent 本人关闭内容（展示中→已下架）
+	// (POST /contents/{id}/close)
+	CloseContent(w http.ResponseWriter, r *http.Request, id string)
+	// SubmitContent 提交审核（发布门槛：已实名；审核结论驱动状态机
+	// (POST /contents/{id}/submit)
+	SubmitContent(w http.ResponseWriter, r *http.Request, id string)
 	// ListDict 查询字典维度（行业/区域/合作需求/合作供给/领域/主体类型）
 	// (GET /dict/{dimension})
 	ListDict(w http.ResponseWriter, r *http.Request, dimension ListDictParamsDimension, params ListDictParams)
+	// ListFavorites 我的收藏（六类分 Tab）
+	// (GET /favorites)
+	ListFavorites(w http.ResponseWriter, r *http.Request, params ListFavoritesParams)
+	// FavoriteTarget 收藏（幂等；kind 由目标类型推导）
+	// (POST /favorites)
+	FavoriteTarget(w http.ResponseWriter, r *http.Request, params FavoriteTargetParams)
+	// UnfavoriteTarget 取消收藏
+	// (DELETE /favorites/{ref})
+	UnfavoriteTarget(w http.ResponseWriter, r *http.Request, ref string)
+	// GetFollowUnread 关注动态未读数
+	// (GET /follow-unread)
+	GetFollowUnread(w http.ResponseWriter, r *http.Request)
+	// ListFollowers 关注我的人（不设互相关注统计）
+	// (GET /followers)
+	ListFollowers(w http.ResponseWriter, r *http.Request)
+	// ListFollowing 我关注的
+	// (GET /follows)
+	ListFollowing(w http.ResponseWriter, r *http.Request)
+	// FollowTarget 关注（幂等；目标为 EntityRef）
+	// (POST /follows)
+	FollowTarget(w http.ResponseWriter, r *http.Request, params FollowTargetParams)
+	// UnfollowTarget 取关（幂等）
+	// (DELETE /follows/{ref})
+	UnfollowTarget(w http.ResponseWriter, r *http.Request, ref string)
 	// CreateUpload 申请预签名上传（JPG/PNG ≤5MB）
 	// (POST /media/uploads)
 	CreateUpload(w http.ResponseWriter, r *http.Request, params CreateUploadParams)
+	// ListReportReasons 举报原因枚举
+	// (GET /report-reasons)
+	ListReportReasons(w http.ResponseWriter, r *http.Request)
+	// ReportTarget 举报（入人工复核队列，24h SLA）
+	// (POST /reports)
+	ReportTarget(w http.ResponseWriter, r *http.Request, params ReportTargetParams)
+	// GetMe 当前用户摘要
+	// (GET /users/me)
+	GetMe(w http.ResponseWriter, r *http.Request)
 	// DeactivateAccount 账号注销（匿名化，其他模块订阅 UserDeactivated 各自清理）
 	// (POST /users/me/deactivate)
 	DeactivateAccount(w http.ResponseWriter, r *http.Request, params DeactivateAccountParams)
@@ -193,6 +800,96 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// PhoneLogin operation middleware
+func (siw *ServerInterfaceWrapper) PhoneLogin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PhoneLoginParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PhoneLogin(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendPhoneCode operation middleware
+func (siw *ServerInterfaceWrapper) SendPhoneCode(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SendPhoneCodeParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendPhoneCode(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // RefreshToken operation middleware
 func (siw *ServerInterfaceWrapper) RefreshToken(w http.ResponseWriter, r *http.Request) {
@@ -253,6 +950,365 @@ func (siw *ServerInterfaceWrapper) WechatLogin(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetMyCard operation middleware
+func (siw *ServerInterfaceWrapper) GetMyCard(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyCard(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateMyCard operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMyCard(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateMyCardParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMyCard(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCardCompletion operation middleware
+func (siw *ServerInterfaceWrapper) GetCardCompletion(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCardCompletion(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ShareMyCard operation middleware
+func (siw *ServerInterfaceWrapper) ShareMyCard(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ShareMyCardParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ShareMyCard(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCardByRef operation middleware
+func (siw *ServerInterfaceWrapper) GetCardByRef(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "ref" -------------
+	var ref string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "ref", r.PathValue("ref"), &ref, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ref", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCardByRef(w, r, ref)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SubmitCert operation middleware
+func (siw *ServerInterfaceWrapper) SubmitCert(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SubmitCertParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SubmitCert(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyCerts operation middleware
+func (siw *ServerInterfaceWrapper) GetMyCerts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyCerts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PublishContent operation middleware
+func (siw *ServerInterfaceWrapper) PublishContent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PublishContentParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PublishContent(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMyContents operation middleware
+func (siw *ServerInterfaceWrapper) ListMyContents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListMyContentsParams
+
+	// ------------- Optional query parameter "kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMyContents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetContent operation middleware
+func (siw *ServerInterfaceWrapper) GetContent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetContent(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CloseContent operation middleware
+func (siw *ServerInterfaceWrapper) CloseContent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CloseContent(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SubmitContent operation middleware
+func (siw *ServerInterfaceWrapper) SubmitContent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SubmitContent(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListDict operation middleware
 func (siw *ServerInterfaceWrapper) ListDict(w http.ResponseWriter, r *http.Request) {
 
@@ -286,6 +1342,223 @@ func (siw *ServerInterfaceWrapper) ListDict(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListDict(w, r, dimension, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListFavorites operation middleware
+func (siw *ServerInterfaceWrapper) ListFavorites(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListFavoritesParams
+
+	// ------------- Optional query parameter "type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "type", r.URL.Query(), &params.Type, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListFavorites(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// FavoriteTarget operation middleware
+func (siw *ServerInterfaceWrapper) FavoriteTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params FavoriteTargetParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.FavoriteTarget(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnfavoriteTarget operation middleware
+func (siw *ServerInterfaceWrapper) UnfavoriteTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "ref" -------------
+	var ref string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "ref", r.PathValue("ref"), &ref, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ref", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnfavoriteTarget(w, r, ref)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFollowUnread operation middleware
+func (siw *ServerInterfaceWrapper) GetFollowUnread(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFollowUnread(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListFollowers operation middleware
+func (siw *ServerInterfaceWrapper) ListFollowers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListFollowers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListFollowing operation middleware
+func (siw *ServerInterfaceWrapper) ListFollowing(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListFollowing(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// FollowTarget operation middleware
+func (siw *ServerInterfaceWrapper) FollowTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params FollowTargetParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.FollowTarget(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnfollowTarget operation middleware
+func (siw *ServerInterfaceWrapper) UnfollowTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "ref" -------------
+	var ref string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "ref", r.PathValue("ref"), &ref, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ref", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnfollowTarget(w, r, ref)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -331,6 +1604,79 @@ func (siw *ServerInterfaceWrapper) CreateUpload(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateUpload(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListReportReasons operation middleware
+func (siw *ServerInterfaceWrapper) ListReportReasons(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListReportReasons(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReportTarget operation middleware
+func (siw *ServerInterfaceWrapper) ReportTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ReportTargetParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReportTarget(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMe operation middleware
+func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMe(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -506,8 +1852,33 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/wechat", wrapper.WechatLogin)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/phone/code", wrapper.SendPhoneCode)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/phone", wrapper.PhoneLogin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/refresh", wrapper.RefreshToken)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/users/me", wrapper.GetMe)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/users/me/deactivate", wrapper.DeactivateAccount)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cards/me", wrapper.GetMyCard)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/cards/me", wrapper.UpdateMyCard)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cards/me/completion", wrapper.GetCardCompletion)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cards/me/share", wrapper.ShareMyCard)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cards/{ref}", wrapper.GetCardByRef)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/certs", wrapper.SubmitCert)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/certs/mine", wrapper.GetMyCerts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contents", wrapper.PublishContent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/contents/mine", wrapper.ListMyContents)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contents/{id}/submit", wrapper.SubmitContent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/contents/{id}", wrapper.GetContent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contents/{id}/close", wrapper.CloseContent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/report-reasons", wrapper.ListReportReasons)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/reports", wrapper.ReportTarget)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/follows", wrapper.ListFollowing)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/follows", wrapper.FollowTarget)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/follows/{ref}", wrapper.UnfollowTarget)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/followers", wrapper.ListFollowers)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/favorites", wrapper.ListFavorites)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/favorites", wrapper.FavoriteTarget)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/favorites/{ref}", wrapper.UnfavoriteTarget)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/follow-unread", wrapper.GetFollowUnread)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/dict/{dimension}", wrapper.ListDict)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/media/uploads", wrapper.CreateUpload)
 

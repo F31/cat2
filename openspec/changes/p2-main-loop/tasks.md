@@ -2,43 +2,43 @@
 
 ## 1. profile（R1）
 
-- [ ] 1.1 迁移：`prf_card`（详细设计 4.2.8 全字段：subject_type_code/三层画像字段/contact_phone_enc/visibility_settings/profile_tier/search_doc_version/owner_space_id）
-- [ ] 1.2 名片 CRUD：`GET/PUT /cards/me`、`GET /cards/{ref}`（他人名片按对外展示设置过滤）、`POST /cards/me/share`
-- [ ] 1.3 画像完成度 `GET /cards/me/completion`：第二层五项（区域/行业/合作需求/合作提供/简介）任一为空即未完成；与实名无关
-- [ ] 1.4 组织名片资质证明多图上传（接 media.Bind）
-- [ ] 1.5 认证主体信息锁定：订阅 `CertificationApproved` 后对应字段禁自改
-- [ ] 1.6 事件生产：`ProfileUpdated`/`OrgCardUpdated`（含 MatchProfile/SearchDoc，不含敏感字段，带 search_doc_version）
-- [ ] 1.7 注册扩展点：`ReviewSubjectProvider`（名片文本/头像）、`EntityResolver`（user/org）
-- [ ] 1.8 domain 单元测试：完成度判定、展示设置过滤、认证锁定
+- [x] 1.1 迁移：`prf_card`（详细设计 4.2.8 全字段：subject_type_code/三层画像字段/contact_phone_enc/visibility_settings/profile_tier/search_doc_version/locked_fields/owner_space_id）
+- [x] 1.2 名片 CRUD：`GET/PUT /cards/me`、`GET /cards/{ref}`（他人名片按对外展示设置过滤）、`POST /cards/me/share`
+- [x] 1.3 画像完成度 `GET /cards/me/completion`：第二层五项（区域/行业/合作需求/合作提供/简介）任一为空即未完成；与实名无关
+- [x] 1.4 组织名片资质证明多图上传（写入 qualification_file_ids，增删接 media.Bind/Unbind）
+- [ ] 1.5 认证主体信息锁定：机制已实现（`locked_fields` + 更新拦截 060003）；订阅 `CertificationApproved` 待 verify(R2) 落地后接通
+- [x] 1.6 事件生产：`ProfileUpdated`/`OrgCardUpdated`（含 MatchProfile，不含敏感字段，带 search_doc_version；与名片同事务入 Outbox）
+- [x] 1.7 注册扩展点：`ReviewSubjectProvider`（名片文本/头像，wire 装配进 trust）、`EntityResolver`（user/org）
+- [x] 1.8 domain 单元测试：完成度判定、展示设置过滤、认证锁定、长度校验
 
 ## 2. verify（R2，仅实名）
 
-- [ ] 2.1 迁移：`vfy_certification`（4.2.11）、`vfy_badge_def`、`vfy_badge_grant`
-- [ ] 2.2 实名认证：真实姓名+身份证号+协议勾选；第三方二要素接口实时核验，不上传证件照；人脸核身高风险触发（接口预留）
-- [ ] 2.3 状态机 #1 实名（未实名→核验中→已实名/核验失败）StateMachineDef + 表驱动测试
-- [ ] 2.4 核验通过回写 `idn_user.realname_status`（经 identity contract，不读他人表）并授予「实名」Badge
-- [ ] 2.5 注册 CapabilityProvider（已实名/已认证/组织管理员——后两者本阶段恒否）；`ReviewSubjectProvider`（认证材料）开口预留
-- [ ] 2.6 contract：`Certify`、`BadgesOf(ref)`；事件 `CertificationApproved/Rejected` Schema
+- [x] 2.1 迁移：`vfy_certification`（4.2.11，含实名姓名/证件号密文列）、`vfy_badge_def`、`vfy_badge_grant`（affiliation 表随身份核验后续增量补）
+- [x] 2.2 实名认证：真实姓名+身份证号+协议勾选；`ports.RealnameVerify` 二要素实时核验（含开发态实现），不上传证件照；人脸核身预留开口
+- [x] 2.3 状态机 #1 实名（未实名→核验中→已实名/核验失败，失败可重提）`StateMachineDef` + 表驱动测试（合法/非法转移）
+- [x] 2.4 核验通过回写 `idn_user.realname_status`（经 identity contract `MarkRealname`，不读他人表）并授予「实名」Badge
+- [x] 2.5 注册 CapabilityProvider（已实名读 vfy 表；已认证/组织管理员本阶段恒否）；`ReviewSubjectProvider`（认证材料）开口已在 wire 注册
+- [x] 2.6 contract：`Certify`、`BadgesOf(ref)`、`CertsOf`、`IsRealname`；事件 `CertificationApproved/Rejected` Schema
 
 ## 3. content（R2）
 
-- [ ] 3.1 迁移：`cnt_item` 信封表（4.2.13）+ `cnt_project/cnt_product/cnt_meeting/cnt_event` 四张类型子表（4.2.14，类型化列筛选排序、展示用少量扩展走 JSONB）
-- [ ] 3.2 `ContentKind` 注册表：字段 schema 与校验、卡片字段（PRD 5.2.3）、详情字段、会员可见字段清单、审核文本/图片提取、SearchDoc 映射；四类 Kind 各自注册
-- [ ] 3.3 四类发布表单接口：`POST /contents`（kind 区分）、`POST /contents/{id}/submit`、`GET /contents/{id}`、`GET /contents/mine?kind=`、`POST /contents/{id}/close`
-- [ ] 3.4 发布门槛策略：已实名（CapabilityProvider）；未实名拦截记审计（高频告警）
-- [ ] 3.5 状态机 #2（审核中→展示中→已下架；已下架不可自行恢复、可申诉）+ 表驱动测试（合法/非法转移）
-- [ ] 3.6 订阅 `ModerationPassed/Rejected`、`ReportConfirmed` 驱动状态机（trust 不直接改 cnt_item.status）
-- [ ] 3.7 会员可见字段：`Get` 输出按 policy Decision 过滤核心优势/合作联系
-- [ ] 3.8 事件生产：`ContentSubmitted`、`ContentPublished`（含 SearchDoc）、`ContentTakenDown`、`ContentClosed`
-- [ ] 3.9 注册 `EntityResolver`（content.* 四类）、`ReviewSubjectProvider`
-- [ ] 3.10 字数与格式校验（PRD 8.9：标题 ≤50 字、核心优势/关键点 ≤500 字、简介 ≤2000 字等，提交级校验定位第一个未填必填项）
+- [x] 3.1 迁移：`cnt_item` 信封表（4.2.13）+ `cnt_project/cnt_product/cnt_meeting/cnt_event` 四张类型子表（4.2.14，类型化列筛选排序）
+- [x] 3.2 `ContentKind` 注册表：字段 schema 与校验、卡片字段、详情字段、会员可见字段清单、审核文本/图片提取、SearchDoc 映射；四类 Kind 各自注册
+- [x] 3.3 四类发布接口：`POST /contents`（kind 区分）、`POST /contents/{id}/submit`、`GET /contents/{id}`、`GET /contents/mine?kind=`、`POST /contents/{id}/close`
+- [x] 3.4 发布门槛策略：已实名（经 policy CapabilityProvider）；未实名拦截（审计点待接 audit）
+- [x] 3.5 状态机 #2（审核中→展示中→已下架；已下架不可自行恢复）+ 表驱动测试（合法/非法转移）
+- [x] 3.6 订阅 `trust.ReportConfirmed` 驱动下架（已打通，经 Outbox 投递）；`ModerationPassed/Rejected` 提交时同步驱动（trust 已发事件，推送式切换留后续）
+- [x] 3.7 会员可见字段：`Get` 输出按 policy 能力过滤核心优势/合作联系，返回 `unlock_reason`
+- [x] 3.8 事件生产：`ContentSubmitted`、`ContentPublished`（含 SearchDoc）、`ContentTakenDown`、`ContentClosed`
+- [x] 3.9 注册 `EntityResolver`（content.* 四类）、`ReviewSubjectProvider`（wire 装配进 trust）
+- [x] 3.10 字数与格式校验（标题 ≤50、核心优势/关键点 ≤500、简介 ≤2000；`Kind.Validate` 定位第一个未填必填项）
 
 ## 4. social（R1）
 
-- [ ] 4.1 迁移：`soc_follow`（唯一键 follower_id+followee_ref）、`soc_favorite`、`soc_follow_unread`
-- [ ] 4.2 接口：`POST/DELETE /follows`、`POST /favorites`、`GET /favorites?type=`（六类分 Tab）、`GET /follows|followers`（两页签，不设互相关注统计——待确认 #19 结论）
-- [ ] 4.3 关注=订阅：被关注者发新内容时产生通知事件（供 notice 消费）；`FollowerUnread` 未读数
-- [ ] 4.4 事件：`Followed/Unfollowed`；目标统一 EntityRef，经 `EntityResolver` 回填展示
+- [x] 4.1 迁移：`soc_follow`（唯一键 follower_id+followee_type+followee_id）、`soc_favorite`、`soc_follow_unread`
+- [x] 4.2 接口：`POST/GET/DELETE /follows`、`GET /followers`、`POST/GET/DELETE /favorites`（六类分 Tab）、`GET /follow-unread`
+- [x] 4.3 关注=订阅：订阅内容发布 → 关注者未读 +1 并产生 `FolloweePublished` 通知事件（供 notice 消费）
+- [x] 4.4 事件：`Followed/Unfollowed/FolloweePublished`；目标统一 EntityRef，经 `EntityResolver` 回填 title/cover
 
 ## 5. discovery（R5，规则版）
 
@@ -53,13 +53,13 @@
 
 ## 6. trust（完整链路）
 
-- [ ] 6.1 迁移：`trs_report`（4.2.4）、`trs_violation_score`、`trs_restriction`
-- [ ] 6.2 举报：`Report` 接口 + 举报原因枚举；举报 → 人工复核队列（24h SLA）
-- [ ] 6.3 复核结论：属实 → 发 `ReportConfirmed`（content 下架）+ 违规记分；3 次记分 → 限制发布 7 天；严重者封号（调 identity）
-- [ ] 6.4 content/profile 注册 `ReviewSubjectProvider` 联调：取文本/图片、结论落回
-- [ ] 6.5 高风险类目（金融/医疗/政府项目）人工抽检入队规则
-- [ ] 6.6 事件：`ModerationPassed/Rejected`、`ReportConfirmed`、`ViolationRecorded`、`AccountRestricted`
-- [ ] 6.7 审核队列 SLA 排序与积压监控指标
+- [x] 6.1 迁移：`trs_report`（4.2.4）、`trs_violation_score`、`trs_restriction`（含 `trs_review_task`/`trs_sensitive_word`/`trs_moderation_record`）
+- [x] 6.2 举报：`GET /report-reasons` + `POST /reports`（原因枚举）+ 入人工复核队列（24h SLA）
+- [x] 6.3 复核结论：`ResolveReview` 属实 → 发 `ReportConfirmed`（content 订阅下架）+ 违规记分；3 次 → 限制发布 7 天（`AccountRestricted`）；严重封号走 `Restrict(days<=0)`
+- [x] 6.4 content/profile/verify 注册 `ReviewSubjectProvider` 联调：`Extract` 取素材、`OwnerOf` 归属、`ApplyVerdict` 落结论
+- [x] 6.5 高风险类目（金融/医疗/政府项目关键词）人工抽检入队（source=5）
+- [x] 6.6 事件：`ModerationPassed/Rejected`、`ReportConfirmed`、`ViolationRecorded`、`AccountRestricted`（JSON Schema + `make gen`）
+- [x] 6.7 审核队列 SLA 到期排序（`ReviewQueue`）与积压指标（`SLAMetrics`，admin 路由）
 
 ## 7. trade（R1）
 

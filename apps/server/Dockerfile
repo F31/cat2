@@ -1,15 +1,12 @@
-# 构建阶段
-FROM golang:1.24-bookworm AS build
+# 构建阶段（依赖经 vendor/ 入库，构建无需访问模块代理）
+FROM golang:1.25-bookworm AS build
 WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /out/catcube ./cmd/catcube
+RUN CGO_ENABLED=0 go build -mod=vendor -o /out/catcube ./cmd/catcube
 
-# 运行阶段
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata \
-    && rm -rf /var/lib/apt/lists/*
+# 运行阶段（无包管理器；时区用代码内 FixedZone，不依赖 tzdata）
+FROM gcr.io/distroless/static-debian12
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /out/catcube /usr/local/bin/catcube
 EXPOSE 8080
 ENTRYPOINT ["catcube"]

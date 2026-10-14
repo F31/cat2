@@ -128,8 +128,9 @@ func checkGoFile(path, moduleName string, inInfra bool) []violation {
 		if owner == "" || owner == moduleName {
 			continue
 		}
-		// 跨模块引用只能指向 contract 包
-		if !strings.Contains(p, "/contract") {
+		// 跨模块引用只能指向 contract 包；shared 轻量包（如 entityref）允许直接引用其根包
+		isSharedRoot := rank[owner] == -1 && p == "catcube/internal/shared/"+owner
+		if !strings.Contains(p, "/contract") && !isSharedRoot {
 			vs = append(vs, violation{path, "边界", "跨模块只能 import 对方 contract 包: " + p})
 			continue
 		}

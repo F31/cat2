@@ -1,11 +1,13 @@
-// Package identity R0 账号模块：微信登录、会话与令牌、authz_ver、账号状态、注销。
-// 本阶段为骨架：登录/令牌/注销链路；实名核验属 verify（p2）。
+// Package identity R0 账号模块：微信登录注册一体化、令牌与会话、authz_ver、账号状态、注销。
+// 实名核验属 verify（R2）；本模块只暴露 AuthzBump 供其回写。
 package identity
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strings"
 
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
@@ -13,23 +15,30 @@ import (
 	"catcube/internal/kernel/sensitive"
 	"catcube/internal/modules/identity/contract"
 	"catcube/internal/modules/identity/internal/app"
+	"catcube/internal/modules/identity/internal/domain"
+	"catcube/internal/modules/identity/internal/infra"
 	"catcube/internal/ports"
 	"catcube/pkg/ids"
 )
 
 // Deps 装配依赖。
 type Deps struct {
-	Pool      *db.Pool
-	WeChat    ports.WeChatAuth
-	Bus       *eventbus.Bus
-	Encryptor *sensitive.Encryptor // 手机号/证件号字段加密
-	BlindKey  []byte               // phone_hmac 独立密钥
+	Pool       *db.Pool
+	WeChat     ports.WeChatAuth
+	PhoneCode  app.PhoneExchanger // 手机号获取（新版 code 接口；开发态为假实现）
+	Bus        *eventbus.Bus
+	Encryptor  *sensitive.Encryptor // 手机号/证件号字段加密（生产必配）
+	BlindKey   []byte               // phone_hmac 独立密钥
+	Notify     ports.Notify
+	DevSMSCode string
 }
 
 // Module identity 模块。
 type Module struct {
 	deps  Deps
 	token *app.TokenService
+	svc   *app.Service
+	store *infra.Store
 }
 
 func New(deps Deps) *Module { return &Module{deps: deps} }
@@ -45,12 +54,26 @@ func (m *Module) Register(r *module.Registry) error {
 		return err
 	}
 	m.token = ts
+	m.store = infra.NewStore(m.deps.Pool)
+	exchanger := m.deps.PhoneCode
+	if exchanger == nil {
+		exchanger = realPhoneExchanger{m.deps.WeChat}
+	}
+	m.svc = app.NewService(app.Options{
+		Repo: m.store, Pool: m.deps.Pool, Tokens: ts, WeChat: exchanger,
+		Encryptor: m.deps.Encryptor, BlindKey: m.deps.BlindKey, Bus: m.deps.Bus,
+		Notify: m.deps.Notify, DevSMSCode: m.deps.DevSMSCode,
+	})
+
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/auth/wechat", Handler: m.handleWechatLogin},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/auth/phone/code", Handler: m.handleSMSCode},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/auth/phone", Handler: m.handleSMSLogin},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/auth/refresh", Handler: m.handleRefresh},
-		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/users/me/deactivate", Handler: m.handleDeactivate},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/users/me", Handler: m.auth(m.handleMe)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/users/me/deactivate", Handler: m.auth(m.handleDeactivate)},
 	)
-	// CapabilityProvider：账号状态（实名能力在 verify p2 注册，此处恒 false）
+	// CapabilityProvider：账号状态（实名能力在 verify 注册，此处恒 false）
 	r.CapProviders = append(r.CapProviders, capProvider{m})
 	return nil
 }
@@ -60,7 +83,7 @@ func (m *Module) Migrations() string { return migrations }
 // Facade 对外契约。
 func (m *Module) Facade() contract.Facade { return m }
 
-// Authenticate 校验 Access Token；网关比对 authz_ver 消除陈旧窗口。
+// Authenticate 校验 Access Token（签名/有效期）。
 func (m *Module) Authenticate(_ context.Context, accessToken string) (int64, int, error) {
 	claims, err := m.token.Verify(accessToken)
 	if err != nil {
@@ -69,31 +92,44 @@ func (m *Module) Authenticate(_ context.Context, accessToken string) (int64, int
 	return claims.Sub, claims.AuthzVer, nil
 }
 
+// SessionOf 活跃会话数。
 func (m *Module) SessionOf(ctx context.Context, userID int64) (int, error) {
-	var n int
-	err := m.deps.Pool.QueryRow(ctx,
-		`SELECT count(1) FROM idn_session WHERE user_id=$1 AND revoked_at IS NULL AND expires_at>now()`, userID).Scan(&n)
-	return n, err
+	sessions, err := m.store.ActiveSessions(ctx, userID)
+	return len(sessions), err
 }
 
+// UserBrief 用户摘要。
 func (m *Module) UserBrief(ctx context.Context, userID int64) (contract.UserBrief, error) {
-	var b contract.UserBrief
-	err := m.deps.Pool.QueryRow(ctx,
-		`SELECT id, COALESCE(nickname,''), COALESCE(avatar_file_id,0), status FROM idn_user WHERE id=$1`, userID).
-		Scan(&b.ID, &b.Nickname, &b.AvatarID, &b.Status)
-	return b, err
+	u, err := m.store.UserByID(ctx, userID)
+	if err != nil {
+		return contract.UserBrief{}, err
+	}
+	return contract.UserBrief{
+		ID: u.ID, Nickname: u.Nickname, Status: int16(u.Status),
+		IdentityType: u.IdentityType, AuthzVer: u.AuthzVer,
+	}, nil
 }
 
-// AuthzBump 权限变更递增授权版本。
+// AuthzBump 权限变更递增授权版本（消除令牌陈旧窗口）。
 func (m *Module) AuthzBump(ctx context.Context, userID int64) error {
 	_, err := m.deps.Pool.Exec(ctx,
 		`UPDATE idn_user SET authz_ver=authz_ver+1, updated_at=now() WHERE id=$1`, userID)
 	return err
 }
 
+// MarkRealname 回写实名核验结果（verify 经此，不读 idn_user）。
+func (m *Module) MarkRealname(ctx context.Context, userID int64, status int16) error {
+	_, err := m.deps.Pool.Exec(ctx,
+		`UPDATE idn_user SET realname_status=$2, updated_at=now() WHERE id=$1`, userID, status)
+	return err
+}
+
 // Deactivate 注销：匿名化本模块数据并发布事件（其他模块订阅后各自处理）。
 func (m *Module) Deactivate(ctx context.Context, userID int64) error {
 	return m.deps.Pool.InTx(ctx, func(tx db.Tx) error {
+		if err := m.store.LogDeactivation(ctx, tx, userID, "用户主动注销"); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `
 			UPDATE idn_user SET status=3, nickname='已注销用户', avatar_file_id=NULL,
 				wechat_openid=NULL, phone_enc=NULL, phone_hmac=NULL,
@@ -113,13 +149,41 @@ func (m *Module) Deactivate(ctx context.Context, userID int64) error {
 	})
 }
 
+// realPhoneExchanger 适配旧版端口（session_key 解密路径）到 PhoneExchanger 接口。
+// 新版 getuserphonenumber（code 接口）由 wechat.AuthClient 直接实现。
+type realPhoneExchanger struct{ ports.WeChatAuth }
+
+func (r realPhoneExchanger) GetPhoneNumberByCode(ctx context.Context, code string) (string, error) {
+	return r.GetPhoneNumber(ctx, "", code, "")
+}
+
+// ---- HTTP 层 ----
+
+// identity 错误码（contracts/errors/README.md；数值即 MMNNNN，前导零省略）。
+const (
+	codeParamInvalid   = 1     // 000001
+	codeUnauthorized   = 2     // 000002
+	codeForbidden      = 3     // 000003
+	codeUpstreamFail   = 8     // 000008
+	codeInternal       = 9     // 000009
+	codeWeChatCode     = 10001 // 010001 微信 code 无效或已使用
+	codeRefreshInvalid = 10002 // 010002 refresh token 失效或被撤销
+	codeDeactivated    = 10003 // 010003 账号已注销
+	codeBanned         = 10004 // 010004 账号被停用
+	codeSMSCodeInvalid = 10005 // 010005 短信验证码无效或已过期
+	codeLocked         = 10006 // 010006 登录尝试过于频繁
+	codePhoneInvalid   = 10007 // 010007 手机号缺失或非法
+)
+
 type loginReq struct {
 	Code          string `json:"code"`
 	EncryptedData string `json:"encrypted_data"`
 	IV            string `json:"iv"`
+	PhoneCode     string `json:"phone_code"`
+	Device        string `json:"device"`
 }
 
-type loginResp struct {
+type tokensResp struct {
 	UserID int64           `json:"user_id,string"`
 	New    bool            `json:"new"`
 	Tokens contract.Tokens `json:"tokens"`
@@ -128,26 +192,200 @@ type loginResp struct {
 func (m *Module) handleWechatLogin(w http.ResponseWriter, req *http.Request) {
 	var body loginReq
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil || body.Code == "" {
-		http.Error(w, `{"message":"参数错误"}`, http.StatusBadRequest)
+		writeErr(w, codeParamInvalid, "参数错误")
 		return
 	}
-	openID, sessionKey, err := m.deps.WeChat.Code2Session(req.Context(), body.Code)
+	phoneCode := body.PhoneCode
+	if phoneCode == "" {
+		phoneCode = body.EncryptedData // 兼容旧字段名
+	}
+	res, err := m.svc.WeChatLogin(req.Context(), body.Code, phoneCode, body.Device, clientIP(req))
 	if err != nil {
-		http.Error(w, `{"message":"微信登录失败"}`, http.StatusBadGateway)
+		writeLoginErr(w, err)
 		return
 	}
-	_ = sessionKey // session_key 只在服务端短期使用，不下发不入日志
-	_ = openID
-	// TODO(p2): 经 GetPhoneNumber 取手机号 → phone_hmac 查是否已注册 → 注册/登录一体化
-	http.Error(w, `{"message":"登录链路待 p2 联通（GetPhoneNumber/注册登录一体化）"}`, http.StatusNotImplemented)
+	writeData(w, tokensResp{UserID: res.UserID, New: res.IsNew, Tokens: res.Tokens})
 }
 
-func (m *Module) handleRefresh(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, `{"message":"refresh 待实现"}`, http.StatusNotImplemented)
+type smsReq struct {
+	Phone  string `json:"phone"`
+	Code   string `json:"code"`
+	Device string `json:"device"`
+}
+
+func (m *Module) handleSMSCode(w http.ResponseWriter, req *http.Request) {
+	var body smsReq
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	if err := m.svc.RequestSMSCode(req.Context(), body.Phone); err != nil {
+		writeLoginErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"sent": true})
+}
+
+func (m *Module) handleSMSLogin(w http.ResponseWriter, req *http.Request) {
+	var body smsReq
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	res, err := m.svc.SMSLogin(req.Context(), body.Phone, body.Code, body.Device, clientIP(req))
+	if err != nil {
+		writeLoginErr(w, err)
+		return
+	}
+	writeData(w, tokensResp{UserID: res.UserID, New: res.IsNew, Tokens: res.Tokens})
+}
+
+func (m *Module) handleRefresh(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	tokens, err := m.svc.Refresh(req.Context(), body.RefreshToken)
+	if err != nil {
+		writeLoginErr(w, err)
+		return
+	}
+	writeData(w, tokens)
+}
+
+func (m *Module) handleMe(w http.ResponseWriter, req *http.Request) {
+	uid := userIDFrom(req.Context())
+	brief, err := m.UserBrief(req.Context(), uid)
+	if err != nil {
+		writeErr(w, codeInternal, "服务错误")
+		return
+	}
+	writeData(w, brief)
 }
 
 func (m *Module) handleDeactivate(w http.ResponseWriter, req *http.Request) {
-	http.Error(w, `{"message":"deactivate 待接入鉴权中间件"}`, http.StatusNotImplemented)
+	uid := userIDFrom(req.Context())
+	if err := m.Deactivate(req.Context(), uid); err != nil {
+		writeErr(w, codeInternal, "服务错误")
+		return
+	}
+	writeData(w, map[string]any{"deactivated": true})
+}
+
+// auth 鉴权中间件：Bearer → 验签 → 比对 authz_ver（消除陈旧窗口）→ 账号状态。
+func (m *Module) auth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		token := bearer(req)
+		if token == "" {
+			writeErr(w, codeUnauthorized, "未登录")
+			return
+		}
+		uid, ver, err := m.Authenticate(req.Context(), token)
+		if err != nil {
+			writeErr(w, codeUnauthorized, "登录已失效")
+			return
+		}
+		u, err := m.store.UserByID(req.Context(), uid)
+		if err != nil {
+			writeErr(w, codeUnauthorized, "登录已失效")
+			return
+		}
+		if u.AuthzVer != ver {
+			writeErr(w, codeUnauthorized, "权限已变更，请重新登录")
+			return
+		}
+		if !domain.CanLogin(u.Status) {
+			if u.Status == domain.StatusDeactivated {
+				writeErr(w, codeDeactivated, "账号已注销")
+			} else {
+				writeErr(w, codeBanned, "账号被停用")
+			}
+			return
+		}
+		next(w, req.WithContext(context.WithValue(req.Context(), ctxUserID{}, uid)))
+	}
+}
+
+type ctxUserID struct{}
+
+func userIDFrom(ctx context.Context) int64 {
+	if v, ok := ctx.Value(ctxUserID{}).(int64); ok {
+		return v
+	}
+	return 0
+}
+
+func bearer(req *http.Request) string {
+	h := req.Header.Get("Authorization")
+	if strings.HasPrefix(h, "Bearer ") {
+		return strings.TrimPrefix(h, "Bearer ")
+	}
+	return ""
+}
+
+func clientIP(req *http.Request) string {
+	if v := req.Header.Get("X-Forwarded-For"); v != "" {
+		return strings.TrimSpace(strings.Split(v, ",")[0])
+	}
+	host := req.RemoteAddr
+	if i := strings.LastIndex(host, ":"); i > 0 {
+		host = host[:i]
+	}
+	return host
+}
+
+// writeLoginErr 错误 → 错误码（见 contracts/errors/README.md 01 段）。
+func writeLoginErr(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, domain.ErrAccountDeactivated):
+		writeErr(w, codeDeactivated, "账号已注销")
+	case errors.Is(err, domain.ErrAccountBanned):
+		writeErr(w, codeBanned, "账号被停用")
+	case errors.Is(err, domain.ErrLocked):
+		writeErr(w, codeLocked, "尝试过于频繁，请稍后再试")
+	case errors.Is(err, domain.ErrCodeInvalid):
+		writeErr(w, codeSMSCodeInvalid, "验证码无效或已过期")
+	case errors.Is(err, domain.ErrPhoneRequired):
+		writeErr(w, codePhoneInvalid, "缺少或非法的手机号")
+	case errors.Is(err, domain.ErrRefreshInvalid):
+		writeErr(w, codeRefreshInvalid, "refresh token 失效或被撤销")
+	case errors.Is(err, domain.ErrWeChatUpstream):
+		writeErr(w, codeUpstreamFail, "微信授权失败")
+	default:
+		writeErr(w, codeInternal, "服务错误")
+	}
+}
+
+func writeData(w http.ResponseWriter, data any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "ok", "data": data})
+}
+
+// httpStatus 错误码 → HTTP 状态码（contracts/errors/README.md 通用段 + identity 段）。
+func httpStatus(code int) int {
+	switch code {
+	case codeUnauthorized, codeRefreshInvalid:
+		return http.StatusUnauthorized
+	case codeForbidden, codeDeactivated, codeBanned:
+		return http.StatusForbidden
+	case codeParamInvalid, codePhoneInvalid, codeSMSCodeInvalid, codeWeChatCode:
+		return http.StatusBadRequest
+	case codeLocked:
+		return http.StatusTooManyRequests
+	case codeUpstreamFail:
+		return http.StatusBadGateway
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+func writeErr(w http.ResponseWriter, code int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(httpStatus(code))
+	_ = json.NewEncoder(w).Encode(map[string]any{"code": code, "message": message})
 }
 
 // capProvider 账号状态能力提供者。
@@ -163,7 +401,7 @@ func (p capProvider) Has(ctx context.Context, userID int64, capability string) (
 			return false, err
 		}
 		return b.Status == 0, nil
-	case "realname": // 实名能力在 verify（p2）注册；此处恒 false
+	case "realname": // 实名能力在 verify（R2）注册；此处恒 false
 		return false, nil
 	default:
 		return false, nil

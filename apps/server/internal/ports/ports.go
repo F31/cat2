@@ -93,6 +93,13 @@ type WeChatAuth interface {
 	GetPhoneNumber(ctx context.Context, sessionKey, encryptedData, iv string) (string, error)
 }
 
+// RealnameVerify 实名二要素核验端口（真实姓名 + 身份证号，接第三方接口；
+// 不上传证件照；人脸核身高风险时触发，由实现方在内部编排）。
+type RealnameVerify interface {
+	// Verify 返回二要素是否一致。err 表示调用失败（区别于「不一致」）。
+	Verify(ctx context.Context, name, idCardNo string) (matched bool, err error)
+}
+
 // LLM 大模型端口（p5 实现，接口先行）。
 type LLM interface {
 	Complete(ctx context.Context, prompt string, schema map[string]any) ([]byte, error)

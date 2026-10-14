@@ -1,5 +1,3 @@
-version: "3.9"
-
 # S0 一体形态：app（全角色全模块）+ PostgreSQL，PITR 备份依赖云侧/外部挂载
 services:
   db:
@@ -28,7 +26,7 @@ services:
       CATCUBE_HTTP_ADDR: ":8080"
       CATCUBE_ROLES: api,worker,scheduler,admin
     ports:
-      - "8080:8080"
+      - "${APP_PORT:-8080}:8080"
     depends_on:
       db:
         condition: service_healthy

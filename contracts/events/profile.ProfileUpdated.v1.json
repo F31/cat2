@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/profile.ProfileUpdated.v1.json",
+  "title": "profile.ProfileUpdated.v1",
+  "description": "个人名片画像更新。Payload 不得包含手机号、证件号、联系方式等敏感字段。discovery 据此投影 SearchDoc/MatchProfile。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "profile.ProfileUpdated.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string", "description": "站点维度预留，一期恒为 default" },
+    "payload": {
+      "type": "object",
+      "required": ["user_id", "profile_tier", "search_doc_version", "match_profile"],
+      "additionalProperties": false,
+      "properties": {
+        "user_id": { "type": "string", "description": "int64 字符串" },
+        "subject_type_code": { "type": "string" },
+        "name": { "type": "string" },
+        "profile_tier": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "search_doc_version": { "type": "integer", "description": "投影版本，防旧事件覆盖" },
+        "match_profile": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "region": { "type": "string" },
+            "industry": { "type": "array", "items": { "type": "string" } },
+            "need": { "type": "array", "items": { "type": "string" } },
+            "offer": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
