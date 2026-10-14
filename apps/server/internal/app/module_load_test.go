@@ -9,6 +9,7 @@ import (
 	"catcube/internal/modules/identity"
 	"catcube/internal/modules/profile"
 	"catcube/internal/modules/social"
+	"catcube/internal/modules/trade"
 	"catcube/internal/modules/trust"
 	"catcube/internal/modules/verify"
 	"catcube/internal/shared/dict"
@@ -26,6 +27,7 @@ func TestRealModulesLoad(t *testing.T) {
 		verify.New(verify.Deps{}),
 		content.New(content.Deps{}),
 		social.New(social.Deps{}),
+		trade.New(trade.Deps{}),
 	}
 	ordered, err := module.Load(mods)
 	if err != nil {

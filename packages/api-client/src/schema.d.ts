@@ -432,6 +432,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 创建订单（金额由业务模块计算并给快照；强制 Idempotency-Key） */
+        post: operations["createOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询订单（仅本人） */
+        get: operations["getOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orders/{id}/pay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 发起支付（返回预支付参数；一单可多笔） */
+        post: operations["payOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pay/notify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 微信支付回调（验签 + 幂等；重复/乱序安全） */
+        post: operations["payNotify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/dict/{dimension}": {
         parameters: {
             query?: never;
@@ -624,6 +692,44 @@ export interface components {
             reason_code: "spam" | "fraud" | "porn" | "abuse" | "infringe" | "other";
             /** @description ≤500字 */
             detail?: string;
+        };
+        Order: {
+            id: string;
+            /** @description member/cube_plan 等 */
+            biz_type: string;
+            biz_ref?: string;
+            buyer_id: string;
+            /** @description 金额（分） */
+            amount_fen: number;
+            price_snapshot?: {
+                [key: string]: unknown;
+            };
+            /** @description 0待支付/1已支付/2已关闭 */
+            status: number;
+            /** Format: date-time */
+            pay_expire_at: string;
+            /** Format: date-time */
+            paid_at?: string | null;
+            /** Format: date-time */
+            closed_at?: string | null;
+        };
+        CreateOrderInput: {
+            biz_type: string;
+            biz_ref?: string;
+            amount_fen: number;
+            /** @description 单价/年限/系数等快照 */
+            price_snapshot?: {
+                [key: string]: unknown;
+            };
+            subject?: string;
+            /** @description 支付超时分钟（默认 30） */
+            expire_minutes?: number;
+        };
+        PayParams: {
+            order_id: string;
+            out_trade_no: string;
+            prepay_id: string;
+            amount_fen: number;
         };
         TagSet: {
             industry?: string[];
@@ -1523,6 +1629,119 @@ export interface operations {
                     };
                 };
             };
+        };
+    };
+    createOrder: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOrderInput"];
+            };
+        };
+        responses: {
+            /** @description 订单（重复幂等键返回首单） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["Order"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 订单 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["Order"];
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    payOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 预支付参数 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["PayParams"];
+                    };
+                };
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    payNotify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description 处理结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            order_id?: string;
+                            already_paid?: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
     listDict: {

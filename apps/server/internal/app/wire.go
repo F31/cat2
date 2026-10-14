@@ -12,6 +12,7 @@ import (
 
 	"catcube/internal/adapters/local"
 	"catcube/internal/adapters/oss"
+	"catcube/internal/adapters/pay"
 	"catcube/internal/adapters/pg"
 	"catcube/internal/adapters/realname"
 	"catcube/internal/adapters/wechat"
@@ -29,6 +30,7 @@ import (
 	"catcube/internal/modules/identity"
 	"catcube/internal/modules/profile"
 	"catcube/internal/modules/social"
+	"catcube/internal/modules/trade"
 	"catcube/internal/modules/trust"
 	"catcube/internal/modules/verify"
 	"catcube/internal/shared/dict"
@@ -136,6 +138,9 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	socialMod := social.New(social.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Resolver: entityReg,
 	})
+	tradeMod := trade.New(trade.Deps{
+		Pool: pool, Bus: bus, Pay: pay.NewDevClient(), Identity: identityMod.Facade(),
+	})
 	mods := []module.Module{
 		dictMod,
 		mediaMod,
@@ -145,6 +150,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		verifyMod,
 		contentMod,
 		socialMod,
+		tradeMod,
 	}
 
 	// 依赖拓扑装载：缺依赖启动即失败

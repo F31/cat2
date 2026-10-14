@@ -392,6 +392,20 @@ type ContentPublishInput struct {
 // ContentPublishInputKind defines model for ContentPublishInput.Kind.
 type ContentPublishInputKind string
 
+// CreateOrderInput defines model for CreateOrderInput.
+type CreateOrderInput struct {
+	AmountFen int     `json:"amount_fen"`
+	BizRef    *string `json:"biz_ref,omitempty"`
+	BizType   string  `json:"biz_type"`
+
+	// ExpireMinutes 支付超时分钟（默认 30）
+	ExpireMinutes *int `json:"expire_minutes,omitempty"`
+
+	// PriceSnapshot 单价/年限/系数等快照
+	PriceSnapshot *map[string]interface{} `json:"price_snapshot,omitempty"`
+	Subject       *string                 `json:"subject,omitempty"`
+}
+
 // DictItem defines model for DictItem.
 type DictItem struct {
 	Code       string  `json:"code"`
@@ -446,6 +460,33 @@ type LoginData struct {
 
 	// UserId int64 字符串
 	UserId string `json:"user_id"`
+}
+
+// Order defines model for Order.
+type Order struct {
+	// AmountFen 金额（分）
+	AmountFen int     `json:"amount_fen"`
+	BizRef    *string `json:"biz_ref,omitempty"`
+
+	// BizType member/cube_plan 等
+	BizType       string                  `json:"biz_type"`
+	BuyerId       string                  `json:"buyer_id"`
+	ClosedAt      *time.Time              `json:"closed_at,omitempty"`
+	Id            string                  `json:"id"`
+	PaidAt        *time.Time              `json:"paid_at,omitempty"`
+	PayExpireAt   time.Time               `json:"pay_expire_at"`
+	PriceSnapshot *map[string]interface{} `json:"price_snapshot,omitempty"`
+
+	// Status 0待支付/1已支付/2已关闭
+	Status int `json:"status"`
+}
+
+// PayParams defines model for PayParams.
+type PayParams struct {
+	AmountFen  int    `json:"amount_fen"`
+	OrderId    string `json:"order_id"`
+	OutTradeNo string `json:"out_trade_no"`
+	PrepayId   string `json:"prepay_id"`
 }
 
 // ReportInput defines model for ReportInput.
@@ -655,6 +696,14 @@ type CreateUploadParams struct {
 // CreateUploadJSONBodyContentType defines parameters for CreateUpload.
 type CreateUploadJSONBodyContentType string
 
+// CreateOrderParams defines parameters for CreateOrder.
+type CreateOrderParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// PayNotifyJSONBody defines parameters for PayNotify.
+type PayNotifyJSONBody map[string]interface{}
+
 // ReportTargetParams defines parameters for ReportTarget.
 type ReportTargetParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
@@ -694,6 +743,12 @@ type FollowTargetJSONRequestBody = TargetRefInput
 
 // CreateUploadJSONRequestBody defines body for CreateUpload for application/json ContentType.
 type CreateUploadJSONRequestBody CreateUploadJSONBody
+
+// CreateOrderJSONRequestBody defines body for CreateOrder for application/json ContentType.
+type CreateOrderJSONRequestBody = CreateOrderInput
+
+// PayNotifyJSONRequestBody defines body for PayNotify for application/json ContentType.
+type PayNotifyJSONRequestBody PayNotifyJSONBody
 
 // ReportTargetJSONRequestBody defines body for ReportTarget for application/json ContentType.
 type ReportTargetJSONRequestBody = ReportInput
@@ -778,6 +833,18 @@ type ServerInterface interface {
 	// CreateUpload 申请预签名上传（JPG/PNG ≤5MB）
 	// (POST /media/uploads)
 	CreateUpload(w http.ResponseWriter, r *http.Request, params CreateUploadParams)
+	// CreateOrder 创建订单（金额由业务模块计算并给快照；强制 Idempotency-Key）
+	// (POST /orders)
+	CreateOrder(w http.ResponseWriter, r *http.Request, params CreateOrderParams)
+	// GetOrder 查询订单（仅本人）
+	// (GET /orders/{id})
+	GetOrder(w http.ResponseWriter, r *http.Request, id string)
+	// PayOrder 发起支付（返回预支付参数；一单可多笔）
+	// (POST /orders/{id}/pay)
+	PayOrder(w http.ResponseWriter, r *http.Request, id string)
+	// PayNotify 微信支付回调（验签 + 幂等；重复/乱序安全）
+	// (POST /pay/notify)
+	PayNotify(w http.ResponseWriter, r *http.Request)
 	// ListReportReasons 举报原因枚举
 	// (GET /report-reasons)
 	ListReportReasons(w http.ResponseWriter, r *http.Request)
@@ -1613,6 +1680,117 @@ func (siw *ServerInterfaceWrapper) CreateUpload(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// CreateOrder operation middleware
+func (siw *ServerInterfaceWrapper) CreateOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateOrderParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateOrder(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrder operation middleware
+func (siw *ServerInterfaceWrapper) GetOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PayOrder operation middleware
+func (siw *ServerInterfaceWrapper) PayOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PayOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PayNotify operation middleware
+func (siw *ServerInterfaceWrapper) PayNotify(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PayNotify(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListReportReasons operation middleware
 func (siw *ServerInterfaceWrapper) ListReportReasons(w http.ResponseWriter, r *http.Request) {
 
@@ -1879,6 +2057,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/favorites", wrapper.FavoriteTarget)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/favorites/{ref}", wrapper.UnfavoriteTarget)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/follow-unread", wrapper.GetFollowUnread)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/orders", wrapper.CreateOrder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/orders/{id}", wrapper.GetOrder)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/orders/{id}/pay", wrapper.PayOrder)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/pay/notify", wrapper.PayNotify)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/dict/{dimension}", wrapper.ListDict)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/media/uploads", wrapper.CreateUpload)
 

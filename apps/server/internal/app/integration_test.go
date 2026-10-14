@@ -75,6 +75,10 @@ func seedDict(t *testing.T, a *App) {
 }
 
 func (h *testApp) do(method, path, token string, body any) (int, envelope) {
+	return h.doH(method, path, token, body, nil)
+}
+
+func (h *testApp) doH(method, path, token string, body any, headers map[string]string) (int, envelope) {
 	h.t.Helper()
 	var buf bytes.Buffer
 	if body != nil {
@@ -87,6 +91,9 @@ func (h *testApp) do(method, path, token string, body any) (int, envelope) {
 	req.Header.Set("Content-Type", "application/json")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -632,6 +639,133 @@ func TestIntegrationSocialFlow(t *testing.T) {
 		if n == 0 {
 			t.Fatalf("应发布事件 %s", topic)
 		}
+	}
+}
+
+// 交易链路：下单幂等 → 支付 → 回调重复幂等（OrderPaid 只发一次）→ 金额/验签 → 退款幂等。
+func TestIntegrationTradeFlow(t *testing.T) {
+	h := newTestApp(t)
+	phone := randPhone()
+	_, env := h.do(http.MethodPost, "/api/mp/v1/auth/wechat", "", map[string]string{"code": "wx-" + phone, "phone_code": phone})
+	var login struct {
+		Tokens struct {
+			AccessToken string `json:"access_token"`
+		} `json:"tokens"`
+	}
+	_ = json.Unmarshal(env.Data, &login)
+	token := login.Tokens.AccessToken
+
+	// 下单（幂等键；每次运行唯一，避免复用持久库的旧单）
+	idemKey := fmt.Sprintf("it-order-%d", time.Now().UnixNano())
+	body := map[string]any{"biz_type": "member", "amount_fen": 9900, "price_snapshot": map[string]any{"price_fen": 9900, "years": 1}}
+	status, env := h.doH(http.MethodPost, "/api/mp/v1/orders", token, body, map[string]string{"Idempotency-Key": idemKey})
+	if status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("下单失败: %d %+v", status, env)
+	}
+	var order struct {
+		ID        int64 `json:"id,string"`
+		Status    int16 `json:"status"`
+		AmountFen int64 `json:"amount_fen"`
+	}
+	_ = json.Unmarshal(env.Data, &order)
+	if order.Status != 0 || order.AmountFen != 9900 {
+		t.Fatalf("订单初始状态不符: %+v", order)
+	}
+	// 相同幂等键返回同一订单
+	_, env = h.doH(http.MethodPost, "/api/mp/v1/orders", token, body, map[string]string{"Idempotency-Key": idemKey})
+	var order2 struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &order2)
+	if order2.ID != order.ID {
+		t.Fatalf("幂等键应返回同一订单: %d vs %d", order2.ID, order.ID)
+	}
+
+	// 发起支付
+	status, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/orders/%d/pay", order.ID), token, nil)
+	if status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("发起支付失败: %d %+v", status, env)
+	}
+	var payParams struct {
+		OutTradeNo string `json:"out_trade_no"`
+		AmountFen  int64  `json:"amount_fen"`
+	}
+	_ = json.Unmarshal(env.Data, &payParams)
+	if payParams.OutTradeNo == "" {
+		t.Fatal("应返回 out_trade_no")
+	}
+
+	// 验签失败
+	status, env = h.do(http.MethodPost, "/api/mp/v1/pay/notify", "", map[string]any{
+		"out_trade_no": payParams.OutTradeNo, "amount_fen": 9900, "sign": "bad",
+	})
+	if status != http.StatusBadRequest || env.Code != 80005 {
+		t.Fatalf("验签失败应 080005: %d %+v", status, env)
+	}
+
+	// 首次回调
+	status, env = h.do(http.MethodPost, "/api/mp/v1/pay/notify", "", map[string]any{
+		"out_trade_no": payParams.OutTradeNo, "amount_fen": 9900, "sign": "ok",
+	})
+	if status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("回调失败: %d %+v", status, env)
+	}
+	var nr struct {
+		AlreadyPaid bool `json:"already_paid"`
+	}
+	_ = json.Unmarshal(env.Data, &nr)
+	if nr.AlreadyPaid {
+		t.Fatal("首次回调不应为已支付")
+	}
+	// 重复回调幂等
+	_, env = h.do(http.MethodPost, "/api/mp/v1/pay/notify", "", map[string]any{
+		"out_trade_no": payParams.OutTradeNo, "amount_fen": 9900, "sign": "ok",
+	})
+	_ = json.Unmarshal(env.Data, &nr)
+	if !nr.AlreadyPaid {
+		t.Fatal("重复回调应返回已支付")
+	}
+
+	// 订单已支付
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/orders/%d", order.ID), token, nil)
+	_ = json.Unmarshal(env.Data, &order)
+	if order.Status != 1 {
+		t.Fatalf("订单应已支付: %+v", order)
+	}
+	// OrderPaid 事件仅一条（针对本订单）
+	var paidEvents int
+	_ = h.app.Pool.QueryRow(context.Background(),
+		`SELECT count(1) FROM sys_outbox WHERE topic='trade.OrderPaid.v1' AND payload->>'order_id'=$1`,
+		fmt.Sprintf("%d", order.ID)).Scan(&paidEvents)
+	if paidEvents != 1 {
+		t.Fatalf("OrderPaid 事件应仅 1 条，实际 %d", paidEvents)
+	}
+
+	// 后台退款（幂等）
+	_, env = h.do(http.MethodPost, "/api/admin/v1/refunds", token, map[string]any{
+		"order_id": fmt.Sprintf("%d", order.ID), "amount_fen": 9900, "reason": "重复支付原路退回",
+	})
+	var refund struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &refund)
+	if refund.ID == 0 {
+		t.Fatalf("退款失败: %+v", env)
+	}
+	_, env = h.do(http.MethodPost, "/api/admin/v1/refunds", token, map[string]any{
+		"order_id": fmt.Sprintf("%d", order.ID), "amount_fen": 9900, "reason": "重复支付原路退回",
+	})
+	var refund2 struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &refund2)
+	if refund2.ID != refund.ID {
+		t.Fatalf("退款应幂等（同 payment+reason）: %d vs %d", refund2.ID, refund.ID)
+	}
+	var refundEvents int
+	_ = h.app.Pool.QueryRow(context.Background(), `SELECT count(1) FROM sys_outbox WHERE topic='trade.RefundSucceeded.v1'`).Scan(&refundEvents)
+	if refundEvents == 0 {
+		t.Fatal("应发布 RefundSucceeded")
 	}
 }
 

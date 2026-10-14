@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/trade.RefundSucceeded.v1.json",
+  "title": "trade.RefundSucceeded.v1",
+  "description": "退款成功（原路退回）。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "trade.RefundSucceeded.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["refund_id", "order_id", "buyer_id", "amount_fen"],
+      "additionalProperties": false,
+      "properties": {
+        "refund_id": { "type": "string" },
+        "order_id": { "type": "string" },
+        "buyer_id": { "type": "string" },
+        "amount_fen": { "type": "integer" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/trade.OrderCreated.v1.json",
+  "title": "trade.OrderCreated.v1",
+  "description": "订单创建。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "trade.OrderCreated.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["order_id", "biz_type", "buyer_id", "amount_fen"],
+      "additionalProperties": false,
+      "properties": {
+        "order_id": { "type": "string" },
+        "biz_type": { "type": "string" },
+        "biz_ref": { "type": "string" },
+        "buyer_id": { "type": "string" },
+        "amount_fen": { "type": "integer" },
+        "price_snapshot": { "type": "object", "additionalProperties": true }
+      }
+    }
+  },
+  "additionalProperties": false
+}

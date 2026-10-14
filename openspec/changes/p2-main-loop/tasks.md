@@ -63,15 +63,15 @@
 
 ## 7. trade（R1）
 
-- [ ] 7.1 迁移：`trd_order`（biz_type/biz_ref/amount_fen/price_snapshot/pay_expire_at/idempotency_key 唯一）、`trd_payment`（out_trade_no 唯一）、`trd_refund`（幂等键=payment_id+reason）、`trd_recon`
-- [ ] 7.2 下单/支付：`POST /orders`、`POST /orders/{id}/pay`；创建/支付类接口强制 `Idempotency-Key`
-- [ ] 7.3 微信支付回调：验签 + 幂等（重复/乱序回调测试）；验签失败记审计（防重放）
-- [ ] 7.4 订单状态机 #15（待支付→已支付/已关闭；超时关闭走 SchedulerJob）+ 测试
-- [ ] 7.5 `OrderFulfiller` 注册表：按 biz_type 履约；履约幂等（订单 ID 去重）、失败重试、超阈告警、后台手动补偿入口
-- [ ] 7.6 退款：仅后台发起（用户端无入口）；原路退回；`RefundSucceeded` 事件
-- [ ] 7.7 每日对账 SchedulerJob：`trd_recon` 差异记录与告警
-- [ ] 7.8 事件：`OrderCreated/OrderPaid/OrderClosed/RefundSucceeded`
-- [ ] 7.9 tests/trade：回调重复/乱序、支付幂等、对账差异用例
+- [x] 7.1 迁移：`trd_order`（idempotency_key 部分唯一）、`trd_payment`（out_trade_no 唯一）、`trd_refund`（幂等键=payment_id+reason）、`trd_recon`、`trd_fulfillment`、`trd_apportion_group`/`trd_pledge`
+- [x] 7.2 下单/支付：`POST /orders`（强制 `Idempotency-Key`，重复键返回首单）、`POST /orders/{id}/pay`、`GET /orders/{id}`
+- [x] 7.3 微信支付回调 `POST /pay/notify`：验签（`ports.Pay`）+ 幂等（重复回调不重复置状态/不重复发事件）；验签失败返回 080005（审计钩子待 audit 存储落地）
+- [x] 7.4 订单状态机 #15（待支付→已支付/已关闭）+ 表驱动测试；超时关闭走 `trade.close_expired` SchedulerJob
+- [x] 7.5 `OrderFulfiller` 注册表 + `trd_fulfillment`：按 biz_type 履约、失败退避重试、≥8 死信、后台补偿入口 `POST /admin/v1/fulfillments/{orderID}/retry`
+- [x] 7.6 退款：仅后台 `POST /admin/v1/refunds`（用户端无入口）；幂等（payment+reason）；原路退回；`RefundSucceeded` 事件
+- [x] 7.7 每日对账 SchedulerJob（`trade.recon` → `trd_recon`；dev 以订单侧汇总，渠道账单对接留后续）
+- [x] 7.8 事件：`OrderCreated/OrderPaid/OrderClosed/RefundSucceeded`（Schema + `make gen`）
+- [x] 7.9 状态机表驱动测试 + 集成测试（下单幂等、回调重复幂等、验签失败、退款幂等）
 
 ## 8. membership（R3）
 

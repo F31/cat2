@@ -22,6 +22,7 @@ tags:
   - name: content
   - name: trust
   - name: social
+  - name: trade
   - name: dict
   - name: media
 paths:
@@ -694,6 +695,105 @@ paths:
                       data:
                         type: object
                         properties: { unread: { type: integer } }
+  /orders:
+    post:
+      tags: [trade]
+      summary: 创建订单（金额由业务模块计算并给快照；强制 Idempotency-Key）
+      operationId: createOrder
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOrderInput' }
+      responses:
+        '200':
+          description: 订单（重复幂等键返回首单）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /orders/{id}:
+    get:
+      tags: [trade]
+      summary: 查询订单（仅本人）
+      operationId: getOrder
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 订单
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Order' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /orders/{id}/pay:
+    post:
+      tags: [trade]
+      summary: 发起支付（返回预支付参数；一单可多笔）
+      operationId: payOrder
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 预支付参数
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PayParams' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /pay/notify:
+    post:
+      tags: [trade]
+      summary: 微信支付回调（验签 + 幂等；重复/乱序安全）
+      operationId: payNotify
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200':
+          description: 处理结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          order_id: { type: string }
+                          already_paid: { type: boolean }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /dict/{dimension}:
     get:
       tags: [dict]
@@ -946,6 +1046,38 @@ components:
         target_ref: { type: string, description: 'EntityRef type:id，如 content.project:123' }
         reason_code: { type: string, enum: [spam, fraud, porn, abuse, infringe, other] }
         detail: { type: string, description: '≤500字' }
+    Order:
+      type: object
+      required: [id, biz_type, buyer_id, amount_fen, status, pay_expire_at]
+      properties:
+        id: { type: string }
+        biz_type: { type: string, description: member/cube_plan 等 }
+        biz_ref: { type: string }
+        buyer_id: { type: string }
+        amount_fen: { type: integer, description: 金额（分） }
+        price_snapshot: { type: object, additionalProperties: true }
+        status: { type: integer, description: '0待支付/1已支付/2已关闭' }
+        pay_expire_at: { type: string, format: date-time }
+        paid_at: { type: string, format: date-time, nullable: true }
+        closed_at: { type: string, format: date-time, nullable: true }
+    CreateOrderInput:
+      type: object
+      required: [biz_type, amount_fen]
+      properties:
+        biz_type: { type: string }
+        biz_ref: { type: string }
+        amount_fen: { type: integer }
+        price_snapshot: { type: object, additionalProperties: true, description: 单价/年限/系数等快照 }
+        subject: { type: string }
+        expire_minutes: { type: integer, description: 支付超时分钟（默认 30） }
+    PayParams:
+      type: object
+      required: [order_id, out_trade_no, prepay_id, amount_fen]
+      properties:
+        order_id: { type: string }
+        out_trade_no: { type: string }
+        prepay_id: { type: string }
+        amount_fen: { type: integer }
     TagSet:
       type: object
       properties:
