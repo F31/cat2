@@ -1,0 +1,15 @@
+{
+  "name": "catcube",
+  "version": "0.1.0",
+  "private": true,
+  "description": "猫平方商业一体化综合服务平台 monorepo",
+  "packageManager": "pnpm@8.15.0",
+  "scripts": {
+    "gen": "echo '契约生成管线待接入（openapi → Go stub + TS client）' && exit 0",
+    "test": "pnpm -r test --if-present"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "^16.0.0",
+    "openapi-typescript": "^7.13.0"
+  }
+}

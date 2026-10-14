@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/identity.AuthzChanged.v1.json",
+  "title": "identity.AuthzChanged.v1",
+  "description": "授权版本变更（角色/能力变化导致 authz_ver 递增）。网关以此消除令牌陈旧窗口。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "identity.AuthzChanged.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["user_id", "authz_ver"],
+      "additionalProperties": false,
+      "properties": {
+        "user_id": { "type": "string" },
+        "authz_ver": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "additionalProperties": false
+}

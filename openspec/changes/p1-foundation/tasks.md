@@ -1,0 +1,139 @@
+# p1-foundation · 任务清单
+
+> 勾选口径：代码/文件已落地且通过本地验证即勾选；仅有骨架但关键链路未通的条目保持未勾选，并在变更汇报中说明。
+
+## 1. monorepo 脚手架
+
+- [x] 1.1 创建仓库结构：`apps/server`、`apps/miniapp`、`apps/admin-web`、`packages/{api-client,domain-types,policy-hints,taxonomy-kit,form-kit,utils}`、`contracts/{openapi,events,errors,seeds}`、`deploy/`、`tools/`、`tests/`、`docs/{adr,modules,prd-trace}/`
+- [x] 1.2 `apps/server` 初始化单一 go.mod；建 `cmd/catcube` 唯一入口（`serve | migrate | jobs | seed` 子命令骨架）
+- [x] 1.3 `apps/miniapp` Taro + React + TS 初始化（依 p0 任务 3.1 的选型验证结论；不通过则原生回退并更新 ADR）
+- [x] 1.4 `apps/admin-web` React + Ant Design 初始化；pnpm workspace 贯通三个前端应用与 packages
+- [x] 1.5 根 `Makefile`：`make gen`（契约生成，当前为占位）、`make lint`（archcheck + go vet）、`make test`、`make up`（S0 compose）
+- [x] 1.6 CODEOWNERS：每个模块目录指定 owner，`contract/` 变更必须 owner 审批
+- [ ] 1.7 CI 管线骨架：lint、test、契约校验、边界检查四个必过门禁（缺 .github/workflows，待补）
+
+## 2. 契约与代码生成管线
+
+- [x] 2.1 `contracts/openapi/mp.yaml` 首版：统一响应信封、错误码、游标分页、`request_id`、`Idempotency-Key` 约定
+- [ ] 2.2 契约生成：OpenAPI → Go server stub（`internal/gen/`）与 TS `packages/api-client`，`make gen` 一键完成（生成器未接入，`make gen` 为占位）
+- [ ] 2.3 `packages/domain-types`：状态枚举、Reason 码、EntityRef、TagSet、Badge 类型由契约生成，不手写（当前为手写占位，待生成管线）
+- [x] 2.4 事件契约：`contracts/events/identity.UserRegistered.v1.json`、`UserDeactivated.v1.json`、`AuthzChanged.v1.json` 三个 JSON Schema（含事件 ID、occurred_at、v1、space_id，不含敏感字段）
+- [ ] 2.5 CI 校验事件 Schema 生产方/订阅方一致；OpenAPI 与生成客户端一致
+- [x] 2.6 `contracts/errors/`：按模块分配错误码段（`MMNNNN`），18 个前缀全部登记占位
+
+## 3. archcheck 边界检查（`tools/archcheck`）
+
+- [x] 3.1 依赖阶梯校验：按 4.2 阶梯表生成规则，`modules/<m>` 只能 import 更低阶模块的 `contract`，违规 CI 失败
+- [x] 3.2 表前缀校验（说明：未接 sqlc，仓储为手写 pgx 查询；archcheck 同时扫描 `.sql` 文件与 Go 内联 SQL，出现非本模块前缀的表即失败）
+- [x] 3.3 `infra` 层之外禁用 `database/sql`/`pgx` import
+- [x] 3.4 `bff` 只读校验：bff 不得调用任何模块的写接口
+- [x] 3.5 用「故意违规的样例模块」验证四条规则都会失败（自检测试）
+
+## 4. pkg/ L0 工具库
+
+- [x] 4.1 `pkg/errs`：统一错误类型与错误码映射
+- [x] 4.2 `pkg/page`：游标分页（每页 20 条约定）
+- [x] 4.3 `pkg/ids`：int64 时间有序 ID 生成器（应用侧），JSON 序列化为字符串
+- [x] 4.4 `pkg/money`：int64 分运算、折扣系数 numeric(6,4)、四舍五入到分（规则入配置）
+- [x] 4.5 `pkg/clock`：UTC 存储与 Asia/Shanghai 自然日换算
+- [x] 4.6 `pkg/mask`、`pkg/retry`、`pkg/validate`、`pkg/phone`（手机号/证件号格式）
+- [ ] 4.7 每个包纯函数单测（ids/money/page/clock 已测；errs/mask/retry/validate/phone 待补）；`pkg/` 不得 import 任何内部包（archcheck 覆盖）
+
+## 5. kernel：装载、配置、迁移、可观测
+
+- [x] 5.1 `kernel/module`：Module 接口（`Register` 路由/事件/任务/策略/状态机/配置/配额）与装载器；按 `DependsOn` 拓扑排序，缺依赖**启动即失败**
+- [ ] 5.2 `catcube serve --roles=api,worker,scheduler,admin --modules=...` 角色与模块开关（roles 已支持，--modules 开关未实现）
+- [x] 5.3 `kernel/config`：启动配置（环境变量 `CATCUBE_*`）三层配置的第一层
+- [x] 5.4 `kernel/settings`：`sys_settings`（scope+key+value+type+version+effective_at+operator）；模块注册 `SettingsSchema` 声明键/类型/范围/默认值/是否敏感；scope 取值顺序 space → platform（一期 space 恒 1）
+- [x] 5.5 `kernel/migrate`：按 DependsOn 拓扑执行、`sys_migration` 记录执行历史（expand → migrate → contract 三步式未实现，当前为普通版本迁移）
+- [ ] 5.6 `kernel/obs`：OpenTelemetry 封装（当前为 slog 结构化日志 + request_id 中间件；trace/metric 未接入）
+- [x] 5.7 `/healthz`（存活）与 `/readyz`（依赖就绪）端点
+
+## 6. kernel：事件、调度、状态机
+
+- [x] 6.1 `kernel/eventbus`：`sys_outbox` 表（event_id、topic、payload、status、retry_count）；业务表与 outbox **同事务写入**；worker 角色轮询投递，至少一次
+- [ ] 6.2 订阅方幂等表（事件 ID 去重）与失败重试已实现；死信后台重放管理接口待补
+- [x] 6.3 `kernel/scheduler`：模块注册 `SchedulerJob`；PG 咨询锁保证全局单活；批量、幂等、可重入（`sys_job` 表）
+- [x] 6.4 `kernel/statemachine`：声明式 `StateMachineDef{from,event,to,actor,guard}` 引擎；非法转移在引擎层拒绝；统一写状态日志并发布事件
+- [ ] 6.5 到期转态示范：以一张带 `expires_at` 部分索引的样例表跑通「每分钟批量扫描、分批、幂等」链路（供后续模块复用）
+
+## 7. kernel：授权、配额、幂等、事务
+
+- [x] 7.1 `kernel/policy`：`Decision{Allow,Reason}`、`Actor` 装配器（CapabilityProvider 惰性装配、请求内缓存）；内核不 import 任何业务模块
+- [x] 7.2 注册表机制：扩展点注册表通用实现（注册即生效、删除模块即失效；已用 trust.ReviewSubjectProvider 跑通）
+- [x] 7.3 `kernel/quota`：`QuotaDef{key,window(day/total),scope(user/circle/cube)}` 注册；`sys_quota_counter`（自然日窗口 Asia/Shanghai）；超限返回 Reason；数值来自 settings
+- [x] 7.4 `kernel/idempotency`：`Idempotency-Key` 中间件与存储
+- [x] 7.5 `kernel/scopedrepo` + `kernel/tx`：Scope 注入与 SQL 片段；`db.InTx` 同事务写业务表 + outbox
+- [x] 7.6 `kernel/sensitive`：`Visible[T]` 包装（漏写策略默认输出 null）、AES-256-GCM 字段加密、phone_hmac 盲索引（独立密钥）
+- [x] 7.7 `kernel/audit`：`sys_audit`（actor_type/channel/action/target_ref/detail/result/ip/ua/request_id/prev_hash/hash）；追加写 + SHA-256 哈希链；`audit.Record` 装饰器
+
+## 8. ports 与 adapters
+
+- [ ] 8.1 端口接口定义已完成（cache/queue/search/storage/pay/moderation/notify/realtime/wechat/llm）；**契约测试套件未建**
+- [ ] 8.2 `adapters/pg`：queue 与 search 已实现；未过契约套件（套件未建）
+- [ ] 8.3 `adapters/local`：进程内 cache 已实现；未过契约套件
+- [ ] 8.4 `adapters/oss`：预签名骨架（供应商接入 TODO）；未过契约套件
+- [ ] 8.5 `adapters/wechat`：code2session 已实现（session_key 不下发不入日志）；支付骨架（下单/回调验签）待 p2
+- [ ] 8.6 `adapters/moderation`：文本同步机检已实现；图片异步回调待接
+- [ ] 8.7 契约测试套件同一套跑在每个适配器上
+
+## 9. identity 模块骨架（R0）
+
+- [x] 9.1 模块结构：`modules/identity/{contract,module.go,migrations,internal/app}`（admin/ 与 transport/domain/infra 细分在 p2 补）
+- [x] 9.2 迁移：`idn_user`（含 phone_enc/phone_hmac/realname_status/authz_ver/owner_space_id）、`idn_session`、`idn_login_attempt`、`idn_sms_code`、`idn_deactivation_log`
+- [ ] 9.3 微信授权登录：openid 加密存储；注册登录一体化；手机号经微信获取写 phone_enc + phone_hmac 唯一校验（handler 已接 Code2Session，链路 501 待 p2）
+- [ ] 9.4 手机号 + 短信验证码备选登录；登录失败锁定（`idn_login_attempt`）
+- [x] 9.5 令牌：Access 2h RS256 只含 `sub/sid/authz_ver`；Refresh 7 天滚动轮换、哈希存储、可吊销；同账号 ≤3 活跃会话
+- [x] 9.6 `authz_ver` 递增机制与网关比对（无陈旧窗口）；订阅 `AuthzChanged` 类内部触发点
+- [x] 9.7 注销与匿名化：`Deactivate` 发布 `identity.UserDeactivated`，本模块处理自身数据匿名化
+- [x] 9.8 contract：`Authenticate`、`SessionOf`、`UserBrief`、`Deactivate`、`AuthzBump`；注册 CapabilityProvider（账号状态；实名先返回未实名）
+- [ ] 9.9 admin/：用户列表、封禁的 AdminSection 声明（页面 p4）
+- [ ] 9.10 状态/策略测试：登录失败锁定、会话上限、令牌轮换、注销事件发布
+
+## 10. trust 模块骨架（R0）
+
+- [x] 10.1 模块结构与迁移：`trs_review_task`、`trs_sensitive_word`、`trs_moderation_record` 等 `trs_` 前缀表
+- [x] 10.2 `Moderation` 端口接入：文本同步机检命中拦截；**任何代码不直接调微信接口**（图片异步回调占位待接）
+- [x] 10.3 敏感词/引流词本地前置过滤（词库后台可维护，种子来自 p0 任务 4.2）
+- [x] 10.4 `ReviewSubjectProvider` 注册表开口（怎么取文字/图片、结论怎么落回）；本阶段无注册者，接口与单测先行
+- [x] 10.5 contract：`SubmitReview`、`Report`、`Restrict`、`IsRestricted` 接口定型；注册 CapabilityProvider（是否被限制发布）
+- [x] 10.6 审核结论事件 `ModerationPassed/Rejected` 的 Schema（发布链路随首个生产方在 p2 接通）
+
+## 11. dict 模块（共享业务域）
+
+- [x] 11.1 迁移：`dct_taxonomy_option`（dimension/code/label/parent_code/sort/status，只停用不删除）、`dct_subject_type`、`dct_field_template`、`dct_field_def`
+- [x] 11.2 taxonomy 服务：`Options(dimension)`、`Resolve(code)`；行业/子行业两级联动（parent_code 支持扩展，未来加级不发版）
+- [x] 11.3 主体类型配置：类型编码创建后不可改、名称、图标、can_publish、home_visible、排序、状态
+- [ ] 11.4 画像字段模板：表结构与字段池已建；模板渲染/校验服务为占位
+- [x] 11.5 `TagSet` 值对象与 `ValidateTagSet` 统一校验（非法 code 拒绝）
+- [x] 11.6 `contracts/seeds/` 种子导入命令（幂等）：行业两级、区域省市县、合作需求/供给、会议/活动领域、主体类型六类（`catcube seed`）
+- [ ] 11.7 admin/：主体类型、选项管理、画像字段模板的 AdminSection 声明（页面 p4）
+
+## 12. media 模块（共享业务域）
+
+- [x] 12.1 迁移：`med_file`（详细设计 4.2.7 全字段）
+- [x] 12.2 预签名直传：类型与大小校验（JPG/JPEG/PNG ≤5MB）已实现；OSS 预签名为骨架（供应商接入 TODO）；封面尺寸校验待补
+- [ ] 12.3 缩略图生成与 CDN 域名输出；`Url(fileId, 规格)`
+- [ ] 12.4 `Bind(ownerRef)`/`Unbind` 引用计数已实现；订阅实体删除事件回收与孤儿文件定时清理（SchedulerJob）待补
+- [x] 12.5 entityref 轻量包：`EntityRef{type,id}` 类型 + `EntityResolver` 注册表 + `Resolve/BatchResolve`（无独立表）
+
+## 13. 测试框架
+
+- [ ] 13.1 `tests/matrix`：权限矩阵表驱动框架（PRD 3.2/3.3 每格一条用例的结构），本阶段先落「游客/注册可浏览」基础格
+- [ ] 13.2 状态机表驱动测试框架：给定 StateMachineDef 自动验证合法/非法转移（引擎已有单测；17 张状态机的占位结构未建）
+- [x] 13.3 模块独立启动测试：真实模块（dict/media/identity/trust）拓扑装载成功、缺依赖失败（`internal/app/module_load_test.go`）
+- [x] 13.4 `app/wire.go` 装配根：读配置 → 选适配器 → 装载模块；S0 形态全角色全模块单进程
+
+## 14. S0 部署
+
+- [x] 14.1 `deploy/compose`：app（全角色全模块）+ PostgreSQL 一键起（`make up`）
+- [ ] 14.2 PITR 备份配置（WAL 归档 + 每日全备）
+- [ ] 14.3 前端构建与本地联调脚本
+
+## 15. 退出标准
+
+- [ ] 15.1 S0 一键起：`make up` 后 `serve` 全角色全模块启动，`/healthz`、`/readyz` 通过（compose 文件就绪，待真实启动验证）
+- [x] 15.2 空模块（仅 contract + module.go 骨架）能按阶梯装载；缺依赖启动即失败有测试覆盖
+- [x] 15.3 archcheck 四条规则自检通过且接入 `make lint`（CI 门禁待 1.7）
+- [ ] 15.4 契约生成管线贯通：改 OpenAPI/事件 Schema → `make gen` → 前后端代码更新
+- [ ] 15.5 identity 登录/令牌/注销链路有集成测试；dict 种子导入后可查询；media 上传→绑定→孤儿清理链路有测试

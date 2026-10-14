@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/identity.UserDeactivated.v1.json",
+  "title": "identity.UserDeactivated.v1",
+  "description": "账号注销。各模块订阅后各自匿名化/清理本地数据。Payload 不含敏感字段。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "identity.UserDeactivated.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["user_id"],
+      "additionalProperties": false,
+      "properties": {
+        "user_id": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

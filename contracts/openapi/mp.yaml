@@ -1,0 +1,235 @@
+openapi: 3.0.3
+info:
+  title: 猫平方小程序 API
+  version: 0.1.0
+  description: |
+    小程序端（mp）对外契约首版。本文件是唯一事实来源：`make gen` 由本文件生成
+    Go server stub（internal/gen/）与 TS 客户端（packages/api-client），不得手写绕过。
+
+    ## 全局约定
+    - 统一响应信封 `{ code, message, data, request_id }`；成功 `code=0`
+    - 错误码 `MMNNNN`：MM 为模块前缀（见 contracts/errors/），NNNN 为模块内序号
+    - 列表一律游标分页：`?cursor=&limit=`，响应 `data.items[]` + `data.next_cursor`（null 表示到底）
+    - 写操作必须携带 `Idempotency-Key` 请求头（重复提交返回首次结果）
+    - 所有响应带 `X-Request-Id`，与信封内 `request_id` 一致
+    - 时间一律 RFC3339（UTC）；金额一律分（int64）；ID 在 JSON 中为字符串
+servers:
+  - url: /api/mp/v1
+tags:
+  - name: auth
+  - name: dict
+  - name: media
+paths:
+  /auth/wechat:
+    post:
+      tags: [auth]
+      summary: 微信登录（注册/登录一体化）
+      operationId: wechatLogin
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, description: wx.login 返回的 code }
+                encrypted_data: { type: string, description: 手机号加密数据（getPhoneNumber） }
+                iv: { type: string }
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user_id: { type: string, description: int64 字符串 }
+                          new: { type: boolean, description: 是否新注册 }
+                          tokens: { $ref: '#/components/schemas/Tokens' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '502': { $ref: '#/components/responses/UpstreamError' }
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: 刷新访问令牌
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200':
+          description: 新令牌对
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Tokens' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /users/me/deactivate:
+    post:
+      tags: [auth]
+      summary: 账号注销（匿名化，其他模块订阅 UserDeactivated 各自清理）
+      operationId: deactivateAccount
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { $ref: '#/components/responses/OkEmpty' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /dict/{dimension}:
+    get:
+      tags: [dict]
+      summary: 查询字典维度（行业/区域/合作需求/合作供给/领域/主体类型）
+      operationId: listDict
+      parameters:
+        - name: dimension
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [industry, region, cooperation_demand, cooperation_supply, field, subject_type]
+        - name: parent_code
+          in: query
+          schema: { type: string, description: 父节点编码（如行业的二级） }
+      responses:
+        '200':
+          description: 字典项列表（只返回启用项；停用不出现在选项中）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/DictItem' }
+  /media/uploads:
+    post:
+      tags: [media]
+      summary: 申请预签名上传（JPG/PNG ≤5MB）
+      operationId: createUpload
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [filename, content_type, size]
+              properties:
+                filename: { type: string }
+                content_type: { type: string, enum: [image/jpeg, image/png] }
+                size: { type: integer, maximum: 5242880 }
+      responses:
+        '200':
+          description: 预签名上传地址
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          file_id: { type: string }
+                          upload_url: { type: string }
+                          expires_in: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Access Token（RS256 JWT，仅含 sub/sid/authz_ver，2h 有效）
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, description: 写操作幂等键；重复提交返回首次结果 }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string, description: 上一页 next_cursor；缺省为首页 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, default: 20, maximum: 100 }
+  schemas:
+    Envelope:
+      type: object
+      required: [code, message, request_id]
+      properties:
+        code: { type: integer, description: 0=成功；否则 MMNNNN 错误码 }
+        message: { type: string }
+        request_id: { type: string }
+        data: { nullable: true }
+    Error:
+      type: object
+      required: [code, message, request_id]
+      properties:
+        code: { type: integer }
+        message: { type: string }
+        request_id: { type: string }
+    Tokens:
+      type: object
+      required: [access_token, refresh_token, expires_in]
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        expires_in: { type: integer, description: access token 秒数 }
+    DictItem:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string }
+        name: { type: string }
+        parent_code: { type: string, nullable: true }
+        sort: { type: integer }
+  responses:
+    OkEmpty:
+      description: 成功（无业务数据）
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Envelope' }
+    BadRequest:
+      description: 参数错误
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: 未认证或令牌失效
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    UpstreamError:
+      description: 上游（微信等）调用失败
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

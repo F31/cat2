@@ -1,0 +1,12 @@
+{
+  "dimension": "cooperation_demand",
+  "version": 1,
+  "note": "合作需求选项（PRD 8.2）：找企业/找项目/找渠道/找合作/找机会。",
+  "items": [
+    { "code": "find_company", "name": "找企业", "sort": 1 },
+    { "code": "find_project", "name": "找项目", "sort": 2 },
+    { "code": "find_channel", "name": "找渠道", "sort": 3 },
+    { "code": "find_partner", "name": "找合作", "sort": 4 },
+    { "code": "find_chance", "name": "找机会", "sort": 5 }
+  ]
+}

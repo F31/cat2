@@ -1,0 +1,9 @@
+{
+  "name": "@catcube/taxonomy-kit",
+  "version": "0.1.0",
+  "description": "字典/标签前端工具：选项树构建、级联选择辅助（数据源为 dict 模块契约）",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "devDependencies": { "typescript": "^5.3.0" }
+}

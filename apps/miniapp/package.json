@@ -1,0 +1,29 @@
+{
+  "name": "@catcube/miniapp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "猫平方微信小程序（Taro + React + TS）",
+  "scripts": {
+    "dev:weapp": "taro build --type weapp --watch",
+    "build:weapp": "taro build --type weapp",
+    "lint": "eslint src --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "@catcube/api-client": "workspace:*",
+    "@catcube/domain-types": "workspace:*",
+    "@catcube/form-kit": "workspace:*",
+    "@catcube/policy-hints": "workspace:*",
+    "@catcube/taxonomy-kit": "workspace:*",
+    "@catcube/utils": "workspace:*",
+    "@tarojs/components": "^3.6.0",
+    "@tarojs/runtime": "^3.6.0",
+    "@tarojs/taro": "^3.6.0",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@tarojs/cli": "^3.6.0",
+    "@tarojs/webpack5-runner": "^3.6.0",
+    "@types/react": "^18.2.0",
+    "typescript": "^5.3.0"
+  }
+}

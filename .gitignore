@@ -1,0 +1,17 @@
+# Go
+*.exe
+*.test
+*.out
+vendor/
+
+# Node
+node_modules/
+dist/
+.turbo/
+
+# 本地环境
+.env
+*.local
+
+# OS
+.DS_Store

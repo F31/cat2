@@ -1,0 +1,9 @@
+{
+  "name": "@catcube/policy-hints",
+  "version": "0.1.0",
+  "description": "策略拒绝原因码 → 前端展示提示（Reason 码机器可读，文案前端映射）",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "devDependencies": { "typescript": "^5.3.0" }
+}

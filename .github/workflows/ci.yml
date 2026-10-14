@@ -1,0 +1,66 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: 边界检查（依赖阶梯/表前缀/infra 禁令/bff 只读）
+        run: make archcheck
+      - name: go vet
+        run: cd apps/server && go vet ./...
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: 后端测试
+        run: cd apps/server && go test ./...
+      - name: archcheck 自检
+        run: cd tools/archcheck && go test ./...
+
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+      - name: 契约生成与漂移检查（生成物必须与仓库一致）
+        run: |
+          make gen
+          git diff --exit-code -- apps/server/internal/gen packages/api-client packages/domain-types
+      - name: 生成物可编译
+        run: cd apps/server && go build ./...
+      - name: 前端类型检查
+        run: pnpm -r exec tsc -p tsconfig.json --noEmit
+
+  boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: archcheck（独立门禁，便于按检查名单独要求）
+        run: cd tools/archcheck && go run . -root ../../apps/server

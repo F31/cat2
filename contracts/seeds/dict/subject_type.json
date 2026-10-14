@@ -1,0 +1,13 @@
+{
+  "dimension": "subject_type",
+  "version": 1,
+  "note": "主体类型配置（PRD 6.4.2，只停用不删除；两种分类口径都可由配置表达，不写进代码）。",
+  "items": [
+    { "code": "company", "name": "企业", "sort": 1 },
+    { "code": "association", "name": "商协会", "sort": 2 },
+    { "code": "research", "name": "科研机构", "sort": 3 },
+    { "code": "gov_service", "name": "政府服务机构", "sort": 4 },
+    { "code": "business_person", "name": "商务个人", "sort": 5 },
+    { "code": "service_org", "name": "服务单位", "sort": 6 }
+  ]
+}

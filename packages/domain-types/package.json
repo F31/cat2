@@ -1,0 +1,9 @@
+{
+  "name": "@catcube/domain-types",
+  "version": "0.1.0",
+  "description": "领域类型：状态枚举、Reason 码、EntityRef、TagSet、Badge（由契约生成，勿手写扩展）",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "devDependencies": { "typescript": "^5.3.0" }
+}

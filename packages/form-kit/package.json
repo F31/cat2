@@ -1,0 +1,9 @@
+{
+  "name": "@catcube/form-kit",
+  "version": "0.1.0",
+  "description": "表单工具：按画像字段模板（dict.field_template）驱动渲染与校验",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "devDependencies": { "typescript": "^5.3.0" }
+}

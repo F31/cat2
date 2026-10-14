@@ -1,0 +1,19 @@
+# 模块 owner：contract/ 变更必须 owner 审批
+/apps/server/internal/modules/identity/   @owner-identity
+/apps/server/internal/modules/trust/      @owner-trust
+/apps/server/internal/modules/ai/         @owner-ai
+/apps/server/internal/modules/profile/    @owner-profile
+/apps/server/internal/modules/msg/        @owner-msg
+/apps/server/internal/modules/trade/      @owner-trade
+/apps/server/internal/modules/social/     @owner-social
+/apps/server/internal/modules/verify/     @owner-verify
+/apps/server/internal/modules/content/    @owner-content
+/apps/server/internal/modules/membership/ @owner-membership
+/apps/server/internal/modules/cube/       @owner-cube
+/apps/server/internal/modules/circle/     @owner-circle
+/apps/server/internal/modules/channel/    @owner-channel
+/apps/server/internal/modules/discovery/  @owner-discovery
+/apps/server/internal/modules/notice/     @owner-notice
+/apps/server/internal/shared/             @owner-shared
+/apps/server/internal/kernel/             @owner-kernel
+/contracts/                               @owner-arch

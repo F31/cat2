@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/trust.ModerationPassed.v1.json",
+  "title": "trust.ModerationPassed.v1",
+  "description": "审核通过（机检+人审闭环后的最终结论）。生产方模块订阅后把内容置为已发布。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "trust.ModerationPassed.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["subject_type", "subject_id"],
+      "additionalProperties": false,
+      "properties": {
+        "subject_type": { "type": "string", "description": "EntityRef.type，如 content/cooperation" },
+        "subject_id": { "type": "string", "description": "int64 字符串" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

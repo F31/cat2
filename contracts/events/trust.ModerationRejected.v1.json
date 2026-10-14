@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/trust.ModerationRejected.v1.json",
+  "title": "trust.ModerationRejected.v1",
+  "description": "审核拒绝。reason_code 是机器可读原因码（字典维护），文案由前端按码映射。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "trust.ModerationRejected.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["subject_type", "subject_id", "reason_code"],
+      "additionalProperties": false,
+      "properties": {
+        "subject_type": { "type": "string" },
+        "subject_id": { "type": "string" },
+        "reason_code": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

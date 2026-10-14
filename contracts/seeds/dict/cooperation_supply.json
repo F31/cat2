@@ -1,0 +1,12 @@
+{
+  "dimension": "cooperation_supply",
+  "version": 1,
+  "note": "合作供给选项（PRD 8.2），与需求侧镜像。",
+  "items": [
+    { "code": "offer_company", "name": "提供企业资源", "sort": 1 },
+    { "code": "offer_project", "name": "提供项目", "sort": 2 },
+    { "code": "offer_channel", "name": "提供渠道", "sort": 3 },
+    { "code": "offer_coop", "name": "提供合作", "sort": 4 },
+    { "code": "offer_chance", "name": "提供机会", "sort": 5 }
+  ]
+}

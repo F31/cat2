@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/identity.UserRegistered.v1.json",
+  "title": "identity.UserRegistered.v1",
+  "description": "用户注册完成。Payload 不得包含手机号、openid 等敏感字段。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "identity.UserRegistered.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string", "description": "站点维度预留，一期恒为 default" },
+    "payload": {
+      "type": "object",
+      "required": ["user_id"],
+      "additionalProperties": false,
+      "properties": {
+        "user_id": { "type": "string", "description": "int64 字符串" },
+        "subject_type": { "type": "string", "description": "注册时选择的主体类型编码，可空" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

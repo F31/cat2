@@ -1,0 +1,16 @@
+{
+  "dimension": "field",
+  "version": 1,
+  "note": "会议/活动领域选项（猫平方活动交流板块）。",
+  "items": [
+    { "code": "tech", "name": "科技创新", "sort": 1 },
+    { "code": "invest", "name": "投融资", "sort": 2 },
+    { "code": "industry_summit", "name": "行业峰会", "sort": 3 },
+    { "code": "policy", "name": "政策解读", "sort": 4 },
+    { "code": "startup", "name": "创业路演", "sort": 5 },
+    { "code": "supply_chain", "name": "供应链对接", "sort": 6 },
+    { "code": "talent", "name": "人才交流", "sort": 7 },
+    { "code": "intl", "name": "国际合作", "sort": 8 },
+    { "code": "other", "name": "其他", "sort": 99 }
+  ]
+}
