@@ -49,7 +49,7 @@
 - [x] 5.5 评分公式：需求供给互补 40+行业 25（同子行业>同行业）+区域 20+身份互补 15；权重 SettingsSchema 配置化；同分按会员等级→近期活跃
 - [x] 5.6 推荐理由规则模板生成（不依赖 LLM）：`GET /matches/{ref}/explain`
 - [x] 5.7 搜索：`GET /search?q=&type=` 六类按名称检索（`dsc_` 读模型 + pg_trgm，经 discovery 内 `Repo` 抽象）；标签筛选与关键词独立可用（外部引擎切换走 ports.Search 留后续）
-- [ ] 5.8 `/feed` 卡片流已实现（读预计算候选）；`POST /feed/refresh` 换一批、画像进度+未读数聚合、详情页聚合属 bff/miniapp 层，待该层落地
+- [x] 5.8 bff 聚合层 `internal/bff`：`GET /feed` 单次返回卡片流+画像进度+未读数；`POST /feed/refresh`（offset 换一批）；`GET /aggregate/detail`（名片+Badges+会员等级+关注状态；内容类带归属人名片）
 - 备注：新增内核事件投递 worker `kernel.outbox_relay`（Outbox→订阅）；修 identity 事件 user_id 未按契约输出字符串的 bug
 
 ## 6. trust（完整链路）
@@ -121,7 +121,7 @@
 - [x] 12.2 状态机全表：#1 verify、#2 content、#12 membership、#15 trade 合法/非法转移表驱动测试
 - [x] 12.3 契约测试：`TestEventContractsDeclared`（27 个生产事件均有 Schema 且 topic 一致）+ `TestOpenAPIDeclaresP2Paths`（主链路路径齐备）
 - [x] 12.4 端到端闭环：`TestIntegrationClosedLoop`（注册→补画像→feed 命中→详情→开通会员→联系Ta 建会话→发消息→未读=1）
-- [ ] 12.5 首屏性能：feed 单接口读预计算候选已具备，首屏 ≤3 秒需前端（miniapp）阶段实测
+- [ ] 12.5 首屏性能：`GET /feed` 单次聚合 + 预计算候选已就绪；首屏 ≤3 秒需前端（miniapp）阶段端到端实测
 
 ## 13. 退出标准
 

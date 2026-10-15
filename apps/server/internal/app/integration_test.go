@@ -1114,6 +1114,70 @@ func TestIntegrationAdminFlow(t *testing.T) {
 	}
 }
 
+// BFF 聚合（5.8）：首屏聚合（卡片+画像进度+未读）与详情聚合。
+func TestIntegrationBFFAggregate(t *testing.T) {
+	h := newTestApp(t)
+	_, aTok := loginUser(t, h)
+	bID, bTok := loginUser(t, h)
+	setCard(t, h, aTok, "张三", "310000", []string{"A01"}, []string{"N1"}, []string{"O1"})
+	setCard(t, h, bTok, "李四", "310000", []string{"A01"}, []string{"O1"}, []string{"N1"})
+	relayAll(t, h)
+	refreshCandidates(t, h)
+
+	// 首屏聚合：items + profile_progress + unread
+	_, env := h.do(http.MethodGet, "/api/mp/v1/feed", aTok, nil)
+	var feed struct {
+		Items           []json.RawMessage `json:"items"`
+		ProfileProgress struct {
+			Tier int16 `json:"tier"`
+		} `json:"profile_progress"`
+		Unread struct {
+			Total int `json:"total"`
+		} `json:"unread"`
+	}
+	if err := json.Unmarshal(env.Data, &feed); err != nil {
+		t.Fatal(err)
+	}
+	if len(feed.Items) == 0 || feed.ProfileProgress.Tier == 0 || feed.Unread.Total != 0 {
+		t.Fatalf("首屏聚合不符: %+v", feed)
+	}
+
+	// feed 分页不报错（换一批）
+	if status, env := h.do(http.MethodPost, "/api/mp/v1/feed/refresh?offset=1", aTok, nil); status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("换一批应成功: %d %+v", status, env)
+	}
+
+	// 详情聚合（人）
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/aggregate/detail?ref=user:%d", bID), aTok, nil)
+	var detail struct {
+		Type string `json:"type"`
+		Card *struct {
+			Name string `json:"name"`
+		} `json:"card"`
+		Following bool `json:"following"`
+	}
+	_ = json.Unmarshal(env.Data, &detail)
+	if detail.Type != "user" || detail.Card == nil || detail.Card.Name != "李四" {
+		t.Fatalf("详情聚合不符: %+v", detail)
+	}
+
+	// 发消息后 B 首屏未读=1
+	makeMember(t, h, aTok)
+	_, env = h.do(http.MethodPost, "/api/mp/v1/sessions", aTok, map[string]any{"target_ref": fmt.Sprintf("user:%d", bID)})
+	var ensured struct {
+		Session struct {
+			ID int64 `json:"id,string"`
+		} `json:"session"`
+	}
+	_ = json.Unmarshal(env.Data, &ensured)
+	_, _ = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/sessions/%d/messages", ensured.Session.ID), aTok, map[string]any{"content": "在吗"})
+	_, env = h.do(http.MethodGet, "/api/mp/v1/feed", bTok, nil)
+	_ = json.Unmarshal(env.Data, &feed)
+	if feed.Unread.Total != 1 {
+		t.Fatalf("B 首屏未读应 1: %+v", feed.Unread)
+	}
+}
+
 // 认证锁定字段不可自改（verify 通过后写 locked_fields）。
 func TestIntegrationProfileLocked(t *testing.T) {
 	h := newTestApp(t)

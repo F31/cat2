@@ -66,7 +66,7 @@ type Repo interface {
 	AllActiveDocs(ctx context.Context, limit int) ([]infra.Doc, error)
 	AllProfiles(ctx context.Context, limit int) ([]infra.Doc, error)
 	ReplaceCandidates(ctx context.Context, userID int64, list []domain.Ranked) error
-	ListCandidates(ctx context.Context, userID int64, limit int) ([]infra.Candidate, error)
+	ListCandidates(ctx context.Context, userID int64, limit, offset int) ([]infra.Candidate, error)
 	Search(ctx context.Context, f infra.Filter) ([]infra.Doc, error)
 	Reset(ctx context.Context) error
 	DeleteUser(ctx context.Context, userID int64) error
@@ -303,12 +303,15 @@ func (s *Service) RefreshAll(ctx context.Context) (int, error) {
 
 // ---- 只读接口 ----
 
-// Feed 匹配卡片流。
-func (s *Service) Feed(ctx context.Context, userID int64, limit int) ([]contract.Card, error) {
+// Feed 匹配卡片流（offset 用于换一批）。
+func (s *Service) Feed(ctx context.Context, userID int64, limit, offset int) ([]contract.Card, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
-	rows, err := s.repo.ListCandidates(ctx, userID, limit)
+	if offset < 0 {
+		offset = 0
+	}
+	rows, err := s.repo.ListCandidates(ctx, userID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +349,7 @@ func (s *Service) Search(ctx context.Context, q contract.SearchQuery) ([]contrac
 
 // Explain 候选匹配解释（先读预计算，缺失时按当前画像即时计算）。
 func (s *Service) Explain(ctx context.Context, userID int64, ref string) (contract.Explain, error) {
-	rows, err := s.repo.ListCandidates(ctx, userID, 200)
+	rows, err := s.repo.ListCandidates(ctx, userID, 200, 0)
 	if err != nil {
 		return contract.Explain{}, err
 	}

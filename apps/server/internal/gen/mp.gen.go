@@ -299,6 +299,13 @@ func (e SearchParamsType) Valid() bool {
 	}
 }
 
+// Badge defines model for Badge.
+type Badge struct {
+	Code  string `json:"code"`
+	Label string `json:"label"`
+	Level int    `json:"level"`
+}
+
 // Card defines model for Card.
 type Card struct {
 	AdvantageField *string `json:"advantage_field,omitempty"`
@@ -454,6 +461,18 @@ type CreateOrderInput struct {
 	Subject       *string                 `json:"subject,omitempty"`
 }
 
+// DetailData defines model for DetailData.
+type DetailData struct {
+	Badges    *[]Badge          `json:"badges,omitempty"`
+	Card      *Card             `json:"card,omitempty"`
+	Content   *ContentItem      `json:"content,omitempty"`
+	Following bool              `json:"following"`
+	Member    *MembershipMember `json:"member,omitempty"`
+	Owner     *Card             `json:"owner,omitempty"`
+	Ref       string            `json:"ref"`
+	Type      string            `json:"type"`
+}
+
 // DictItem defines model for DictItem.
 type DictItem struct {
 	Code       string  `json:"code"`
@@ -509,6 +528,13 @@ type FavoriteItem struct {
 
 // FavoriteItemKind defines model for FavoriteItem.Kind.
 type FavoriteItemKind string
+
+// FeedData defines model for FeedData.
+type FeedData struct {
+	Items           []DiscoveryCard `json:"items"`
+	ProfileProgress Completion      `json:"profile_progress"`
+	Unread          UnreadData      `json:"unread"`
+}
 
 // FollowItem defines model for FollowItem.
 type FollowItem struct {
@@ -695,6 +721,16 @@ type Tokens struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+// UnreadData defines model for UnreadData.
+type UnreadData struct {
+	// Follow 关注未读
+	Follow int `json:"follow"`
+
+	// Msg 消息未读
+	Msg   int `json:"msg"`
+	Total int `json:"total"`
+}
+
 // UserBrief defines model for UserBrief.
 type UserBrief struct {
 	AvatarFileId *string `json:"avatar_file_id,omitempty"`
@@ -733,6 +769,11 @@ type Unauthorized = Error
 
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Error
+
+// AggregateDetailParams defines parameters for AggregateDetail.
+type AggregateDetailParams struct {
+	Ref string `form:"ref" json:"ref"`
+}
 
 // PhoneLoginJSONBody defines parameters for PhoneLogin.
 type PhoneLoginJSONBody struct {
@@ -834,7 +875,14 @@ type FavoriteTargetParams struct {
 
 // FeedParams defines parameters for Feed.
 type FeedParams struct {
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// FeedRefreshParams defines parameters for FeedRefresh.
+type FeedRefreshParams struct {
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // FollowTargetParams defines parameters for FollowTarget.
@@ -986,6 +1034,9 @@ type MarkSessionReadJSONRequestBody MarkSessionReadJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// AggregateDetail 详情页聚合（名片+Badges+会员等级+关注状态；内容类含归属人名片）
+	// (GET /aggregate/detail)
+	AggregateDetail(w http.ResponseWriter, r *http.Request, params AggregateDetailParams)
 	// PhoneLogin 手机号 + 短信验证码登录（备选通道，注册/登录一体化）
 	// (POST /auth/phone)
 	PhoneLogin(w http.ResponseWriter, r *http.Request, params PhoneLoginParams)
@@ -1046,9 +1097,12 @@ type ServerInterface interface {
 	// UnfavoriteTarget 取消收藏
 	// (DELETE /favorites/{ref})
 	UnfavoriteTarget(w http.ResponseWriter, r *http.Request, ref string)
-	// Feed 匹配卡片流（读预计算候选；首页单次聚合，首屏 ≤3 秒）
+	// Feed 首屏单次聚合（卡片流 + 画像进度 + 未读数；读预计算候选，首屏 ≤3 秒）
 	// (GET /feed)
 	Feed(w http.ResponseWriter, r *http.Request, params FeedParams)
+	// FeedRefresh 换一批（同一聚合，客户端传 offset 下翻）
+	// (POST /feed/refresh)
+	FeedRefresh(w http.ResponseWriter, r *http.Request, params FeedRefreshParams)
 	// GetFollowUnread 关注动态未读数
 	// (GET /follow-unread)
 	GetFollowUnread(w http.ResponseWriter, r *http.Request)
@@ -1143,6 +1197,39 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// AggregateDetail operation middleware
+func (siw *ServerInterfaceWrapper) AggregateDetail(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AggregateDetailParams
+
+	// ------------- Required query parameter "ref" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "ref", r.URL.Query(), &params.Ref, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "ref"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ref", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AggregateDetail(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // PhoneLogin operation middleware
 func (siw *ServerInterfaceWrapper) PhoneLogin(w http.ResponseWriter, r *http.Request) {
@@ -1820,8 +1907,67 @@ func (siw *ServerInterfaceWrapper) Feed(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Feed(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// FeedRefresh operation middleware
+func (siw *ServerInterfaceWrapper) FeedRefresh(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params FeedRefreshParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.FeedRefresh(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2805,6 +2951,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/pay/notify", wrapper.PayNotify)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/search", wrapper.Search)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/feed", wrapper.Feed)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/feed/refresh", wrapper.FeedRefresh)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/aggregate/detail", wrapper.AggregateDetail)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/matches", wrapper.ListMatches)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/matches/{ref}/explain", wrapper.ExplainMatch)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/sessions", wrapper.ListSessions)

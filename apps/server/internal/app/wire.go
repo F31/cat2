@@ -17,6 +17,7 @@ import (
 	"catcube/internal/adapters/pg"
 	"catcube/internal/adapters/realname"
 	"catcube/internal/adapters/wechat"
+	"catcube/internal/bff"
 	"catcube/internal/kernel/config"
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
@@ -208,6 +209,13 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 			return err
 		},
 	}})
+
+	// BFF 只读聚合层（组合各模块 contract）：首屏聚合与详情聚合
+	bff.New(bff.Deps{
+		Identity: identityMod.Facade(), Discovery: discoveryMod.Facade(), Profile: profileMod.Facade(),
+		Social: socialMod.Facade(), Msg: msgMod.Facade(), Verify: verifyMod.Facade(),
+		Membership: membershipMod.Facade(), Content: contentMod.Facade(),
+	}).Register(a.Mux)
 
 	// 跨模块扩展点装配（装配根唯一 import 所有模块）：审核对象提供者
 	trustMod.RegisterSubjectProvider(profileMod)

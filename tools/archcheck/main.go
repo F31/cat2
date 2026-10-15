@@ -224,7 +224,9 @@ func checkBFF(bffRoot string) []violation {
 		}
 		for _, imp := range f.Imports {
 			p := strings.Trim(imp.Path.Value, `"`)
-			if owner := importOwner(p); owner != "" && !strings.Contains(p, "/contract") {
+			// 允许模块 contract 与 shared 轻量包（entityref 等）；不得依赖模块根包
+			if owner := importOwner(p); owner != "" && !strings.Contains(p, "/contract") &&
+				!strings.HasPrefix(p, "catcube/internal/shared/") {
 				vs = append(vs, violation{path, "bff 只读", "bff 只能依赖模块 contract: " + p})
 			}
 		}

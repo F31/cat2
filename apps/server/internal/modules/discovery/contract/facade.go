@@ -42,8 +42,8 @@ type Explain struct {
 
 // Facade discovery 对外接口（只读）。
 type Facade interface {
-	// Feed 匹配卡片流（读预计算候选）。
-	Feed(ctx context.Context, userID int64, limit int) ([]Card, error)
+	// Feed 匹配卡片流（读预计算候选；offset 用于「换一批」）。
+	Feed(ctx context.Context, userID int64, limit, offset int) ([]Card, error)
 	// Search 六类内容检索。
 	Search(ctx context.Context, q SearchQuery) ([]Card, error)
 	// Explain 某候选的匹配解释（规则模板生成）。

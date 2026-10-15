@@ -212,8 +212,8 @@ func (s *Store) ReplaceCandidates(ctx context.Context, userID int64, list []doma
 	})
 }
 
-// ListCandidates 读预计算候选（首页只读此表）。
-func (s *Store) ListCandidates(ctx context.Context, userID int64, limit int) ([]Candidate, error) {
+// ListCandidates 读预计算候选（首页只读此表；offset 用于换一批）。
+func (s *Store) ListCandidates(ctx context.Context, userID int64, limit, offset int) ([]Candidate, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT c.candidate_ref, c.score, c.reason, c.rank,
 		       d.doc_type, d.title, COALESCE(d.cover,''), COALESCE(d.region_code,''), d.member_level, d.verified
@@ -221,7 +221,7 @@ func (s *Store) ListCandidates(ctx context.Context, userID int64, limit int) ([]
 		  JOIN dsc_search_doc d ON d.doc_ref=c.candidate_ref
 		 WHERE c.user_id=$1 AND d.active=true
 		 ORDER BY c.rank ASC, c.score DESC
-		 LIMIT $2`, userID, limit)
+		 LIMIT $2 OFFSET $3`, userID, limit, offset)
 	if err != nil {
 		return nil, err
 	}

@@ -840,17 +840,20 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
   /feed:
     get:
-      tags: [discovery]
-      summary: 匹配卡片流（读预计算候选；首页单次聚合，首屏 ≤3 秒）
+      tags: [bff]
+      summary: 首屏单次聚合（卡片流 + 画像进度 + 未读数；读预计算候选，首屏 ≤3 秒）
       operationId: feed
       security: [{ bearerAuth: [] }]
       parameters:
         - name: limit
           in: query
           schema: { type: integer, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0, description: 换一批偏移 }
       responses:
         '200':
-          description: 匹配卡片
+          description: 聚合结果
           content:
             application/json:
               schema:
@@ -858,12 +861,56 @@ paths:
                   - $ref: '#/components/schemas/Envelope'
                   - type: object
                     properties:
-                      data:
-                        type: object
-                        properties:
-                          items:
-                            type: array
-                            items: { $ref: '#/components/schemas/DiscoveryCard' }
+                      data: { $ref: '#/components/schemas/FeedData' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /feed/refresh:
+    post:
+      tags: [bff]
+      summary: 换一批（同一聚合，客户端传 offset 下翻）
+      operationId: feedRefresh
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: 聚合结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/FeedData' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /aggregate/detail:
+    get:
+      tags: [bff]
+      summary: 详情页聚合（名片+Badges+会员等级+关注状态；内容类含归属人名片）
+      operationId: aggregateDetail
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: ref
+          in: query
+          required: true
+          schema: { type: string, description: 'EntityRef，如 user:123 / content.project:456' }
+      responses:
+        '200':
+          description: 聚合详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/DetailData' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
   /matches:
     get:
@@ -1616,6 +1663,36 @@ components:
         reason:
           type: array
           items: { $ref: '#/components/schemas/MatchReason' }
+    UnreadData:
+      type: object
+      required: [follow, msg, total]
+      properties:
+        follow: { type: integer, description: 关注未读 }
+        msg: { type: integer, description: 消息未读 }
+        total: { type: integer }
+    FeedData:
+      type: object
+      required: [items, profile_progress, unread]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/DiscoveryCard' }
+        profile_progress: { $ref: '#/components/schemas/Completion' }
+        unread: { $ref: '#/components/schemas/UnreadData' }
+    DetailData:
+      type: object
+      required: [ref, type, following]
+      properties:
+        ref: { type: string }
+        type: { type: string }
+        card: { $ref: '#/components/schemas/Card' }
+        content: { $ref: '#/components/schemas/ContentItem' }
+        owner: { $ref: '#/components/schemas/Card' }
+        badges:
+          type: array
+          items: { $ref: '#/components/schemas/Badge' }
+        member: { $ref: '#/components/schemas/MembershipMember' }
+        following: { type: boolean }
   responses:
     OkEmpty:
       description: 成功（无业务数据）

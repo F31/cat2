@@ -524,8 +524,42 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 匹配卡片流（读预计算候选；首页单次聚合，首屏 ≤3 秒） */
+        /** 首屏单次聚合（卡片流 + 画像进度 + 未读数；读预计算候选，首屏 ≤3 秒） */
         get: operations["feed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/feed/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 换一批（同一聚合，客户端传 offset 下翻） */
+        post: operations["feedRefresh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/aggregate/detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 详情页聚合（名片+Badges+会员等级+关注状态；内容类含归属人名片） */
+        get: operations["aggregateDetail"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1069,6 +1103,28 @@ export interface components {
             member_level?: number;
             verified?: boolean;
             reason?: components["schemas"]["MatchReason"][];
+        };
+        UnreadData: {
+            /** @description 关注未读 */
+            follow: number;
+            /** @description 消息未读 */
+            msg: number;
+            total: number;
+        };
+        FeedData: {
+            items: components["schemas"]["DiscoveryCard"][];
+            profile_progress: components["schemas"]["Completion"];
+            unread: components["schemas"]["UnreadData"];
+        };
+        DetailData: {
+            ref: string;
+            type: string;
+            card?: components["schemas"]["Card"];
+            content?: components["schemas"]["ContentItem"];
+            owner?: components["schemas"]["Card"];
+            badges?: components["schemas"]["Badge"][];
+            member?: components["schemas"]["MembershipMember"];
+            following: boolean;
         };
     };
     responses: {
@@ -2068,6 +2124,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -2075,19 +2132,69 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 匹配卡片 */
+            /** @description 聚合结果 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope"] & {
-                        data?: {
-                            items?: components["schemas"]["DiscoveryCard"][];
-                        };
+                        data?: components["schemas"]["FeedData"];
                     };
                 };
             };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    feedRefresh: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 聚合结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["FeedData"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    aggregateDetail: {
+        parameters: {
+            query: {
+                ref: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 聚合详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["DetailData"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
         };
     };

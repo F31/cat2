@@ -50,7 +50,6 @@ func (m *Module) Register(r *module.Registry) error {
 	})
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/search", Handler: m.handleSearch},
-		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/feed", Handler: m.auth(m.handleFeed)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/matches", Handler: m.auth(m.handleFeed)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/matches/{ref}/explain", Handler: m.auth(m.handleExplain)},
 	)
@@ -68,8 +67,8 @@ func (m *Module) Migrations() string { return migrations }
 // Facade 对外契约（只读）。
 func (m *Module) Facade() contract.Facade { return m }
 
-func (m *Module) Feed(ctx context.Context, userID int64, limit int) ([]contract.Card, error) {
-	return m.svc.Feed(ctx, userID, limit)
+func (m *Module) Feed(ctx context.Context, userID int64, limit, offset int) ([]contract.Card, error) {
+	return m.svc.Feed(ctx, userID, limit, offset)
 }
 func (m *Module) Search(ctx context.Context, q contract.SearchQuery) ([]contract.Card, error) {
 	return m.svc.Search(ctx, q)
@@ -114,7 +113,8 @@ func (m *Module) handleSearch(w http.ResponseWriter, req *http.Request) {
 
 func (m *Module) handleFeed(w http.ResponseWriter, req *http.Request) {
 	limit, _ := strconv.Atoi(req.URL.Query().Get("limit"))
-	res, err := m.svc.Feed(req.Context(), userIDFrom(req.Context()), limit)
+	offset, _ := strconv.Atoi(req.URL.Query().Get("offset"))
+	res, err := m.svc.Feed(req.Context(), userIDFrom(req.Context()), limit, offset)
 	if err != nil {
 		writeDiscErr(w, err)
 		return
