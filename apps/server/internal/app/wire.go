@@ -128,7 +128,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		}
 		return uid, nil
 	}
-	trustMod := trust.New(trust.Deps{Pool: pool, Moderation: nil, Bus: bus, Auth: authFunc})
+	trustMod := trust.New(trust.Deps{Pool: pool, Moderation: nil, Bus: bus, Auth: authFunc, Audit: auditRec})
 	dictMod := dict.New(pool)
 	mediaMod := media.New(pool, storage)
 	entityReg := entityref.NewRegistry()
@@ -143,6 +143,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	contentMod := content.New(content.Deps{
 		Pool: pool, Bus: bus, Dict: dictMod.Facade(), Trust: trustMod.Facade(), Media: mediaMod.Facade(),
 		Identity: identityMod.Facade(), Policy: policyEngine, Encryptor: encryptor, EntityRegistry: entityReg,
+		Audit: auditRec,
 	})
 	socialMod := social.New(social.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Resolver: entityReg,
@@ -156,7 +157,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Settings: settingsReg, Outbox: outbox,
 	})
 	tradeMod := trade.New(trade.Deps{
-		Pool: pool, Bus: bus, Pay: pay.NewDevClient(), Identity: identityMod.Facade(),
+		Pool: pool, Bus: bus, Pay: pay.NewDevClient(), Identity: identityMod.Facade(), Audit: auditRec,
 	})
 	membershipMod := membership.New(membership.Deps{
 		Pool: pool, Bus: bus, Trade: tradeMod.Facade(), Verify: verifyMod.Facade(),

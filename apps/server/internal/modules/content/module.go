@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
@@ -39,6 +40,7 @@ type Deps struct {
 	Policy         *policy.Engine
 	Encryptor      *sensitive.Encryptor
 	EntityRegistry *entityref.Registry
+	Audit          *audit.Recorder
 }
 
 // Module content 模块。
@@ -239,7 +241,24 @@ func (m *Module) handleAdminTakedown(w http.ResponseWriter, req *http.Request) {
 		writeContentErr(w, err)
 		return
 	}
+	m.auditAdmin(req, "content:content:takedown", fmt.Sprintf(`{"type":"content.%s","id":"%d"}`, item.Kind, item.ID), body.Reason)
 	writeData(w, item)
+}
+
+// auditAdmin 后台操作审计（下架等）。
+func (m *Module) auditAdmin(req *http.Request, action, targetRef, reason string) {
+	if m.deps.Audit == nil {
+		return
+	}
+	ip := req.RemoteAddr
+	if i := strings.LastIndex(ip, ":"); i > 0 {
+		ip = ip[:i]
+	}
+	_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+		ActorID: userIDFrom(req.Context()), ActorType: audit.ActorAdmin, Channel: "admin",
+		Action: action, TargetRef: targetRef, Detail: map[string]any{"reason": reason},
+		Result: audit.ResultOK, IP: ip, UserAgent: req.UserAgent(),
+	})
 }
 
 func (m *Module) handleGet(w http.ResponseWriter, req *http.Request) {

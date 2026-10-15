@@ -6,12 +6,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
@@ -29,6 +31,7 @@ type Deps struct {
 	Bus      *eventbus.Bus
 	Pay      ports.Pay
 	Identity idcontract.Facade
+	Audit    *audit.Recorder
 }
 
 // Module trade 模块。
@@ -180,7 +183,25 @@ func (m *Module) handleRefund(w http.ResponseWriter, req *http.Request) {
 		writeTradeErr(w, err)
 		return
 	}
+	m.auditAdmin(req, "trade:refund:execute", fmt.Sprintf(`{"type":"order","id":"%d"}`, body.OrderID),
+		map[string]any{"reason": body.Reason, "amount_fen": body.AmountFen, "refund_id": strconv.FormatInt(r.ID, 10)})
 	writeData(w, r)
+}
+
+// auditAdmin 后台操作审计（退款/履约补偿）。
+func (m *Module) auditAdmin(req *http.Request, action, targetRef string, detail any) {
+	if m.deps.Audit == nil {
+		return
+	}
+	ip := req.RemoteAddr
+	if i := strings.LastIndex(ip, ":"); i > 0 {
+		ip = ip[:i]
+	}
+	_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+		ActorID: userIDFrom(req.Context()), ActorType: audit.ActorAdmin, Channel: "admin",
+		Action: action, TargetRef: targetRef, Detail: detail,
+		Result: audit.ResultOK, IP: ip, UserAgent: req.UserAgent(),
+	})
 }
 
 func (m *Module) handleRetryFulfill(w http.ResponseWriter, req *http.Request) {
@@ -194,6 +215,8 @@ func (m *Module) handleRetryFulfill(w http.ResponseWriter, req *http.Request) {
 		writeTradeErr(w, err)
 		return
 	}
+	m.auditAdmin(req, "trade:fulfillment:retry", fmt.Sprintf(`{"type":"order","id":"%d"}`, orderID),
+		map[string]any{"reset": ok})
 	writeData(w, map[string]any{"reset": ok})
 }
 

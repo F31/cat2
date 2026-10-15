@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
@@ -29,6 +30,7 @@ type Deps struct {
 	Moderation ports.Moderation
 	Bus        *eventbus.Bus
 	Auth       AuthFunc
+	Audit      *audit.Recorder
 }
 
 // Module trust 模块。
@@ -527,7 +529,26 @@ func (m *Module) handleResolve(w http.ResponseWriter, req *http.Request) {
 		writeErr(w, codeNotFound, "审核任务不存在或已处理")
 		return
 	}
+	m.auditAdmin(req, v)
 	writeData(w, v)
+}
+
+// auditAdmin 复核结论审计。
+func (m *Module) auditAdmin(req *http.Request, v contract.Verdict) {
+	if m.deps.Audit == nil {
+		return
+	}
+	ip := req.RemoteAddr
+	if i := strings.LastIndex(ip, ":"); i > 0 {
+		ip = ip[:i]
+	}
+	_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+		ActorID: userIDFrom(req.Context()), ActorType: audit.ActorAdmin, Channel: "admin",
+		Action:    "trust:review:resolve",
+		TargetRef: fmt.Sprintf(`{"type":"%s","id":"%d"}`, v.SubjectType, v.SubjectID),
+		Detail:    map[string]any{"points": v.Points, "restricted": v.Restricted},
+		Result:    audit.ResultOK, IP: ip, UserAgent: req.UserAgent(),
+	})
 }
 
 func (m *Module) handleMetrics(w http.ResponseWriter, req *http.Request) {

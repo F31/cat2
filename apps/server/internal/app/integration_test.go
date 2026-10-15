@@ -526,6 +526,73 @@ func TestIntegrationTrustReportFlow(t *testing.T) {
 			t.Fatalf("应发布事件 %s", topic)
 		}
 	}
+
+	// 复核结论已落审计
+	var auditCnt int
+	_ = h.app.Pool.QueryRow(context.Background(),
+		`SELECT count(1) FROM sys_audit WHERE action='trust:review:resolve'`).Scan(&auditCnt)
+	if auditCnt == 0 {
+		t.Fatal("复核结论应落审计")
+	}
+}
+
+// 后台下架与退款落审计。
+func TestIntegrationAdminOpsAudited(t *testing.T) {
+	h := newTestApp(t)
+	_, adminTok := loginUser(t, h)
+
+	// 下架已展示内容
+	_, ownerTok := loginUser(t, h)
+	setCard(t, h, ownerTok, "发布者", "310000", []string{"A01"}, []string{"N1"}, []string{"O1"})
+	_, _ = h.do(http.MethodPost, "/api/mp/v1/certs", ownerTok, map[string]any{
+		"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+	})
+	_, env := h.do(http.MethodPost, "/api/mp/v1/contents", ownerTok, map[string]any{
+		"kind": "project", "title": "待下架项目",
+		"tagset": map[string]any{"region": "310000", "industry": []string{"A01"}},
+		"fields": map[string]any{"amount_wan": 100, "intro": "简介", "core_strength": "优势", "contact_phone": "13800000000"},
+	})
+	var item struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &item)
+	_, _ = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/contents/%d/submit", item.ID), ownerTok, nil)
+	if status, env := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/contents/%d/takedown", item.ID), adminTok,
+		map[string]any{"reason": "违规"}); status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("下架失败: %d %+v", status, env)
+	}
+	var cnt int
+	_ = h.app.Pool.QueryRow(context.Background(),
+		`SELECT count(1) FROM sys_audit WHERE action='content:content:takedown'`).Scan(&cnt)
+	if cnt == 0 {
+		t.Fatal("下架应落审计")
+	}
+
+	// 退款落审计：开通会员产生已支付订单
+	_, buyerTok := loginUser(t, h)
+	_, env = h.do(http.MethodPost, "/api/mp/v1/membership/orders", buyerTok, map[string]any{"level": 1, "years": 1})
+	var opened struct {
+		OrderID int64 `json:"order_id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &opened)
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/orders/%d/pay", opened.OrderID), buyerTok, nil)
+	var pp struct {
+		OutTradeNo string `json:"out_trade_no"`
+	}
+	_ = json.Unmarshal(env.Data, &pp)
+	_, _ = h.do(http.MethodPost, "/api/mp/v1/pay/notify", "", map[string]any{
+		"out_trade_no": pp.OutTradeNo, "amount_fen": 9900, "sign": "ok",
+	})
+	if status, env := h.do(http.MethodPost, "/api/admin/v1/refunds", adminTok, map[string]any{
+		"order_id": fmt.Sprintf("%d", opened.OrderID), "amount_fen": 9900, "reason": "用户体验",
+	}); status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("退款失败: %d %+v", status, env)
+	}
+	_ = h.app.Pool.QueryRow(context.Background(),
+		`SELECT count(1) FROM sys_audit WHERE action='trade:refund:execute'`).Scan(&cnt)
+	if cnt == 0 {
+		t.Fatal("退款应落审计")
+	}
 }
 
 // 关注=订阅：B 关注 A → A 发布 → 投递后 B 未读+1 且产生通知事件；收藏六类分 Tab。
