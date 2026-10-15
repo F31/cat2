@@ -13,6 +13,7 @@ export default defineAppConfig({
     { root: 'pages/member', pages: ['open'] },
     { root: 'pages/search', pages: ['index'] },
     { root: 'pages/card', pages: ['edit'] },
+    { root: 'pages/msg', pages: ['chat'] },
   ],
   window: {
     backgroundTextStyle: 'light',

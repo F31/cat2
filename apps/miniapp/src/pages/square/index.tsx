@@ -6,6 +6,7 @@ import { api } from '../../services/request'
 import { ensureLogin } from '../../services/auth'
 import ContentCard from '../../components/ContentCard'
 import ProfilePromptBar from '../../components/ProfilePromptBar'
+import StateView from '../../components/StateView'
 
 const PAGE = 20
 
@@ -14,6 +15,7 @@ export default function Square() {
   const [feed, setFeed] = useState<FeedData | null>(null)
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(false)
 
   const load = async (nextOffset: number, append: boolean) => {
     setLoading(true)
@@ -24,7 +26,9 @@ export default function Square() {
         append && prev ? { ...data, items: [...prev.items, ...data.items] } : data,
       )
       setOffset(nextOffset)
+      setError(false)
     } catch {
+      if (!append) setError(true)
       Taro.showToast({ title: '加载失败，请重试', icon: 'none' })
     } finally {
       setLoading(false)
@@ -53,11 +57,13 @@ export default function Square() {
         onTap={() => Taro.switchTab({ url: '/pages/mine/index' })}
       />
 
-      {items.length === 0 && !loading ? (
-        <View className="empty">
-          <Text className="empty__text">暂无匹配，完善资料后为你推荐</Text>
-        </View>
-      ) : (
+      <StateView
+        loading={loading && items.length === 0}
+        error={error}
+        empty={!error && items.length === 0}
+        emptyText="暂无匹配，完善资料后为你推荐"
+        onRetry={() => void load(0, false)}
+      >
         <View className="card-list">
           {items.map((c) => (
             <ContentCard
@@ -69,7 +75,7 @@ export default function Square() {
             />
           ))}
         </View>
-      )}
+      </StateView>
 
       <Button className="btn-more" loading={loading} onClick={() => void load(offset + PAGE, true)}>
         换一批

@@ -3,6 +3,7 @@ import Taro, { useDidShow } from '@tarojs/taro'
 import { View, Text, Button } from '@tarojs/components'
 import { api } from '../../services/request'
 import { ensureLogin } from '../../services/auth'
+import StateView from '../../components/StateView'
 
 interface MineItem {
   id: string
@@ -17,14 +18,20 @@ const STATUS_LABEL: Record<number, string> = { 0: '审核中', 1: '展示中', 2
 export default function MyContents() {
   const [kind, setKind] = useState('')
   const [items, setItems] = useState<MineItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
   const load = async (k: string) => {
+    setLoading(true)
     try {
       await ensureLogin()
       const res = await api.myContents(k || undefined)
       setItems((res.items ?? []) as unknown as MineItem[])
+      setError(false)
     } catch {
-      Taro.showToast({ title: '加载失败', icon: 'none' })
+      setError(true)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -57,11 +64,13 @@ export default function MyContents() {
         ))}
       </View>
 
-      {items.length === 0 ? (
-        <View className="empty">
-          <Text className="empty__text">还没有发布内容</Text>
-        </View>
-      ) : (
+      <StateView
+        loading={loading && items.length === 0}
+        error={error}
+        empty={!error && items.length === 0}
+        emptyText="还没有发布内容"
+        onRetry={() => void load(kind)}
+      >
         <View className="menu">
           {items.map((it) => (
             <View
@@ -76,7 +85,7 @@ export default function MyContents() {
             </View>
           ))}
         </View>
-      )}
+      </StateView>
 
       <Button className="btn-primary" onClick={() => Taro.navigateTo({ url: `/pages/content/publish${kind ? `?kind=${kind}` : ''}` })}>
         发布新内容

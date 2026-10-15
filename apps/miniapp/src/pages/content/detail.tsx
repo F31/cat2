@@ -4,19 +4,26 @@ import { View, Text, Button } from '@tarojs/components'
 import { ApiError, type DetailData } from '@catcube/api-client'
 import { api } from '../../services/request'
 import { ensureLogin } from '../../services/auth'
+import StateView from '../../components/StateView'
 
-// 六类详情页共用壳：名片/内容 + Badges + 会员等级 + 关注状态；底部「关注Ta / 联系Ta（会员）」。
+// 六类详情页共用壳：名片/内容 + Badges + 简介 + 关注状态；底部「关注Ta / 联系Ta（会员）」。
 export default function ContentDetail() {
   const router = useRouter()
   const ref = decodeURIComponent(router.params.ref ?? '')
   const [detail, setDetail] = useState<DetailData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
   const load = async () => {
+    setLoading(true)
+    setError(false)
     try {
       const data = await api.getDetail(ref)
       setDetail(data)
     } catch {
-      Taro.showToast({ title: '详情加载失败', icon: 'none' })
+      setError(true)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -38,10 +45,14 @@ export default function ContentDetail() {
   }
 
   const contact = async () => {
+    if (!detail) return
     try {
       await ensureLogin()
       const res = await api.ensureSession(ref)
-      Taro.showToast({ title: `会话 ${res.session.id} 已就绪`, icon: 'none' })
+      const title = detail.card?.name ?? String(detail.content?.title ?? '会话')
+      Taro.navigateTo({
+        url: `/pages/msg/chat?session=${encodeURIComponent(res.session.id)}&peer=${encodeURIComponent(title)}`,
+      })
     } catch (e) {
       if (e instanceof ApiError && e.code === 70004) {
         Taro.navigateTo({ url: '/pages/member/open' })
@@ -54,9 +65,7 @@ export default function ContentDetail() {
   if (!detail) {
     return (
       <View className="page">
-        <View className="empty">
-          <Text className="empty__text">加载中…</Text>
-        </View>
+        <StateView loading={loading} error={error} onRetry={() => void load()} />
       </View>
     )
   }
