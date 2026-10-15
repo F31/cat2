@@ -895,9 +895,9 @@ paths:
   /aggregate/detail:
     get:
       tags: [bff]
-      summary: 详情页聚合（名片+Badges+会员等级+关注状态；内容类含归属人名片）
+      summary: 详情页聚合（名片+Badges+会员等级+关注状态；内容类含归属人名片）；游客可看（登录态可选）
       operationId: aggregateDetail
-      security: [{ bearerAuth: [] }]
+      security: []
       parameters:
         - name: ref
           in: query
@@ -905,7 +905,7 @@ paths:
           schema: { type: string, description: 'EntityRef，如 user:123 / content.project:456' }
       responses:
         '200':
-          description: 聚合详情
+          description: 聚合详情（游客访问时 following=false、member 省略）
           content:
             application/json:
               schema:
@@ -915,7 +915,35 @@ paths:
                     properties:
                       data: { $ref: '#/components/schemas/DetailData' }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /aggregate/contact:
+    get:
+      tags: [bff]
+      summary: 揭示联系方式（手机号，会员权益；非会员 120007）
+      operationId: aggregateContact
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: ref
+          in: query
+          required: true
+          schema: { type: string, description: 'EntityRef，仅 user:<id> / org:<id>' }
+      responses:
+        '200':
+          description: 联系方式
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          ref: { type: string }
+                          phone: { type: string, description: '未配置时为空串' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /matches:
     get:
       tags: [discovery]

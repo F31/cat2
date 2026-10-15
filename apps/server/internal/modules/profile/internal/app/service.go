@@ -254,6 +254,28 @@ func (s *Service) OrgBrief(ctx context.Context, userID int64) (prfcontract.OrgBr
 	return prfcontract.OrgBrief{UserID: c.UserID, Name: c.Name, AvatarID: c.AvatarFileID, Region: c.RegionCode}, nil
 }
 
+// ContactPhone 取联系方式明文（未配置返回空串）。会员门槛由 bff 判定后调用。
+func (s *Service) ContactPhone(ctx context.Context, userID int64) (string, error) {
+	c, err := s.repo.GetByUserID(ctx, userID)
+	if errors.Is(err, infra.ErrNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if len(c.ContactPhoneEnc) == 0 {
+		return "", nil
+	}
+	if s.enc == nil {
+		return string(c.ContactPhoneEnc), nil // 未配置密钥（开发）：明文占位
+	}
+	plain, err := s.enc.Decrypt(c.ContactPhoneEnc)
+	if err != nil {
+		return "", err
+	}
+	return string(plain), nil
+}
+
 // Extract 实现 trust.ReviewSubjectProvider：取名片审核文本与图片。
 func (s *Service) Extract(ctx context.Context, userID int64) (string, []string, error) {
 	c, err := s.repo.GetByUserID(ctx, userID)

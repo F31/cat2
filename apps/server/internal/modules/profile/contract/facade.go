@@ -47,4 +47,6 @@ type Facade interface {
 	CompletionOf(ctx context.Context, userID int64) (Completion, error)
 	// OrgBrief 取摘要（引用解析/展示用）。
 	OrgBrief(ctx context.Context, userID int64) (OrgBrief, error)
+	// ContactPhone 取联系方式明文（未配置返回空串）；会员门槛由调用方（bff）判定，本方法不自带鉴权。
+	ContactPhone(ctx context.Context, userID int64) (string, error)
 }

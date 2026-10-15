@@ -97,11 +97,26 @@ export interface FeedData {
   unread: UnreadData
 }
 
+export interface ContentItem {
+  id: string
+  kind: string
+  owner_ref: { type: string; id: string }
+  title: string
+  cover_file_id?: string
+  region_code?: string
+  status: number
+  reject_reason?: string
+  published_at?: string | null
+  fields: Record<string, unknown>
+  member_gate?: string[]
+  unlock_reason?: string
+}
+
 export interface DetailData {
   ref: string
   type: string
   card?: Card
-  content?: Record<string, unknown>
+  content?: ContentItem
   owner?: Card
   badges?: { code: string; label: string; level: number }[]
   member?: Member
@@ -294,6 +309,9 @@ export function createClient(opts: ClientOptions) {
     },
     getDetail(ref: string) {
       return call<DetailData>('GET', `/aggregate/detail${qs({ ref })}`)
+    },
+    contactOf(ref: string) {
+      return call<{ ref: string; phone: string }>('GET', `/aggregate/contact${qs({ ref })}`)
     },
     explainMatch(ref: string) {
       return call<{ ref: string; score: number; reason: MatchReason[] }>(

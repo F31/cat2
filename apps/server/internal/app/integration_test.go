@@ -1178,6 +1178,50 @@ func TestIntegrationBFFAggregate(t *testing.T) {
 	}
 }
 
+// 详情游客可看（浏览/详情=游客可）+ 联系方式为会员权益（非会员 120007）。
+func TestIntegrationBFFGuestAndContact(t *testing.T) {
+	h := newTestApp(t)
+	_, aTok := loginUser(t, h)
+	bID, bTok := loginUser(t, h)
+	status, env := h.do(http.MethodPut, "/api/mp/v1/cards/me", bTok, map[string]any{
+		"name": "李四", "region_code": "310000", "contact_phone": "13800000000",
+	})
+	if status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("配置名片失败: %d %+v", status, env)
+	}
+
+	// 游客（无令牌）看详情：200 且不含关注态。
+	status, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/aggregate/detail?ref=user:%d", bID), "", nil)
+	var detail struct {
+		Card      *struct{ Name string } `json:"card"`
+		Following bool                   `json:"following"`
+	}
+	if err := json.Unmarshal(env.Data, &detail); err != nil {
+		t.Fatal(err)
+	}
+	if status != http.StatusOK || env.Code != 0 || detail.Card == nil || detail.Card.Name != "李四" || detail.Following {
+		t.Fatalf("游客详情应可看: %d %+v", status, detail)
+	}
+
+	// 非会员揭示联系方式 → 120007/403。
+	contactPath := fmt.Sprintf("/api/mp/v1/aggregate/contact?ref=user:%d", bID)
+	status, env = h.do(http.MethodGet, contactPath, aTok, nil)
+	if status != http.StatusForbidden || env.Code != 120007 {
+		t.Fatalf("非会员揭示联系方式应 120007/403: %d %+v", status, env)
+	}
+
+	// 会员揭示手机号。
+	makeMember(t, h, aTok)
+	status, env = h.do(http.MethodGet, contactPath, aTok, nil)
+	var contact struct {
+		Phone string `json:"phone"`
+	}
+	_ = json.Unmarshal(env.Data, &contact)
+	if status != http.StatusOK || env.Code != 0 || contact.Phone != "13800000000" {
+		t.Fatalf("会员应可见联系方式: %d %+v", status, contact)
+	}
+}
+
 // 认证锁定字段不可自改（verify 通过后写 locked_fields）。
 func TestIntegrationProfileLocked(t *testing.T) {
 	h := newTestApp(t)

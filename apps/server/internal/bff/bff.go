@@ -41,7 +41,10 @@ func New(deps Deps) *Aggregator { return &Aggregator{deps: deps} }
 func (a *Aggregator) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/mp/v1/feed", a.auth(a.handleFeed))
 	mux.HandleFunc("POST /api/mp/v1/feed/refresh", a.auth(a.handleFeed))
-	mux.HandleFunc("GET /api/mp/v1/aggregate/detail", a.auth(a.handleDetail))
+	// 详情页游客可看（浏览/搜索/详情=游客可），登录态可选：已登录回关注/会员态，未登录 uid=0。
+	mux.HandleFunc("GET /api/mp/v1/aggregate/detail", a.optionalAuth(a.handleDetail))
+	// 联系方式揭示：会员权益（手机号），非会员 120007 由前端引导开通。
+	mux.HandleFunc("GET /api/mp/v1/aggregate/contact", a.auth(a.handleContact))
 }
 
 // FeedData 首屏聚合：卡片流 + 画像进度 + 未读数。
@@ -119,8 +122,10 @@ func (a *Aggregator) handleDetail(w http.ResponseWriter, req *http.Request) {
 		if m, active, err := a.deps.Membership.Me(req.Context(), id); err == nil && active {
 			out.Member = &m
 		}
-		if following, err := a.deps.Social.IsFollowing(req.Context(), uid, ref); err == nil {
-			out.Following = following
+		if uid > 0 {
+			if following, err := a.deps.Social.IsFollowing(req.Context(), uid, ref); err == nil {
+				out.Following = following
+			}
 		}
 	case strings.HasPrefix(typ, "content."):
 		if item, err := a.deps.Content.Get(req.Context(), uid, id); err == nil {
@@ -136,11 +141,65 @@ func (a *Aggregator) handleDetail(w http.ResponseWriter, req *http.Request) {
 	writeData(w, out)
 }
 
+// ContactData 联系方式（会员可见）。
+type ContactData struct {
+	Ref   string `json:"ref"`
+	Phone string `json:"phone"`
+}
+
+// handleContact 揭示联系方式（手机号）：登录 + 会员权益校验后经 profile 解密下发。
+func (a *Aggregator) handleContact(w http.ResponseWriter, req *http.Request) {
+	ref := req.URL.Query().Get("ref")
+	typ, id, ok := splitRef(ref)
+	if !ok || (typ != "user" && typ != "org") {
+		writeErr(w, 1, "参数错误")
+		return
+	}
+	uid := userIDFrom(req.Context())
+	_, active, err := a.deps.Membership.Me(req.Context(), uid)
+	if err != nil {
+		writeErrCode(w, http.StatusInternalServerError, 9, "服务错误")
+		return
+	}
+	if !active {
+		writeErrCode(w, http.StatusForbidden, 120007, "查看联系方式需要会员权益")
+		return
+	}
+	phone, err := a.deps.Profile.ContactPhone(req.Context(), id)
+	if err != nil {
+		writeErrCode(w, http.StatusInternalServerError, 9, "服务错误")
+		return
+	}
+	writeData(w, ContactData{Ref: ref, Phone: phone})
+}
+
 func (a *Aggregator) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		token := bearer(req)
 		if token == "" {
 			writeErr(w, 2, "未登录")
+			return
+		}
+		uid, ver, err := a.deps.Identity.Authenticate(req.Context(), token)
+		if err != nil {
+			writeErr(w, 2, "登录已失效")
+			return
+		}
+		brief, err := a.deps.Identity.UserBrief(req.Context(), uid)
+		if err != nil || brief.AuthzVer != ver || (brief.Status != 0 && brief.Status != 1) {
+			writeErr(w, 2, "登录已失效")
+			return
+		}
+		next(w, req.WithContext(context.WithValue(req.Context(), ctxUserID{}, uid)))
+	}
+}
+
+// optionalAuth 可选登录：无令牌时以游客（uid=0）继续，令牌非法则拒绝。
+func (a *Aggregator) optionalAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		token := bearer(req)
+		if token == "" {
+			next(w, req.WithContext(context.WithValue(req.Context(), ctxUserID{}, int64(0))))
 			return
 		}
 		uid, ver, err := a.deps.Identity.Authenticate(req.Context(), token)
@@ -198,6 +257,10 @@ func writeErr(w http.ResponseWriter, code int, message string) {
 	case 2:
 		status = http.StatusUnauthorized
 	}
+	writeErrCode(w, status, code, message)
+}
+
+func writeErrCode(w http.ResponseWriter, status, code int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{"code": code, "message": message})

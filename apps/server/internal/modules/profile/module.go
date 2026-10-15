@@ -94,6 +94,11 @@ func (m *Module) OrgBrief(ctx context.Context, userID int64) (contract.OrgBrief,
 	return m.svc.OrgBrief(ctx, userID)
 }
 
+// ContactPhone 返回联系方式明文（会员门槛由 bff 判定）。
+func (m *Module) ContactPhone(ctx context.Context, userID int64) (string, error) {
+	return m.svc.ContactPhone(ctx, userID)
+}
+
 // ---- trust.ReviewSubjectProvider 实现（注册到 trust）----
 
 func (m *Module) SubjectType() string { return m.svc.SubjectType() }
