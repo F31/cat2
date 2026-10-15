@@ -1,0 +1,139 @@
+# S1 环境：api×2 + worker×1（含 scheduler）+ PostgreSQL 主从 + Redis + 备份边车。
+# - 多实例：scheduler 走 PG 咨询锁单活（多进程下仅一个执行 Job）
+# - 健康检查：api 用 /healthz（存活）/readyz（就绪）接入负载
+# - 缓存：api/worker 配 CATCUBE_REDIS_ADDR；Redis 故障自动回退进程内（p6 §4.4）
+# - 停机顺序：先摘流量（api 停止接收新请求）→ 等 worker/scheduler 排空 → 停依赖
+services:
+  db:
+    image: postgres:16
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - wal_keep_size=512MB
+      - -c
+      - hot_standby=on
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_timeout=60
+      - -c
+      - archive_command=test ! -f /wal-archive/%f && cp %p /wal-archive/%f
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+    environment:
+      POSTGRES_USER: catcube
+      POSTGRES_PASSWORD: catcube
+      POSTGRES_DB: catcube
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - walarchive:/wal-archive
+      - ./pg/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./pg/init-replication.sql:/docker-entrypoint-initdb.d/10-replication.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catcube"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  db-replica:
+    image: postgres:16
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      PRIMARY_HOST: db
+      REPL_USER: replicator
+      REPL_PASSWORD: replicator
+    entrypoint: ["bash", "/replica-entrypoint.sh"]
+    volumes:
+      - pgreplica:/var/lib/postgresql/data
+      - ./pg-replica-entrypoint.sh:/replica-entrypoint.sh:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catcube"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ../../apps/server
+      dockerfile: Dockerfile
+    command: ["serve"]
+    environment:
+      CATCUBE_DATABASE_URL: postgres://catcube:catcube@db:5432/catcube?sslmode=disable
+      CATCUBE_HTTP_ADDR: ":8080"
+      CATCUBE_ROLES: api,admin
+      CATCUBE_REDIS_ADDR: redis:6379
+    expose:
+      - "8080"
+    ports:
+      - "${API_PORT:-8080}:8080"
+    deploy:
+      replicas: 2
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ../../apps/server
+      dockerfile: Dockerfile
+    command: ["serve"]
+    environment:
+      CATCUBE_DATABASE_URL: postgres://catcube:catcube@db:5432/catcube?sslmode=disable
+      CATCUBE_ROLES: worker,scheduler
+      CATCUBE_REDIS_ADDR: redis:6379
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  backup:
+    image: postgres:16
+    environment:
+      PGHOST: db
+      PGUSER: catcube
+      PGPASSWORD: catcube
+      BACKUP_DIR: /backups
+      WAL_DIR: /wal-archive
+      RETAIN_DAYS: "14"
+    volumes:
+      - ./backup.sh:/backup.sh:ro
+      - pgbackups:/backups
+      - walarchive:/wal-archive
+    entrypoint: ["bash", "/backup.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  pgreplica:
+  walarchive:
+  pgbackups:
+  redisdata:

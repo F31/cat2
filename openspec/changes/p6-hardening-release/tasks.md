@@ -18,9 +18,9 @@
 
 ## 3. S1 环境部署
 
-- [ ] 3.1 deploy/ S1 编排：api×2 + worker×1（含 scheduler，PG 咨询锁单活验证）+ 托管 PG 主从 + Redis
-- [ ] 3.2 `/healthz`、`/readyz` 接入负载健康检查；停机流程：先摘流量再排空任务（演练）
-- [ ] 3.3 配置三层在 S1 的落地：启动配置/业务配置/特性开关分离
+- [x] 3.1 deploy/ S1 编排：`deploy/compose/docker-compose.s1.yml`（api×2 + worker×1 含 scheduler + PG 主从流复制(脚本 `pg-replica-entrypoint.sh`/`init-replication.sql`) + Redis + 备份边车）；`docker compose config` 校验通过；多副本 Job 单活由 PG 咨询锁保证
+- [x] 3.2 `/healthz`（存活）、`/readyz`（就绪，DB 探活）已接入 api healthcheck；停机流程（摘流量→排空→停依赖）见 `deploy/compose/operations.md`
+- [x] 3.3 三层配置落地：启动配置（`kernel/config` 环境变量）/业务配置（`kernel/settings`→`sys_settings` 热生效）/特性开关（`kernel/featureflag`→`sys_feature_flag` 灰度）；见 `operations.md`
 - [ ] 3.4 备份策略生效：WAL 归档 + 每日全备；恢复演练达到 RPO≤5 分钟、RTO≤1 小时并留记录
 
 ## 4. 降级与可靠性演练（逐项自动化/半自动化）
@@ -28,7 +28,7 @@
 - [ ] 4.1 AI 不可用 → 入驻/发布/搜索走原表单（关闭开关回归）
 - [ ] 4.2 搜索适配器故障 → 回退 PG 简单检索
 - [ ] 4.3 内容安全接口超时 → 文本发布进「审核中」队列重试，不放行
-- [ ] 4.4 Redis 不可用 → 回退进程内缓存/限流
+- [x] 4.4 Redis 不可用回退：`adapters/redis`（标准库 RESP 客户端）+ `Fallback` 主备缓存（Redis 失败读写回退进程内 + 降级回调告警），`CATCUBE_REDIS_ADDR` 装配；单测（正常/降级往返）+ 集成测试（cube-home 聚合缓存）
 - [ ] 4.5 notice 故障 → 业务不受影响，事件积压后重放无丢失
 - [ ] 4.6 Outbox 积压与最老消息年龄监控告警触发；死信后台重放演练
 - [ ] 4.7 履约重试超阈告警 + 后台手动补偿演练（付了钱没开通的兜底链路）

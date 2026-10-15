@@ -14,11 +14,13 @@ import (
 	"net/http/httptest"
 	neturl "net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"catcube/internal/bff"
 	"catcube/internal/kernel/config"
 	"catcube/internal/kernel/expiry"
 	"catcube/internal/kernel/obs"
@@ -3521,5 +3523,45 @@ func TestIntegrationFeatureFlags(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("后台应列出开关: %+v", list.Items)
+	}
+}
+
+// 首屏聚合缓存（S1 Redis/进程内）：cube-home 二次请求命中缓存，写后立刻反映。
+func TestIntegrationCubeHomeCache(t *testing.T) {
+	h := newTestApp(t)
+	uid, tok := loginUser(t, h)
+	bid, bTok := loginUser(t, h)
+	// 双方均已实名（建立方需实名，蜜方亦需实名）
+	for _, tk := range []string{tok, bTok} {
+		if _, certEnv := h.do(http.MethodPost, "/api/mp/v1/certs", tk, map[string]any{
+			"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+		}); certEnv.Code != 0 {
+			t.Fatalf("实名失败: %+v", certEnv)
+		}
+	}
+	_, env := h.do(http.MethodPost, "/api/mp/v1/cubes", tok, map[string]any{
+		"name": "缓存立方", "honey_user_id": fmt.Sprintf("%d", bid),
+	})
+	if env.Code != 0 {
+		t.Fatalf("建立方失败: %+v", env)
+	}
+	// 首次：写缓存
+	_, env = h.do(http.MethodGet, "/api/mp/v1/aggregate/cube-home", tok, nil)
+	var first bff.CubeHomeData
+	_ = json.Unmarshal(env.Data, &first)
+	if len(first.Cubes) != 1 {
+		t.Fatalf("应有 1 个立方: %+v", first)
+	}
+	// 缓存键已写入且 TTL>0
+	raw, ok, err := h.app.Cache.Get(context.Background(), "bff:cube-home:"+strconv.FormatInt(uid, 10))
+	if err != nil || !ok || len(raw) == 0 {
+		t.Fatalf("缓存键应写入: ok=%v err=%v", ok, err)
+	}
+	// 二次：命中缓存返回同值
+	_, env = h.do(http.MethodGet, "/api/mp/v1/aggregate/cube-home", tok, nil)
+	var second bff.CubeHomeData
+	_ = json.Unmarshal(env.Data, &second)
+	if second.TodoCount != first.TodoCount || len(second.Cubes) != len(first.Cubes) {
+		t.Fatalf("缓存返回应一致: %+v vs %+v", first, second)
 	}
 }

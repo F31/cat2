@@ -19,6 +19,7 @@ import (
 	"catcube/internal/adapters/pay"
 	"catcube/internal/adapters/pg"
 	"catcube/internal/adapters/realname"
+	"catcube/internal/adapters/redis"
 	"catcube/internal/adapters/wechat"
 	"catcube/internal/bff"
 	"catcube/internal/kernel/audit"
@@ -48,6 +49,7 @@ import (
 	"catcube/internal/modules/trade"
 	"catcube/internal/modules/trust"
 	"catcube/internal/modules/verify"
+	"catcube/internal/ports"
 	"catcube/internal/shared/dict"
 	"catcube/internal/shared/entityref"
 	"catcube/internal/shared/media"
@@ -76,6 +78,7 @@ type App struct {
 	Modules []module.Module
 	Mux     *http.ServeMux
 	Sched   *scheduler.Runner
+	Cache   ports.Cache // 缓存（Redis 主备或进程内），供降级观测与测试
 	ready   bool
 }
 
@@ -89,8 +92,16 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	// 适配器选择（S0：pg 队列/搜索、local 缓存、wechat 登录骨架、oss 占位）
 	queue := pg.NewQueue(pool)
 	_ = queue
-	cache := local.NewCache()
-	_ = cache
+	// 缓存：配 Redis 时主备（Redis 失败回退进程内，p6 §4.4）；否则纯进程内（S0）
+	memCache := local.NewCache()
+	var cache ports.Cache = memCache
+	if cfg.RedisAddr != "" {
+		rc := redis.New(cfg.RedisAddr, cfg.RedisPassword)
+		_ = rc.Ping(ctx) // 启动探测，失败即降级（不阻断启动）
+		cache = redis.NewFallback(rc, memCache, func(err error) {
+			slog.Warn("缓存降级至进程内", "err", err)
+		})
+	}
 	// 敏感数据密钥：生产必配（缺失时开发态告警并使用派生密钥）
 	encKey := decodeHexKey(cfg.IdentityEncKey, "catcube-dev-enc-key-32bytes!!")
 	blindKey := decodeHexKey(cfg.BlindKey, "catcube-dev-blind-key-32bytes")
@@ -219,7 +230,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	a := &App{Config: cfg, Pool: pool, Bus: bus, Policy: policyEngine, Modules: ordered, Mux: http.NewServeMux()}
+	a := &App{Config: cfg, Pool: pool, Bus: bus, Policy: policyEngine, Modules: ordered, Mux: http.NewServeMux(), Cache: cache}
 
 	// 逐模块 Register：收集路由/事件/任务/能力
 	for _, m := range ordered {
@@ -262,7 +273,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		Identity: identityMod.Facade(), Discovery: discoveryMod.Facade(), Profile: profileMod.Facade(),
 		Social: socialMod.Facade(), Msg: msgMod.Facade(), Verify: verifyMod.Facade(),
 		Membership: membershipMod.Facade(), Content: contentMod.Facade(),
-		Cube: cubeMod.Facade(), Circle: circleMod.Facade(),
+		Cube: cubeMod.Facade(), Circle: circleMod.Facade(), Cache: cache,
 	}).Register(a.Mux)
 
 	// 跨模块扩展点装配（装配根唯一 import 所有模块）：审核对象提供者

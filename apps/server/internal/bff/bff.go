@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	circlecontract "catcube/internal/modules/circle/contract"
 	contentcontract "catcube/internal/modules/content/contract"
@@ -19,6 +20,7 @@ import (
 	profilecontract "catcube/internal/modules/profile/contract"
 	socialcontract "catcube/internal/modules/social/contract"
 	verifycontract "catcube/internal/modules/verify/contract"
+	"catcube/internal/ports"
 	"catcube/internal/shared/entityref"
 )
 
@@ -34,6 +36,8 @@ type Deps struct {
 	Content    contentcontract.Facade
 	Cube       cubecontract.Facade
 	Circle     circlecontract.Facade
+	// Cache 首屏聚合短 TTL 缓存（可空 = 不缓存）
+	Cache ports.Cache
 }
 
 // Aggregator 只读聚合器。
@@ -65,6 +69,15 @@ type CubeHomeData struct {
 // handleCubeHome 猫立方首页：立方列表 + 待办数 + 未读（单次聚合）。
 func (a *Aggregator) handleCubeHome(w http.ResponseWriter, req *http.Request) {
 	uid := userIDFrom(req.Context())
+	if a.deps.Cache != nil {
+		if raw, ok, err := a.deps.Cache.Get(req.Context(), cubeHomeCacheKey(uid)); err == nil && ok {
+			var cached CubeHomeData
+			if json.Unmarshal(raw, &cached) == nil {
+				writeData(w, cached)
+				return
+			}
+		}
+	}
 	cubes, err := a.deps.Cube.ListMine(req.Context(), uid)
 	if err != nil {
 		writeErrCode(w, http.StatusInternalServerError, 9, "服务错误")
@@ -86,7 +99,13 @@ func (a *Aggregator) handleCubeHome(w http.ResponseWriter, req *http.Request) {
 			unread += s.Unread
 		}
 	}
-	writeData(w, CubeHomeData{Cubes: cubes, TodoCount: todo, Unread: unread})
+	data := CubeHomeData{Cubes: cubes, TodoCount: todo, Unread: unread}
+	if a.deps.Cache != nil {
+		if raw, err := json.Marshal(data); err == nil {
+			_ = a.deps.Cache.Set(req.Context(), cubeHomeCacheKey(uid), raw, 15*time.Second)
+		}
+	}
+	writeData(w, data)
 }
 
 // CircleDetailData 圈详情聚合（非成员裁剪）。
@@ -95,6 +114,10 @@ type CircleDetailData struct {
 	Owner       *profilecontract.Card       `json:"owner,omitempty"`
 	MemberCount int                         `json:"member_count"`
 	Joined      bool                        `json:"joined"`
+}
+
+func cubeHomeCacheKey(uid int64) string {
+	return "bff:cube-home:" + strconv.FormatInt(uid, 10)
 }
 
 // handleCircleDetail 圈详情聚合：圈信息 + 圈主名片 + 成员数 + 加入状态。
