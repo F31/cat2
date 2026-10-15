@@ -22,6 +22,7 @@ import (
 	"catcube/internal/modules/discovery"
 	"catcube/internal/modules/membership"
 	"catcube/internal/modules/trade"
+	"catcube/internal/modules/trust"
 )
 
 type envelope struct {
@@ -1276,6 +1277,91 @@ func TestIntegrationMediaUpload(t *testing.T) {
 	})
 	if status != http.StatusBadRequest {
 		t.Fatalf("非法类型应 400: %d %+v", status, env)
+	}
+}
+
+// 聊天消息机检：MessageSent → trust 订阅 → 敏感词命中入审核队列（msg.message）。
+func TestIntegrationMessageModeration(t *testing.T) {
+	h := newTestApp(t)
+	_, aTok := loginUser(t, h)
+	bID, _ := loginUser(t, h)
+	makeMember(t, h, aTok)
+
+	// 词库加载（生产由 scheduler 周期刷新）
+	var trustMod *trust.Module
+	for _, m := range h.app.Modules {
+		if tm, ok := m.(*trust.Module); ok {
+			trustMod = tm
+		}
+	}
+	if trustMod == nil {
+		t.Fatal("trust 模块未装载")
+	}
+	if _, err := h.app.Pool.Exec(context.Background(),
+		`INSERT INTO trs_sensitive_word (word, status) VALUES ($1,1) ON CONFLICT (word) DO NOTHING`,
+		"违禁词X"); err != nil {
+		t.Fatal(err)
+	}
+	if err := trustMod.LoadWords(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, hit := trustMod.FilterSensitive("违禁词X"); !hit {
+		t.Fatal("敏感词库未加载")
+	}
+
+	// A → B 建会话并发含敏感词消息
+	_, env := h.do(http.MethodPost, "/api/mp/v1/sessions", aTok, map[string]any{"target_ref": fmt.Sprintf("user:%d", bID)})
+	var ensured struct {
+		Session struct {
+			ID int64 `json:"id,string"`
+		} `json:"session"`
+	}
+	_ = json.Unmarshal(env.Data, &ensured)
+	if status, env := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/sessions/%d/messages", ensured.Session.ID), aTok, map[string]any{"content": "这里含违禁词X内容"}); status != http.StatusOK {
+		t.Fatalf("发消息失败: %d %+v", status, env)
+	}
+	relayAll(t, h)
+
+	// 会员激活会使旧 access token 的 authz_ver 失效，用新登录的令牌查审核队列。
+	_, adminTok := loginUser(t, h)
+	qstatus, env := h.do(http.MethodGet, "/api/admin/v1/review-tasks", adminTok, nil)
+	if qstatus != http.StatusOK || env.Code != 0 {
+		t.Fatalf("审核队列接口异常: %d %+v", qstatus, env)
+	}
+	var queue struct {
+		Items []struct {
+			SubjectType string `json:"subject_type"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &queue)
+	found := false
+	for _, it := range queue.Items {
+		if it.SubjectType == "msg.message" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("敏感消息应入审核队列: %+v", queue.Items)
+	}
+}
+
+// 实名通过事件 → profile 订阅锁定 name 字段 → 改锁定字段被拒 060003。
+func TestIntegrationRealnameLocksCard(t *testing.T) {
+	h := newTestApp(t)
+	_, tok := loginUser(t, h)
+	setCard(t, h, tok, "原名", "310000", []string{"A01"}, []string{"N1"}, []string{"O1"})
+
+	status, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+		"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+	})
+	if status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("实名提交应成功: %d %+v", status, env)
+	}
+	relayAll(t, h) // 投递 verify.CertificationApproved
+
+	status, env = h.do(http.MethodPut, "/api/mp/v1/cards/me", tok, map[string]any{"name": "新名"})
+	if status != http.StatusForbidden || env.Code != 60003 {
+		t.Fatalf("实名后改 name 应 060003/403: %d %+v", status, env)
 	}
 }
 

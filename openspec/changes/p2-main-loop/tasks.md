@@ -6,7 +6,7 @@
 - [x] 1.2 名片 CRUD：`GET/PUT /cards/me`、`GET /cards/{ref}`（他人名片按对外展示设置过滤）、`POST /cards/me/share`
 - [x] 1.3 画像完成度 `GET /cards/me/completion`：第二层五项（区域/行业/合作需求/合作提供/简介）任一为空即未完成；与实名无关
 - [x] 1.4 组织名片资质证明多图上传（写入 qualification_file_ids，增删接 media.Bind/Unbind）
-- [ ] 1.5 认证主体信息锁定：机制已实现（`locked_fields` + 更新拦截 060003）；订阅 `CertificationApproved` 待 verify(R2) 落地后接通
+- [x] 1.5 认证主体信息锁定：profile 订阅 `verify.CertificationApproved.v1`（topic 字面量，不 import 高阶 contract）→ 写 `locked_fields`（实名锁 name；企业认证锁 name/subject_type_code/region_code）+ 更新拦截 060003；`TestIntegrationRealnameLocksCard` 覆盖
 - [x] 1.6 事件生产：`ProfileUpdated`/`OrgCardUpdated`（含 MatchProfile，不含敏感字段，带 search_doc_version；与名片同事务入 Outbox）
 - [x] 1.7 注册扩展点：`ReviewSubjectProvider`（名片文本/头像，wire 装配进 trust）、`EntityResolver`（user/org）
 - [x] 1.8 domain 单元测试：完成度判定、展示设置过滤、认证锁定、长度校验
@@ -83,8 +83,8 @@
 - [ ] 8.5 状态机 #12（未开通→生效中→已过期）+ 到期回落 SchedulerJob 已实现；企业版子账号同步回落与归属保留 30 天待补
 - [ ] 8.6 企业版门槛已实现（开通时经 identity 身份类型 + verify「已认证」能力判定，当前恒否→denied）；订阅 `CertificationApproved` 判资格、按手机号邀请、denied 记审计待补
 - [x] 8.7 退款金额计算：`RefundAmount(order)`=剩余完整年数×年费×实付折扣系数（取订单快照）；用户端无退款入口（仅后台）
-- [ ] 8.8 事件 `MemberActivated/MemberExpired/SubAccountChanged` 已发；identity 订阅递增 authz_ver 已接通；discovery 订阅刷新权重待 discovery(R5) 落地
-- [ ] 8.9 CapabilityProvider（`member.active`/`member.enterprise`）已注册；会员权重输出给 discovery 同分排序待 discovery(R5) 落地
+- [x] 8.8 事件 `MemberActivated/MemberExpired/SubAccountChanged` 已发；identity 订阅递增 authz_ver 已接通；discovery 订阅 `MemberActivated/Expired` → `SetMemberLevel` 落投影（修复 `dsc_search_doc` 查询 `'user:'||$1` 参数类型歧义导致等级更新失败）
+- [x] 8.9 CapabilityProvider（`member.active`/`member.enterprise`）已注册；会员等级作为 discovery 同分排序权重（企业版>VIP>普通）
 
 ## 9. msg（R1，异步单聊）
 
@@ -92,7 +92,7 @@
 - [x] 9.2 `POST /sessions`（EnsureSession 单聊，发起=会员权益经 policy）；`POST /sessions/{id}/messages`、`GET /sessions/{id}/messages?cursor=`、`POST /sessions/{id}/read`、`GET /sessions`
 - [x] 9.3 未读数=会话最大序号−已读游标（SQL 幂等，免 Redis 计数器）；`unread_count` 冗余可重建
 - [ ] 9.4 增量同步 cursor 拉取已实现；分区自动创建 + 超期(>6 月)归档元数据登记已实现，压缩上传对象存储与 detach 待对象存储适配器落地后接通
-- [ ] 9.5 已注册 `ReviewSubjectProvider`（msg.message）+ 发 `MessageSent` 事件；异步机检消费（trust 订阅 MessageSent）待接通
+- [x] 9.5 已注册 `ReviewSubjectProvider`（msg.message）+ 发 `MessageSent` 事件；trust 订阅 `msg.MessageSent.v1` 异步机检（敏感词/文本机检命中入审核队列，不阻塞投递）；补齐敏感词库加载（wire 启动 + `trust.load_words` 周期 Job）；`TestIntegrationMessageModeration` 覆盖
 - [ ] 9.6 非成员拉取 denied（070002）已实现（审计钩子待 audit 存储落地）；`Realtime` 适配器 Noop 已接
 
 ## 10. 小程序主链路

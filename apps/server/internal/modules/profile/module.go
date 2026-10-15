@@ -67,6 +67,10 @@ func (m *Module) Register(r *module.Registry) error {
 	r.EventSubs = append(r.EventSubs, eventbus.Subscription{
 		Topic: idcontract.EventUserRegistered, Handler: m.svc.HandleUserRegistered,
 	})
+	// 订阅认证通过（verify R2 事件，topic 字面量，不 import 高阶 contract）：锁定认证主体字段
+	r.EventSubs = append(r.EventSubs, eventbus.Subscription{
+		Topic: "verify.CertificationApproved.v1", Handler: m.svc.HandleCertificationApproved,
+	})
 	// 扩展点：EntityResolver（user/org）
 	if m.deps.EntityRegistry != nil {
 		m.deps.EntityRegistry.Register("user", m)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -12,6 +13,12 @@ import (
 	"catcube/internal/kernel/db"
 	"catcube/internal/modules/discovery/internal/domain"
 )
+
+// refsOf 用户个人/组织两个文档引用（避免 SQL 内 `'user:'||$1` 参数类型歧义）。
+func refsOf(userID int64) (string, string) {
+	s := strconv.FormatInt(userID, 10)
+	return "user:" + s, "org:" + s
+}
 
 // ErrNotFound 记录不存在。
 var ErrNotFound = errors.New("infra: 记录不存在")
@@ -100,24 +107,25 @@ func (s *Store) SetActive(ctx context.Context, ref string, active bool) error {
 
 // SetVerified 更新实名/认证标识（user 与 org 文档）。
 func (s *Store) SetVerified(ctx context.Context, userID int64) error {
+	u, o := refsOf(userID)
 	_, err := s.pool.Exec(ctx,
-		`UPDATE dsc_search_doc SET verified=true, updated_at=now() WHERE doc_ref IN ('user:'||$1, 'org:'||$1)`,
-		userID)
+		`UPDATE dsc_search_doc SET verified=true, updated_at=now() WHERE doc_ref IN ($1,$2)`, u, o)
 	return err
 }
 
 // SetMemberLevel 更新会员等级（同分排序依据）。
 func (s *Store) SetMemberLevel(ctx context.Context, userID int64, level int16) error {
+	u, o := refsOf(userID)
 	_, err := s.pool.Exec(ctx,
-		`UPDATE dsc_search_doc SET member_level=$2, updated_at=now() WHERE doc_ref IN ('user:'||$1, 'org:'||$1)`,
-		userID, level)
+		`UPDATE dsc_search_doc SET member_level=$3, updated_at=now() WHERE doc_ref IN ($1,$2)`, u, o, level)
 	return err
 }
 
 // TouchActive 刷新活跃时间。
 func (s *Store) TouchActive(ctx context.Context, userID int64) error {
+	u, o := refsOf(userID)
 	_, err := s.pool.Exec(ctx,
-		`UPDATE dsc_search_doc SET last_active_at=now() WHERE doc_ref IN ('user:'||$1, 'org:'||$1)`, userID)
+		`UPDATE dsc_search_doc SET last_active_at=now() WHERE doc_ref IN ($1,$2)`, u, o)
 	return err
 }
 
@@ -274,7 +282,8 @@ func (s *Store) DeleteUser(ctx context.Context, userID int64) error {
 		if _, err := tx.Exec(ctx, `DELETE FROM dsc_match_candidates WHERE user_id=$1`, userID); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `DELETE FROM dsc_search_doc WHERE doc_ref IN ('user:'||$1, 'org:'||$1)`, userID)
+		u, o := refsOf(userID)
+		_, err := tx.Exec(ctx, `DELETE FROM dsc_search_doc WHERE doc_ref IN ($1,$2)`, u, o)
 		return err
 	})
 }

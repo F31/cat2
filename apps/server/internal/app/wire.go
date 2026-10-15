@@ -201,6 +201,13 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	// 履约能力注册（装配根唯一装配扩展点）：会员开通/续期由 trade 支付成功回调触发
 	tradeMod.RegisterFulfiller(membershipMod)
 
+	// 敏感词库加载（后台可维护）：启动后周期刷新，保证机检词库生效
+	_ = trustMod.LoadWords(context.Background())
+	a.scheduler().Register([]scheduler.Job{{
+		Name: "trust.load_words", Interval: time.Minute,
+		Run: func(ctx context.Context) error { return trustMod.LoadWords(ctx) },
+	}})
+
 	// 事件投递 worker：轮询 Outbox 分发订阅（至少一次；订阅方幂等）
 	a.scheduler().Register([]scheduler.Job{{
 		Name: "kernel.outbox_relay", Interval: 2 * time.Second,

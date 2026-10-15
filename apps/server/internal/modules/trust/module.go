@@ -61,6 +61,37 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/review-metrics", Handler: m.auth(m.handleMetrics), Admin: true},
 	)
 	r.CapProviders = append(r.CapProviders, capProvider{m})
+	// 订阅聊天消息（msg R1 事件，topic 字面量，不 import 高阶 contract）：异步机检，命中入审核队列。
+	r.EventSubs = append(r.EventSubs, eventbus.Subscription{
+		Topic: "msg.MessageSent.v1", Handler: m.HandleMessageSent,
+	})
+	return nil
+}
+
+// HandleMessageSent 订阅 msg.MessageSent：敏感词/文本机检，命中进入人工复核队列
+// （不阻塞消息投递；聊天记录留存由 msg 负责，这里只落审核任务）。
+func (m *Module) HandleMessageSent(ctx context.Context, e eventbus.Event) error {
+	var p struct {
+		MessageID int64  `json:"message_id,string"`
+		SenderID  int64  `json:"sender_id,string"`
+		Content   string `json:"content"`
+		MsgType   int16  `json:"msg_type"`
+	}
+	if err := json.Unmarshal(e.Payload, &p); err != nil || p.MessageID == 0 || p.Content == "" {
+		return nil
+	}
+	if word, hit := m.FilterSensitive(p.Content); hit {
+		return m.createTask(ctx, contract.SourceMachine, "msg.message", p.MessageID, p.SenderID, 2, "敏感词命中:"+word)
+	}
+	if m.deps.Moderation != nil {
+		res, err := m.deps.Moderation.CheckText(ctx, ports.ModerationRequest{Text: p.Content})
+		if err != nil {
+			return m.createTask(ctx, contract.SourceMachine, "msg.message", p.MessageID, p.SenderID, 3, "机检超时待重试")
+		}
+		if !res.Pass {
+			return m.createTask(ctx, contract.SourceMachine, "msg.message", p.MessageID, p.SenderID, 2, "文本机检命中")
+		}
+	}
 	return nil
 }
 

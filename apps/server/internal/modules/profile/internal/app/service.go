@@ -25,6 +25,7 @@ type Repo interface {
 	GetByUserID(ctx context.Context, userID int64) (infra.Card, error)
 	CreateDefault(ctx context.Context, tx db.Tx, userID int64, identityType int16, name string) error
 	Save(ctx context.Context, tx db.Tx, c infra.Card) error
+	SetLockedFields(ctx context.Context, userID int64, fields []string) error
 }
 
 // UpdateInput 名片更新入参（PUT 全量覆盖；联系方式为明文，服务端加密）。
@@ -299,6 +300,37 @@ func (s *Service) ApplyVerdict(_ context.Context, _ int64, _ bool, _ string) err
 
 // SubjectType 实现 trust.ReviewSubjectProvider。
 func (s *Service) SubjectType() string { return "profile" }
+
+// HandleCertificationApproved 订阅 verify.CertificationApproved：锁定认证主体字段
+// （实名锁定 name；企业认证锁定 name/subject_type_code/region_code），此后不可自改。
+func (s *Service) HandleCertificationApproved(ctx context.Context, e eventbus.Event) error {
+	var p struct {
+		UserID   int64 `json:"user_id,string"`
+		CertType int16 `json:"cert_type"`
+	}
+	if err := json.Unmarshal(e.Payload, &p); err != nil {
+		return err
+	}
+	if p.UserID == 0 {
+		return nil
+	}
+	fields := lockedFieldsFor(p.CertType)
+	if len(fields) == 0 {
+		return nil
+	}
+	return s.repo.SetLockedFields(ctx, p.UserID, fields)
+}
+
+// lockedFieldsFor 认证类型 → 锁定字段集合（一期实名 cert_type=1）。
+func lockedFieldsFor(certType int16) []string {
+	switch certType {
+	case 1: // 实名：锁定真实姓名对应字段
+		return []string{"name"}
+	case 4: // 企业认证：锁定主体信息
+		return []string{"name", "subject_type_code", "region_code"}
+	}
+	return nil
+}
 
 // HandleUserRegistered identity.UserRegistered 订阅：建默认名片（第一层）。
 func (s *Service) HandleUserRegistered(ctx context.Context, e eventbus.Event) error {

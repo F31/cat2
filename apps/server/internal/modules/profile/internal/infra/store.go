@@ -100,6 +100,18 @@ func (s *Store) CreateDefault(ctx context.Context, tx db.Tx, userID int64, ident
 	return err
 }
 
+// SetLockedFields 写入认证锁定字段（认证通过后由事件订阅调用）。
+func (s *Store) SetLockedFields(ctx context.Context, userID int64, fields []string) error {
+	raw, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx,
+		`UPDATE prf_card SET locked_fields=$2, version=version+1, updated_at=now() WHERE user_id=$1`,
+		userID, raw)
+	return err
+}
+
 // Save 保存名片（存在则更新并递增 version/search_doc_version）。
 func (s *Store) Save(ctx context.Context, tx db.Tx, c Card) error {
 	qual, _ := json.Marshal(c.QualificationIDs)
