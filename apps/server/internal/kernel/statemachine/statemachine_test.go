@@ -8,8 +8,8 @@ import (
 
 // 表驱动测试框架示范：PRD 11.1 #15 订单状态机的最小模型。
 var orderDef = Def{
-	Name:   "trade.order",
-	States: []string{"pending", "paid", "closed"},
+	Name:     "trade.order",
+	States:   []string{"pending", "paid", "closed"},
 	Terminal: []string{"closed"},
 	Transitions: []Transition{
 		{From: "pending", Event: "pay", To: "paid", Actor: "*"},

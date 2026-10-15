@@ -55,6 +55,7 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/certs", Handler: m.auth(m.handleCertify)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/certs/mine", Handler: m.auth(m.handleCertsOf)},
 	)
+	r.StateMachines = append(r.StateMachines, domain.RealnameMachine)
 	r.CapProviders = append(r.CapProviders, capProvider{m})
 	return nil
 }

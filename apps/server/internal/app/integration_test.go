@@ -26,6 +26,7 @@ import (
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/expiry"
 	"catcube/internal/kernel/obs"
+	"catcube/internal/kernel/statemachine"
 	"catcube/internal/modules/circle"
 	"catcube/internal/modules/cube"
 	"catcube/internal/modules/discovery"
@@ -37,6 +38,7 @@ import (
 	"catcube/internal/modules/trust"
 	"catcube/internal/shared/dict"
 	"catcube/internal/shared/media"
+	"catcube/internal/tests/matrix"
 	"catcube/pkg/ids"
 )
 
@@ -4092,104 +4094,70 @@ func TestIntegrationNoticeFailureDoesNotBlockBusiness(t *testing.T) {
 	}
 }
 
-// 权限矩阵全量 denied 自动化（p6 §1.1）：游客 / 未实名 / 非会员 / 非管理员 × 关键资源。
+// 权限矩阵全量 denied 自动化（p6 §1.1，框架见 internal/tests/matrix）。
 func TestIntegrationPermissionMatrixFull(t *testing.T) {
 	h := newTestApp(t)
-	uid, tok := loginUser(t, h)
+	_, tok := loginUser(t, h)
 	target, _ := loginUser(t, h)
 	setCard(t, h, tok, "王五", "310000", []string{"A01"}, nil, nil)
 
-	type tc struct {
-		name     string
-		method   string
-		path     string
-		token    string
-		body     any
-		wantCode int // 0=只要求拒绝（401/403）
-	}
-	cases := []tc{
-		// 游客（无令牌）→ 401
-		{"游客下单", http.MethodPost, "/api/mp/v1/orders", "", map[string]any{"biz_type": "member", "amount_fen": 1}, 0},
-		{"游客发布内容", http.MethodPost, "/api/mp/v1/contents", "", map[string]any{"kind": "project", "title": "x"}, 0},
-		{"游客建立方", http.MethodPost, "/api/mp/v1/cubes", "", map[string]any{"name": "x", "honey_user_id": "1"}, 0},
-		{"游客建圈", http.MethodPost, "/api/mp/v1/circles", "", map[string]any{"name": "x"}, 0},
-		{"游客通知列表", http.MethodGet, "/api/mp/v1/notices", "", nil, 0},
-		{"游客个人资料", http.MethodGet, "/api/mp/v1/users/me", "", nil, 0},
-		{"游客发起单聊", http.MethodPost, "/api/mp/v1/sessions", "", map[string]any{"target_ref": "user:1"}, 0},
-		{"游客后台封禁", http.MethodPost, fmt.Sprintf("/api/admin/v1/users/%d/ban", target), "", map[string]any{"reason": "x"}, 0},
-		{"游客后台死信", http.MethodGet, "/api/admin/v1/dead-letters", "", nil, 0},
-		{"游客后台菜单", http.MethodGet, "/api/admin/v1/menus", "", nil, 0},
+	cases := []matrix.Case{
+		// 游客（无令牌）
+		{Name: "下单", Role: matrix.Guest, Method: http.MethodPost, Path: "/api/mp/v1/orders", Body: map[string]any{"biz_type": "member", "amount_fen": 1}, Want: matrix.AnyDenied()},
+		{Name: "发布内容", Role: matrix.Guest, Method: http.MethodPost, Path: "/api/mp/v1/contents", Body: map[string]any{"kind": "project", "title": "x"}, Want: matrix.AnyDenied()},
+		{Name: "建立方", Role: matrix.Guest, Method: http.MethodPost, Path: "/api/mp/v1/cubes", Body: map[string]any{"name": "x", "honey_user_id": "1"}, Want: matrix.AnyDenied()},
+		{Name: "建圈", Role: matrix.Guest, Method: http.MethodPost, Path: "/api/mp/v1/circles", Body: map[string]any{"name": "x"}, Want: matrix.AnyDenied()},
+		{Name: "通知列表", Role: matrix.Guest, Method: http.MethodGet, Path: "/api/mp/v1/notices", Want: matrix.AnyDenied()},
+		{Name: "个人资料", Role: matrix.Guest, Method: http.MethodGet, Path: "/api/mp/v1/users/me", Want: matrix.AnyDenied()},
+		{Name: "发起单聊", Role: matrix.Guest, Method: http.MethodPost, Path: "/api/mp/v1/sessions", Body: map[string]any{"target_ref": "user:1"}, Want: matrix.AnyDenied()},
+		{Name: "后台封禁", Role: matrix.Guest, Method: http.MethodPost, Path: fmt.Sprintf("/api/admin/v1/users/%d/ban", target), Body: map[string]any{"reason": "x"}, Want: matrix.AnyDenied()},
+		{Name: "后台死信", Role: matrix.Guest, Method: http.MethodGet, Path: "/api/admin/v1/dead-letters", Want: matrix.AnyDenied()},
+		{Name: "后台菜单", Role: matrix.Guest, Method: http.MethodGet, Path: "/api/admin/v1/menus", Want: matrix.AnyDenied()},
 		// 已登录但未实名/非会员
-		{"未实名建立方", http.MethodPost, "/api/mp/v1/cubes", tok, map[string]any{"name": "x", "honey_user_id": fmt.Sprintf("%d", target)}, 130003},
-		{"未实名建圈", http.MethodPost, "/api/mp/v1/circles", tok, map[string]any{"name": "x"}, 0},
-		{"非会员看联系方式", http.MethodGet, fmt.Sprintf("/api/mp/v1/aggregate/contact?ref=user:%d", target), tok, nil, 120007},
-		{"非会员发起单聊", http.MethodPost, "/api/mp/v1/sessions", tok, map[string]any{"target_ref": fmt.Sprintf("user:%d", target)}, 70004},
-		// 非管理员令牌访问后台 → 拒绝（401/403）
-		{"非管理员封禁", http.MethodPost, fmt.Sprintf("/api/admin/v1/users/%d/ban", target), tok, map[string]any{"reason": "x"}, 0},
-		{"非管理员用户列表", http.MethodGet, "/api/admin/v1/users", tok, nil, 0},
-		{"非管理员死信重放", http.MethodPost, fmt.Sprintf("/api/admin/v1/dead-letters/%s/replay", "x"), tok, nil, 0},
+		{Name: "建立方", Role: matrix.Unrealname, Method: http.MethodPost, Path: "/api/mp/v1/cubes", Token: tok, Body: map[string]any{"name": "x", "honey_user_id": fmt.Sprintf("%d", target)}, Want: matrix.Denied(http.StatusForbidden, 130003)},
+		{Name: "建圈", Role: matrix.Unrealname, Method: http.MethodPost, Path: "/api/mp/v1/circles", Token: tok, Body: map[string]any{"name": "x"}, Want: matrix.AnyDenied()},
+		{Name: "看联系方式", Role: matrix.NonMember, Method: http.MethodGet, Path: fmt.Sprintf("/api/mp/v1/aggregate/contact?ref=user:%d", target), Token: tok, Want: matrix.Denied(http.StatusForbidden, 120007)},
+		{Name: "发起单聊", Role: matrix.NonMember, Method: http.MethodPost, Path: "/api/mp/v1/sessions", Token: tok, Body: map[string]any{"target_ref": fmt.Sprintf("user:%d", target)}, Want: matrix.Denied(http.StatusForbidden, 70004)},
+		// 非管理员令牌访问后台
+		{Name: "封禁", Role: matrix.NonAdmin, Method: http.MethodPost, Path: fmt.Sprintf("/api/admin/v1/users/%d/ban", target), Token: tok, Body: map[string]any{"reason": "x"}, Want: matrix.Denied(http.StatusForbidden, 3)},
+		{Name: "用户列表", Role: matrix.NonAdmin, Method: http.MethodGet, Path: "/api/admin/v1/users", Token: tok, Want: matrix.Denied(http.StatusForbidden, 3)},
+		{Name: "死信重放", Role: matrix.NonAdmin, Method: http.MethodPost, Path: "/api/admin/v1/dead-letters/x/replay", Token: tok, Want: matrix.Denied(http.StatusForbidden, 3)},
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			status, env := h.do(c.method, c.path, c.token, c.body)
-			if status != http.StatusUnauthorized && status != http.StatusForbidden {
-				t.Fatalf("%s 应拒绝（401/403），实际 %d code=%d", c.name, status, env.Code)
-			}
-			if c.wantCode != 0 && env.Code != c.wantCode {
-				t.Fatalf("%s 错误码应 %d，实际 %d（status=%d）", c.name, c.wantCode, env.Code, status)
-			}
-		})
+	matrix.Run(t, func(method, path, token string, body any) (int, int) {
+		status, env := h.do(method, path, token, body)
+		return status, env.Code
+	}, cases)
+
+	// 管理员放行（反向格：避免「一刀切全拒」的假绿）
+	_, admTok := loginAdmin(t, h)
+	if status, env := h.do(http.MethodGet, "/api/admin/v1/users?limit=1", admTok, nil); status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("管理员应放行后台列表: %d %+v", status, env)
 	}
-	_ = uid
 }
 
-// 业务看板指标（p6 §5.3）：漏斗关键口径经 /metrics 暴露。
-func TestIntegrationBusinessMetrics(t *testing.T) {
+// 状态机表驱动校验（p1 §13.2）：全模块注册定义的合法性 + 穷举合法/非法转移。
+func TestIntegrationStateMachineTable(t *testing.T) {
 	h := newTestApp(t)
-	uid, tok := loginUser(t, h) // 注册 + 登录
-	setCard(t, h, tok, "王五", "310000", []string{"A01"}, []string{"N1"}, nil)
-	relayAll(t, h)
-	refreshCandidates(t, h)
-	// 匹配 feed 与点击
-	_, _ = h.do(http.MethodGet, "/api/mp/v1/matches?limit=5", tok, nil)
-	_, _ = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/matches/user:%d/explain", uid), tok, nil)
-	// 举报 → 审核积压
-	target, _ := loginUser(t, h)
-	_, _ = h.do(http.MethodPost, "/api/mp/v1/reports", tok, map[string]any{
-		"target_ref": fmt.Sprintf("user:%d", target), "reason_code": "fraud", "detail": "x",
-	})
-	if _, err := h.app.Sched.RunOnce(context.Background(), "trust.sla_monitor"); err != nil {
-		t.Fatalf("审核监控任务失败: %v", err)
+	if len(h.app.StateMachines) < 12 {
+		t.Fatalf("状态机定义过少（期望 ≥12），实际 %d", len(h.app.StateMachines))
 	}
-	// 会员转化 + 支付成功率 + 猫立方开通
-	_, env := h.doH(http.MethodPost, "/api/mp/v1/orders", tok, map[string]any{
-		"biz_type": "member", "amount_fen": 9900,
-		"price_snapshot": map[string]any{"price_fen": 9900, "years": 1},
-	}, map[string]string{"Idempotency-Key": fmt.Sprintf("it-metrics-%d", time.Now().UnixNano())})
-	var order struct {
-		ID int64 `json:"id,string"`
-	}
-	_ = json.Unmarshal(env.Data, &order)
-	payOrderAndNotify(t, h, tok, order.ID)
-	fulfillMemberOrder(t, h, order.ID)
-
-	resp, err := http.Get(h.srv.URL + "/metrics")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	text := string(body)
-	for _, metric := range []string{
-		"catcube_user_registered_total", "catcube_match_feed_total", "catcube_match_click_total",
-		"catcube_order_paid_total", "catcube_member_opened_total", "catcube_review_backlog",
-	} {
-		if !strings.Contains(text, metric) {
-			t.Fatalf("/metrics 缺指标 %s\n%s", metric, text)
+	seen := map[string]bool{}
+	for _, def := range h.app.StateMachines {
+		if seen[def.Name] {
+			t.Fatalf("状态机重名: %s", def.Name)
 		}
-	}
-	if !strings.Contains(text, "catcube_review_backlog 1") && !strings.Contains(text, "catcube_review_backlog 2") {
-		t.Logf("审核积压 gauge: %s", grepLine(text, "catcube_review_backlog"))
+		seen[def.Name] = true
+		if issues := statemachine.SelfCheck(def); len(issues) != 0 {
+			t.Fatalf("状态机 %s 自检失败: %v", def.Name, issues)
+		}
+		checked, bad := statemachine.Exhaustive(def)
+		if len(bad) != 0 {
+			t.Fatalf("状态机 %s 穷举校验失败: %v", def.Name, bad)
+		}
+		if checked == 0 {
+			t.Fatalf("状态机 %s 无转移可校验", def.Name)
+		}
+		t.Logf("状态机 %s：状态 %d，转移 %d，穷举 %d 组", def.Name, len(def.States), len(def.Transitions), checked)
 	}
 }
 

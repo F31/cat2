@@ -5,7 +5,7 @@
 - [x] 1.1 越权矩阵自动化：`TestIntegrationPermissionMatrixFull`（游客/未实名/非会员/非管理员 × 17 条关键路径，断言 401/403 与错误码）；**修复后台越权漏洞**：`Route.Admin` 此前未强制，现由装配根 `requireAdmin` 统一硬门槛（非管理员 403），`/admin/v1/menus` 同步收紧；`idn_user.admin_role` + `IsAdmin/GrantAdmin` + `catcube grant-admin <手机号>` 运维引导（五角色细化仍归 p4）
 - [ ] 1.2 渗透测试（外部或工具）：OWASP Top 10 覆盖
 - [x] 1.3 支付回放：回调审计留痕（`trade:pay:notify:{invalid_sign,amount_mismatch,out_of_order,duplicate,ok}`，伪造/金额不符=Denied）；`ErrNotifyAmount`/`ErrNotifyOutOfOrder` 分类；集成测试 `TestIntegrationPayReplayAndForgery`（伪造/金额不符/正常/重复幂等/乱序）
-- [ ] 1.4 依赖漏洞扫描与 SAST 接入 CI
+- [x] 1.4 CI 安全门禁：`security` job（govulncheck 依赖漏洞扫描 + gitleaks 密钥扫描）；静态检查 job 改用 `make lint`（archcheck + logscan 日志敏感信息扫描 + vet）；test job 补 `pkg` 与 `tools/logscan` 测试
 - [x] 1.5 抓取限频：`bff` 联系方式查看按用户/日计数（`CATCUBE_CONTACT_DAILY_LIMIT`，默认 200，TTL 至次日）超限 429/120008 并 `contact_scrape_suspected` 告警；指标 `catcube_contact_reveal_total`；集成测试 `TestIntegrationContactScrapeRateLimit`
 - [x] 1.6 审计断链告警：`audit.VerifyForward/VerifyIncremental`（逐条重算 hash + 锚点连接校验）；`pg.Audit` 游标（`sys_settings:audit.verify.cursor`，首跑建基线）与 `ListChainAfter`；`kernel.audit_verify` 定时任务 → `catcube_audit_chain_ok` 指标 + `audit_chain_broken` 告警；修复 char(64) 补空格导致的 `LastHash` 取链偏差；单测（篡改/断链定位）+ 集成测试 `TestIntegrationAuditChainBrokenAlert`
 

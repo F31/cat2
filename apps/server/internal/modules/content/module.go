@@ -77,6 +77,7 @@ func (m *Module) Register(r *module.Registry) error {
 		}
 	}
 	// 订阅 trust 举报核实结论：下架内容（trust 不直接改 cnt_item.status）
+	r.StateMachines = append(r.StateMachines, domain.Machine)
 	r.EventSubs = append(r.EventSubs, eventbus.Subscription{
 		Topic: trustcontract.EventReportConfirmed, Handler: m.svc.HandleReportConfirmed,
 	})

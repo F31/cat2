@@ -119,8 +119,8 @@
 
 ## 13. 测试框架
 
-- [ ] 13.1 `tests/matrix`：权限矩阵表驱动框架（PRD 3.2/3.3 每格一条用例的结构），本阶段先落「游客/注册可浏览」基础格
-- [ ] 13.2 状态机表驱动测试框架：给定 StateMachineDef 自动验证合法/非法转移（引擎已有单测；17 张状态机的占位结构未建）
+- [x] 13.1 权限矩阵框架：`internal/tests/matrix`（Role/Expect/Case/Probe + 按角色分组逐格执行，框架说明见包注释）；权限矩阵用例迁移至框架（`TestIntegrationPermissionMatrixFull`，17 格 + 管理员反向放行格）
+- [x] 13.2 状态机表驱动框架：`statemachine.SelfCheck`（状态/终态/重复转移/出边/角色声明）+ `Exhaustive`（状态×事件全组合穷举：合法必成功落点一致、非法必 `IllegalTransitionError`）；装配根收集 `App.StateMachines`（content/trade/verify/membership/cube/circle 共 12 个定义注册）；`TestIntegrationStateMachineTable` 全量穷举通过
 - [x] 13.3 模块独立启动测试：真实模块（dict/media/identity/trust）拓扑装载成功、缺依赖失败（`internal/app/module_load_test.go`）
 - [x] 13.4 `app/wire.go` 装配根：读配置 → 选适配器 → 装载模块；S0 形态全角色全模块单进程
 

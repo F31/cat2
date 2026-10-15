@@ -68,6 +68,7 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/fulfillments/{orderID}/retry", Handler: m.auth(m.handleRetryFulfill), Admin: true},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/orders", Handler: m.auth(m.handleAdminOrders), Admin: true},
 	)
+	r.StateMachines = append(r.StateMachines, domain.Machine)
 	r.Jobs = append(r.Jobs,
 		module.JobDef{Name: "trade.close_expired", Interval: time.Minute, Run: m.svc.CloseExpired},
 		module.JobDef{Name: "trade.fulfill", Interval: 30 * time.Second, Run: func(ctx context.Context) error {

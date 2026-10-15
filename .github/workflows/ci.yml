@@ -65,3 +65,20 @@ jobs:
           go-version: '1.25'
       - name: archcheck（独立门禁，便于按检查名单独要求）
         run: cd tools/archcheck && go run . -root ../../apps/server
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: 依赖漏洞扫描（govulncheck）
+        working-directory: apps/server
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - name: 密钥/敏感信息扫描（gitleaks）
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

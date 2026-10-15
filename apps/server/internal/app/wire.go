@@ -35,6 +35,7 @@ import (
 	"catcube/internal/kernel/scheduler"
 	"catcube/internal/kernel/sensitive"
 	"catcube/internal/kernel/settings"
+	"catcube/internal/kernel/statemachine"
 	"catcube/internal/modules/circle"
 	"catcube/internal/modules/content"
 	contentcontract "catcube/internal/modules/content/contract"
@@ -82,7 +83,9 @@ type App struct {
 	Sched   *scheduler.Runner
 	Cache   ports.Cache              // 缓存（Redis 主备或进程内），供降级观测与测试
 	AlertTh eventbus.AlertThresholds // Outbox 告警阈值（测试/看板）
-	ready   bool
+	// StateMachines 全模块注册的状态机（表驱动自检，p1 §13.2）
+	StateMachines []statemachine.Def
+	ready         bool
 }
 
 // Wire 装配。
@@ -249,6 +252,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		if err := m.Register(reg); err != nil {
 			return nil, fmt.Errorf("wire: 模块 %s 注册失败: %w", m.Name(), err)
 		}
+		a.StateMachines = append(a.StateMachines, reg.StateMachines...)
 		for _, rt := range reg.Routes {
 			h := rt.Handler
 			if rt.Admin {
