@@ -106,6 +106,30 @@ func (s *Service) Publish(ctx context.Context, userID int64, in contentcontract.
 	return s.toItem(ctx, it, true), nil
 }
 
+// CreateFromCube 由猫立方引入创建平台草稿（项目类；仅标题+正文，字段后续在平台补全）。
+func (s *Service) CreateFromCube(ctx context.Context, ownerID int64, title, body string) (int64, error) {
+	if err := domain.ValidTitle(title); err != nil {
+		return 0, err
+	}
+	it := infra.Item{
+		ID: int64(ids.New()), Kind: contentcontract.KindProject,
+		OwnerRef: contentcontract.OwnerRef{Type: "user", ID: ownerID},
+		Title:    title, Status: contentcontract.StatusReviewing,
+	}
+	if err := s.pool.InTx(ctx, func(tx db.Tx) error {
+		if err := s.repo.InsertItem(ctx, tx, it); err != nil {
+			return err
+		}
+		if err := s.repo.SaveSub(ctx, tx, contentcontract.KindProject, it.ID, map[string]any{"intro": body}); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return 0, err
+	}
+	return it.ID, nil
+}
+
 // Submit 提交审核：状态机 #2 审核中→展示中/已下架（trust 审核结论驱动）。
 func (s *Service) Submit(ctx context.Context, userID, itemID int64) (contentcontract.Item, error) {
 	it, err := s.repo.GetItem(ctx, itemID)

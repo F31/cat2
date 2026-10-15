@@ -456,3 +456,66 @@ func (m *Module) handleApportionDetail(w http.ResponseWriter, req *http.Request)
 	}
 	writeData(w, ap)
 }
+
+// ---- 项目关联（§4）----
+
+func (m *Module) RequestLink(ctx context.Context, cubeID, userID, contentItemID int64) (bool, int64, int64, error) {
+	return m.svc.RequestLink(ctx, cubeID, userID, contentItemID)
+}
+func (m *Module) DecideLink(ctx context.Context, cubeID, userID, reqID int64, approve bool) (int64, error) {
+	return m.svc.DecideLink(ctx, cubeID, userID, reqID, approve)
+}
+func (m *Module) LinkRequests(ctx context.Context, cubeID int64) ([]contract.LinkReq, error) {
+	return m.svc.LinkRequests(ctx, cubeID)
+}
+func (m *Module) PublishToPlatform(ctx context.Context, cubeID, projectID, userID int64) (int64, error) {
+	return m.svc.PublishToPlatform(ctx, cubeID, projectID, userID)
+}
+
+func (m *Module) handleRequestLink(w http.ResponseWriter, req *http.Request) {
+	cubeID := cubePathID(req, "id")
+	var body struct {
+		ContentProjectID int64 `json:"content_project_id,string"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil || body.ContentProjectID == 0 {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	direct, projectID, reqID, err := m.svc.RequestLink(req.Context(), cubeID, userIDFrom(req.Context()), body.ContentProjectID)
+	if err != nil {
+		writeCubeErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"direct": direct, "project_id": strconv.FormatInt(projectID, 10), "request_id": strconv.FormatInt(reqID, 10)})
+}
+
+func (m *Module) handleLinkRequests(w http.ResponseWriter, req *http.Request) {
+	items, err := m.svc.LinkRequests(req.Context(), cubePathID(req, "id"))
+	if err != nil {
+		writeCubeErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"items": items})
+}
+
+func (m *Module) handleDecideLink(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		Approve bool `json:"approve"`
+	}
+	_ = json.NewDecoder(req.Body).Decode(&body)
+	projectID, err := m.svc.DecideLink(req.Context(), cubePathID(req, "id"), userIDFrom(req.Context()), cubePathID(req, "reqID"), body.Approve)
+	if err != nil {
+		writeCubeErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"project_id": strconv.FormatInt(projectID, 10), "approved": body.Approve})
+}
+
+func (m *Module) handlePublishToPlatform(w http.ResponseWriter, req *http.Request) {
+	itemID, err := m.svc.PublishToPlatform(req.Context(), cubePathID(req, "id"), cubePathID(req, "pid"), userIDFrom(req.Context()))
+	if err != nil {
+		writeCubeErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"content_project_id": strconv.FormatInt(itemID, 10)})
+}

@@ -12,6 +12,7 @@ import (
 	"catcube/internal/modules/cube/contract"
 	"catcube/internal/modules/cube/internal/domain"
 	"catcube/internal/modules/cube/internal/infra"
+	"catcube/internal/shared/entityref"
 	"catcube/pkg/ids"
 )
 
@@ -99,7 +100,9 @@ func (s *Service) ListProjects(ctx context.Context, cubeID int64, typ int16) ([]
 	}
 	out := make([]contract.Project, 0, len(rows))
 	for _, p := range rows {
-		out = append(out, toProject(p))
+		cp := toProject(p)
+		cp.PlatformStatus = s.platformStatus(ctx, cp.ContentProjectID)
+		out = append(out, cp)
 	}
 	return out, nil
 }
@@ -466,6 +469,26 @@ func deref(v *int64) int64 {
 	return *v
 }
 
+// platformStatus 平台项目状态（平台下架显示「平台已下架」而不删除）。
+func (s *Service) platformStatus(ctx context.Context, contentID int64) string {
+	if contentID == 0 || s.entities == nil {
+		return ""
+	}
+	info, err := s.entities.Resolve(ctx, entityref.Ref{Type: "content.project", ID: contentID})
+	if err != nil {
+		// 引用的平台项目对游客不可解析（已下架/不可见）→ 显示「平台已下架」，不删除立方卡片
+		return "taken_down"
+	}
+	switch info.Status {
+	case "taken_down", "inactive":
+		return "taken_down"
+	case "published", "active":
+		return "active"
+	default:
+		return "" // 审核中等：不展示平台状态
+	}
+}
+
 func toProject(p infra.Project) contract.Project {
 	return contract.Project{ID: p.ID, CubeID: p.CubeID, Type: p.Type, ContentProjectID: deref(p.ContentProject),
 		Name: p.Name, RelatedRef: p.RelatedRef, RelatedCustomer: p.RelatedCustomer, LeaderID: p.LeaderID,
@@ -485,4 +508,3 @@ func toReport(r infra.Report) contract.Report {
 		RelatedItemRef: r.RelatedItemRef, AmountWan: r.AmountWan, Note: r.Note, Status: r.Status,
 		RejectReason: r.RejectReason, ConfirmedAt: r.ConfirmedAt, CreatedAt: r.CreatedAt}
 }
-

@@ -106,6 +106,7 @@ type Project struct {
 	TodoCount       int       `json:"todo_count"`
 	Status          int16     `json:"status"` // 0进行中/1已关闭
 	SourceRef       string    `json:"source_ref,omitempty"`
+	PlatformStatus  string    `json:"platform_status,omitempty"` // active/taken_down（平台项目下架显示）
 	CreatedAt       time.Time `json:"created_at"`
 }
 
@@ -228,6 +229,12 @@ type Facade interface {
 	PledgeApportion(ctx context.Context, cubeID, groupID, userID int64) (orderID int64, err error)
 	ExitApportion(ctx context.Context, cubeID, groupID, userID int64) error
 	ApportionOf(ctx context.Context, groupID int64) (Apportion, error)
+
+	// ---- 项目关联（§4）----
+	RequestLink(ctx context.Context, cubeID, userID, contentItemID int64) (direct bool, projectID int64, reqID int64, err error)
+	DecideLink(ctx context.Context, cubeID, userID, reqID int64, approve bool) (projectID int64, err error)
+	LinkRequests(ctx context.Context, cubeID int64) ([]LinkReq, error)
+	PublishToPlatform(ctx context.Context, cubeID, projectID, userID int64) (contentItemID int64, err error)
 	// FulfillOrder 供 trade OrderFulfiller 调用（biz_type=cube_plan）。
 	FulfillOrder(ctx context.Context, bizRef string, snapshot []byte) error
 }
@@ -241,6 +248,17 @@ type Plan struct {
 	CubeLimit   int    `json:"cube_limit"`
 	MemberLimit int    `json:"member_limit"`
 	PriceFen    int64  `json:"price_fen"`
+}
+
+// LinkReq 平台项目引入申请。
+type LinkReq struct {
+	ID               int64     `json:"id,string"`
+	CubeID           int64     `json:"cube_id,string"`
+	ContentProjectID int64     `json:"content_project_id,string"`
+	InitiatorID      int64     `json:"initiator_id,string"`
+	TargetRole       int16     `json:"target_role"` // 1 项目方确认 / 2 猫蜜确认
+	Status           int16     `json:"status"`      // 0 待确认 / 1 已同意 / 2 已拒绝
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // Apportion 分摊组。

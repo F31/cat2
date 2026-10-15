@@ -34,11 +34,11 @@
 
 ## 4. cube：项目关联（引用 + 本地状态）
 
-- [ ] 4.1 `cub_project.content_project_id` 可空无外键；同一平台项目可进多个立方各一行、状态独立（A 关闭不影响平台展示与 B）
-- [ ] 4.2 引入规则：本组织项目猫王/猫蜜直接加；他组织项目需项目方确认；普通成员发起需猫蜜确认——落 `cub_project_link_req`（待确认/已同意/已拒绝）
-- [ ] 4.3 平台项目下架：立方卡片经 `EntityResolver` 读状态显示「平台已下架」，不删除
-- [ ] 4.4 立方内新建未发布项目 content_project_id 为空；「发布到平台」调 `content.CreateFromCube` 回写 ID
-- [ ] 4.5 状态机 #7 立方内项目 + 测试
+- [x] 4.1 `cub_project.content_project_id` 可空无外键；同一平台项目可进多个立方各一行、状态独立（A 关闭不影响平台展示与 B）
+- [x] 4.2 引入规则：本人内容直接加；猫王/猫蜜引入他人内容 → 项目方确认（target_role=1）；普通成员发起 → 猫蜜确认（target_role=2）；落 `cub_project_link_req`（待确认/已同意/已拒绝）
+- [x] 4.3 平台项目下架：立方项目 `platform_status` 经 `EntityResolver` 解析（published→active；下架/不可解析→taken_down），卡片显示「平台已下架」不删除
+- [x] 4.4 立方内新建未发布项目 content_project_id 为空；「发布到平台」调 `content.CreateFromCube`（新建平台草稿）回写 ID
+- [x] 4.5 状态机 #7 立方内项目（进行中→已关闭，可重开）+ 测试
 
 ## 5. circle：圈子生命周期
 

@@ -2073,6 +2073,111 @@ paths:
                   - $ref: '#/components/schemas/Envelope'
                   - type: object
                     properties: { data: { $ref: '#/components/schemas/CubeApportion' } }
+  /cubes/{id}/link-requests:
+    get:
+      tags: [cube]
+      summary: 平台项目引入申请列表
+      operationId: listCubeLinkRequests
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 申请列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { $ref: '#/components/schemas/CubeLinkReq' } }
+    post:
+      tags: [cube]
+      summary: 引入平台项目（本人/本组织直接加；他组织需项目方确认；普通成员发起需猫蜜确认）
+      operationId: requestCubeLink
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content_project_id]
+              properties: { content_project_id: { type: string } }
+      responses:
+        '200':
+          description: 结果（direct=true 表示已直接加入）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          direct: { type: boolean }
+                          project_id: { type: string }
+                          request_id: { type: string }
+  /cubes/{id}/link-requests/{reqID}/decide:
+    post:
+      tags: [cube]
+      summary: 引入申请决议（项目方确认 / 猫蜜确认）
+      operationId: decideCubeLink
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: reqID, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approve]
+              properties: { approve: { type: boolean } }
+      responses:
+        '200':
+          description: 结果（同意则返回新建项目 id）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties: { project_id: { type: string }, approved: { type: boolean } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /cubes/{id}/projects/{pid}/publish:
+    post:
+      tags: [cube]
+      summary: 立方内未发布项目「发布到平台」（调 content.CreateFromCube 回写 ID）
+      operationId: publishCubeProject
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: pid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 平台项目 ID
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { type: object, properties: { content_project_id: { type: string } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
 components:
   securitySchemes:
     bearerAuth:
@@ -2243,6 +2348,17 @@ components:
         related_item_ref: { type: string }
         amount_wan: { type: integer }
         note: { type: string, description: ≤200字 }
+    CubeLinkReq:
+      type: object
+      required: [id, cube_id, content_project_id, initiator_id, target_role, status]
+      properties:
+        id: { type: string }
+        cube_id: { type: string }
+        content_project_id: { type: string }
+        initiator_id: { type: string }
+        target_role: { type: integer, description: '1 项目方确认 / 2 猫蜜确认' }
+        status: { type: integer, description: '0 待确认 / 1 已同意 / 2 已拒绝' }
+        created_at: { type: string, format: date-time }
     CubePlan:
       type: object
       required: [level, name, cube_limit, member_limit, price_fen]

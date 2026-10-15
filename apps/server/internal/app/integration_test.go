@@ -2512,3 +2512,108 @@ func TestIntegrationApportionFailedRefund(t *testing.T) {
 		t.Fatalf("退款应幂等（1 笔），实际 %d", refunds)
 	}
 }
+
+// 猫立方项目关联（p3 §4）：发布到平台回写 / 本人内容直接加 / 他组织需项目方确认 / 平台下架展示。
+func TestIntegrationCubeProjectLink(t *testing.T) {
+	h := newTestApp(t)
+	aPhone, bPhone, dPhone := randPhone(), randPhone(), randPhone()
+	_, aTok := loginPhone(t, h, aPhone)
+	bID, bTok := loginPhone(t, h, bPhone)
+	_, dTok := loginPhone(t, h, dPhone)
+	for _, tok := range []string{aTok, bTok, dTok} {
+		if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+			"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+		}); s != http.StatusOK || env.Code != 0 {
+			t.Fatalf("实名失败: %d %+v", s, env)
+		}
+	}
+	_, env := h.do(http.MethodPost, "/api/mp/v1/cubes", aTok, map[string]any{
+		"name": "关联协作", "honey_user_id": fmt.Sprintf("%d", bID),
+	})
+	var cube struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cube)
+
+	// D 发布平台项目
+	_, env = h.do(http.MethodPost, "/api/mp/v1/contents", dTok, map[string]any{
+		"kind": "project", "title": "华东重工项目",
+		"tagset": map[string]any{"region": "310000", "industry": []string{"A01"}},
+		"fields": map[string]any{"amount_wan": 500, "intro": "简介", "core_strength": "优势", "contact_phone": "13800000000"},
+	})
+	var item struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &item)
+	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/contents/%d/submit", item.ID), dTok, nil); e.Code != 0 {
+		t.Fatalf("提交失败: %+v", e)
+	}
+
+	// A（猫王）引入他组织项目 → 需项目方确认
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/link-requests", cube.ID), aTok,
+		map[string]any{"content_project_id": fmt.Sprintf("%d", item.ID)})
+	var lr struct {
+		Direct    bool  `json:"direct"`
+		RequestID int64 `json:"request_id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &lr)
+	if lr.Direct || lr.RequestID == 0 {
+		t.Fatalf("他组织项目应走确认: %+v", env)
+	}
+	// D（项目方）确认 → 生成项目并引用
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/link-requests/%d/decide", cube.ID, lr.RequestID), dTok,
+		map[string]any{"approve": true})
+	var decided struct {
+		ProjectID int64 `json:"project_id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &decided)
+	if decided.ProjectID == 0 {
+		t.Fatalf("项目方确认后应生成项目: %+v", env)
+	}
+	// 项目列表含引用与平台状态
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/cubes/%d/projects", cube.ID), aTok, nil)
+	var projects struct {
+		Items []struct {
+			ID               int64  `json:"id,string"`
+			ContentProjectID int64  `json:"content_project_id,string"`
+			PlatformStatus   string `json:"platform_status"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &projects)
+	if len(projects.Items) != 1 || projects.Items[0].ContentProjectID != item.ID || projects.Items[0].PlatformStatus != "active" {
+		t.Fatalf("项目引用/平台状态不符: %+v", projects.Items)
+	}
+
+	// 立方内本地项目「发布到平台」回写 ID
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/projects", cube.ID), aTok, map[string]any{
+		"type": 1, "name": "本地立项A",
+	})
+	var local struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &local)
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/projects/%d/publish", cube.ID, local.ID), aTok, nil)
+	var pub struct {
+		ContentProjectID int64 `json:"content_project_id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &pub)
+	if pub.ContentProjectID == 0 {
+		t.Fatalf("发布到平台应回写内容 ID: %+v", env)
+	}
+	// 平台下架 → 立方项目卡片显示 taken_down（不删除）
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/contents/%d/takedown", item.ID), dTok,
+		map[string]any{"reason": "违规"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("下架失败: %d %+v", s, e)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/cubes/%d/projects", cube.ID), aTok, nil)
+	_ = json.Unmarshal(env.Data, &projects)
+	found := false
+	for _, p := range projects.Items {
+		if p.ContentProjectID == item.ID && p.PlatformStatus == "taken_down" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("平台下架应显示 taken_down 且不删除: %+v", projects.Items)
+	}
+}

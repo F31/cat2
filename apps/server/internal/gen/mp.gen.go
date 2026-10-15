@@ -564,6 +564,21 @@ type CubeDetail struct {
 	Strength *string `json:"strength,omitempty"`
 }
 
+// CubeLinkReq defines model for CubeLinkReq.
+type CubeLinkReq struct {
+	ContentProjectId string     `json:"content_project_id"`
+	CreatedAt        *time.Time `json:"created_at,omitempty"`
+	CubeId           string     `json:"cube_id"`
+	Id               string     `json:"id"`
+	InitiatorId      string     `json:"initiator_id"`
+
+	// Status 0 待确认 / 1 已同意 / 2 已拒绝
+	Status int `json:"status"`
+
+	// TargetRole 1 项目方确认 / 2 猫蜜确认
+	TargetRole int `json:"target_role"`
+}
+
 // CubeMember defines model for CubeMember.
 type CubeMember struct {
 	JoinedAt *time.Time `json:"joined_at,omitempty"`
@@ -1132,6 +1147,16 @@ type PledgeApportionJSONBody struct {
 	GroupId string `json:"group_id"`
 }
 
+// RequestCubeLinkJSONBody defines parameters for RequestCubeLink.
+type RequestCubeLinkJSONBody struct {
+	ContentProjectId string `json:"content_project_id"`
+}
+
+// DecideCubeLinkJSONBody defines parameters for DecideCubeLink.
+type DecideCubeLinkJSONBody struct {
+	Approve bool `json:"approve"`
+}
+
 // RemoveCubeMemberJSONBody defines parameters for RemoveCubeMember.
 type RemoveCubeMemberJSONBody struct {
 	Reason *string `json:"reason,omitempty"`
@@ -1347,6 +1372,12 @@ type ExitApportionJSONRequestBody ExitApportionJSONBody
 // PledgeApportionJSONRequestBody defines body for PledgeApportion for application/json ContentType.
 type PledgeApportionJSONRequestBody PledgeApportionJSONBody
 
+// RequestCubeLinkJSONRequestBody defines body for RequestCubeLink for application/json ContentType.
+type RequestCubeLinkJSONRequestBody RequestCubeLinkJSONBody
+
+// DecideCubeLinkJSONRequestBody defines body for DecideCubeLink for application/json ContentType.
+type DecideCubeLinkJSONRequestBody DecideCubeLinkJSONBody
+
 // RemoveCubeMemberJSONRequestBody defines body for RemoveCubeMember for application/json ContentType.
 type RemoveCubeMemberJSONRequestBody RemoveCubeMemberJSONBody
 
@@ -1466,15 +1497,15 @@ type ServerInterface interface {
 	// SubmitContent 提交审核（发布门槛：已实名；审核结论驱动状态机
 	// (POST /contents/{id}/submit)
 	SubmitContent(w http.ResponseWriter, r *http.Request, id string)
+	// GetApportion 分摊进度（认筹进度/截止倒计时）
+	// (GET /cube-apportions/{groupID})
+	GetApportion(w http.ResponseWriter, r *http.Request, groupID string)
 	// ListMyCubes 我参与的猫立方
 	// (GET /cubes)
 	ListMyCubes(w http.ResponseWriter, r *http.Request)
 	// CreateCube 创建猫立方（已实名个人；创建者=猫王，必配猫蜜）
 	// (POST /cubes)
 	CreateCube(w http.ResponseWriter, r *http.Request)
-	// GetApportion 分摊进度（认筹进度/截止倒计时）
-	// (GET /cubes/apportion/{groupID})
-	GetApportion(w http.ResponseWriter, r *http.Request, groupID string)
 	// JoinCube 凭邀请码加入猫立方（已实名、未被移除过）
 	// (POST /cubes/join)
 	JoinCube(w http.ResponseWriter, r *http.Request)
@@ -1502,6 +1533,15 @@ type ServerInterface interface {
 	// LeaveCube 主动退出（猫王须先转让）
 	// (POST /cubes/{id}/leave)
 	LeaveCube(w http.ResponseWriter, r *http.Request, id string)
+	// ListCubeLinkRequests 平台项目引入申请列表
+	// (GET /cubes/{id}/link-requests)
+	ListCubeLinkRequests(w http.ResponseWriter, r *http.Request, id string)
+	// RequestCubeLink 引入平台项目（本人/本组织直接加；他组织需项目方确认；普通成员发起需猫蜜确认）
+	// (POST /cubes/{id}/link-requests)
+	RequestCubeLink(w http.ResponseWriter, r *http.Request, id string)
+	// DecideCubeLink 引入申请决议（项目方确认 / 猫蜜确认）
+	// (POST /cubes/{id}/link-requests/{reqID}/decide)
+	DecideCubeLink(w http.ResponseWriter, r *http.Request, id string, reqID string)
 	// ListCubeMembers 成员列表
 	// (GET /cubes/{id}/members)
 	ListCubeMembers(w http.ResponseWriter, r *http.Request, id string)
@@ -1520,6 +1560,9 @@ type ServerInterface interface {
 	// CloseCubeProject 关闭项目（灰字保留，可重开）
 	// (POST /cubes/{id}/projects/{pid}/close)
 	CloseCubeProject(w http.ResponseWriter, r *http.Request, id string, pid string)
+	// PublishCubeProject 立方内未发布项目「发布到平台」（调 content.CreateFromCube 回写 ID）
+	// (POST /cubes/{id}/projects/{pid}/publish)
+	PublishCubeProject(w http.ResponseWriter, r *http.Request, id string, pid string)
 	// ReopenCubeProject 重开项目
 	// (POST /cubes/{id}/projects/{pid}/reopen)
 	ReopenCubeProject(w http.ResponseWriter, r *http.Request, id string, pid string)
@@ -2249,6 +2292,32 @@ func (siw *ServerInterfaceWrapper) SubmitContent(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetApportion operation middleware
+func (siw *ServerInterfaceWrapper) GetApportion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "groupID" -------------
+	var groupID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "groupID", r.PathValue("groupID"), &groupID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "groupID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetApportion(w, r, groupID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListMyCubes operation middleware
 func (siw *ServerInterfaceWrapper) ListMyCubes(w http.ResponseWriter, r *http.Request) {
 
@@ -2268,32 +2337,6 @@ func (siw *ServerInterfaceWrapper) CreateCube(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateCube(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetApportion operation middleware
-func (siw *ServerInterfaceWrapper) GetApportion(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "groupID" -------------
-	var groupID string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "groupID", r.PathValue("groupID"), &groupID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "groupID", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetApportion(w, r, groupID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2513,6 +2556,93 @@ func (siw *ServerInterfaceWrapper) LeaveCube(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// ListCubeLinkRequests operation middleware
+func (siw *ServerInterfaceWrapper) ListCubeLinkRequests(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCubeLinkRequests(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RequestCubeLink operation middleware
+func (siw *ServerInterfaceWrapper) RequestCubeLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RequestCubeLink(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DecideCubeLink operation middleware
+func (siw *ServerInterfaceWrapper) DecideCubeLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "reqID" -------------
+	var reqID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reqID", r.PathValue("reqID"), &reqID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reqID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DecideCubeLink(w, r, id, reqID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListCubeMembers operation middleware
 func (siw *ServerInterfaceWrapper) ListCubeMembers(w http.ResponseWriter, r *http.Request) {
 
@@ -2694,6 +2824,41 @@ func (siw *ServerInterfaceWrapper) CloseCubeProject(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CloseCubeProject(w, r, id, pid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PublishCubeProject operation middleware
+func (siw *ServerInterfaceWrapper) PublishCubeProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "pid" -------------
+	var pid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "pid", r.PathValue("pid"), &pid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PublishCubeProject(w, r, id, pid)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4441,7 +4606,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/apportion", wrapper.InitiateApportion)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/apportion/pledge", wrapper.PledgeApportion)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/apportion/exit", wrapper.ExitApportion)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes/apportion/{groupID}", wrapper.GetApportion)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cube-apportions/{groupID}", wrapper.GetApportion)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes/{id}/link-requests", wrapper.ListCubeLinkRequests)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/link-requests", wrapper.RequestCubeLink)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/link-requests/{reqID}/decide", wrapper.DecideCubeLink)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/projects/{pid}/publish", wrapper.PublishCubeProject)
 
 	return m
 }

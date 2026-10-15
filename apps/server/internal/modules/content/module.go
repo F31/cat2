@@ -100,6 +100,11 @@ func (m *Module) Get(ctx context.Context, viewerID, itemID int64) (contentcontra
 func (m *Module) ListByOwner(ctx context.Context, ownerID int64, kindName string) ([]contentcontract.Item, error) {
 	return m.svc.ListByOwner(ctx, ownerID, kindName)
 }
+// CreateFromCube 由猫立方创建平台草稿。
+func (m *Module) CreateFromCube(ctx context.Context, ownerID int64, title, body string) (int64, error) {
+	return m.svc.CreateFromCube(ctx, ownerID, title, body)
+}
+
 func (m *Module) Close(ctx context.Context, userID, itemID int64) (contentcontract.Item, error) {
 	return m.svc.Close(ctx, userID, itemID)
 }

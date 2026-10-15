@@ -16,8 +16,10 @@ import (
 	"catcube/internal/modules/cube/contract"
 	"catcube/internal/modules/cube/internal/domain"
 	"catcube/internal/modules/cube/internal/infra"
+	contentcontract "catcube/internal/modules/content/contract"
 	idcontract "catcube/internal/modules/identity/contract"
 	tradecontract "catcube/internal/modules/trade/contract"
+	"catcube/internal/shared/entityref"
 	"catcube/pkg/ids"
 )
 
@@ -58,6 +60,11 @@ type Repo interface {
 	CountDuplicateReport(ctx context.Context, cubeID int64, customerName string) (int, error)
 	CreateResearch(ctx context.Context, q infra.Querier, r infra.Research) error
 	ListResearch(ctx context.Context, projectID int64) ([]infra.Research, error)
+	UpdateProjectContentID(ctx context.Context, q infra.Querier, id, contentItemID int64) error
+	CreateLinkReq(ctx context.Context, q infra.Querier, l infra.LinkReq) error
+	GetLinkReq(ctx context.Context, id int64) (infra.LinkReq, error)
+	ListLinkReqs(ctx context.Context, cubeID int64, status int16) ([]infra.LinkReq, error)
+	SetLinkReqStatus(ctx context.Context, q infra.Querier, id int64, status int16) error
 }
 
 // Options 构造参数。
@@ -70,6 +77,8 @@ type Options struct {
 	Encryptor *sensitive.Encryptor
 	Trade     tradecontract.Facade
 	Settings  *settings.Registry
+	Content   contentcontract.Facade
+	Entities  *entityref.Registry
 }
 
 // Service cube 应用服务。
@@ -82,11 +91,14 @@ type Service struct {
 	enc      *sensitive.Encryptor
 	trade    tradecontract.Facade
 	settings *settings.Registry
+	content  contentcontract.Facade
+	entities *entityref.Registry
 }
 
 func New(o Options) *Service {
 	return &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, policy: o.Policy,
-		identity: o.Identity, enc: o.Encryptor, trade: o.Trade, settings: o.Settings}
+		identity: o.Identity, enc: o.Encryptor, trade: o.Trade, settings: o.Settings,
+		content: o.Content, entities: o.Entities}
 }
 
 const inviteTTL = 7 * 24 * time.Hour

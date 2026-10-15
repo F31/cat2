@@ -19,6 +19,7 @@ import (
 	"catcube/internal/kernel/policy"
 	"catcube/internal/kernel/sensitive"
 	"catcube/internal/kernel/settings"
+	contentcontract "catcube/internal/modules/content/contract"
 	"catcube/internal/modules/cube/contract"
 	"catcube/internal/modules/cube/internal/app"
 	"catcube/internal/modules/cube/internal/domain"
@@ -39,6 +40,7 @@ type Deps struct {
 	Encryptor *sensitive.Encryptor
 	Trade     tradecontract.Facade
 	Settings  *settings.Registry
+	Content   contentcontract.Facade
 }
 
 // Module cube 模块。
@@ -51,7 +53,7 @@ func New(deps Deps) *Module { return &Module{deps: deps} }
 
 func (m *Module) Name() string        { return "cube" }
 func (m *Module) Rank() module.Rank   { return module.RankR3 }
-func (m *Module) DependsOn() []string { return []string{"identity"} }
+func (m *Module) DependsOn() []string { return []string{"identity", "content", "trade"} }
 
 // cube 错误码（contracts/errors/README.md 13 段）。
 const (
@@ -77,7 +79,7 @@ func (m *Module) Register(r *module.Registry) error {
 	m.svc = app.New(app.Options{
 		Repo: infra.NewStore(m.deps.Pool), Pool: m.deps.Pool, Bus: m.deps.Bus,
 		Policy: m.deps.Policy, Identity: m.deps.Identity, Encryptor: m.deps.Encryptor,
-		Trade: m.deps.Trade, Settings: m.deps.Settings,
+		Trade: m.deps.Trade, Settings: m.deps.Settings, Content: m.deps.Content, Entities: m.deps.Entities,
 	})
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes", Handler: m.auth(m.handleCreate)},
@@ -107,6 +109,11 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cubes/{id}/reports", Handler: m.auth(m.handleListReports)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/reports/{rid}/confirm", Handler: m.auth(m.handleConfirmReport)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/reports/{rid}/reject", Handler: m.auth(m.handleRejectReport)},
+		// 项目关联（§4）
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/link-requests", Handler: m.auth(m.handleRequestLink)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cubes/{id}/link-requests", Handler: m.auth(m.handleLinkRequests)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/link-requests/{reqID}/decide", Handler: m.auth(m.handleDecideLink)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/projects/{pid}/publish", Handler: m.auth(m.handlePublishToPlatform)},
 		// 订阅与分摊（§3）
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cubes/plans", Handler: m.handlePlans},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/plan", Handler: m.auth(m.handleChangePlan)},

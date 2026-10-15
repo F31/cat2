@@ -319,3 +319,40 @@ func (s *Store) SetLinkReqStatus(ctx context.Context, q Querier, id int64, statu
 	_, err := q.Exec(ctx, `UPDATE cub_project_link_req SET status=$2 WHERE id=$1`, id, status)
 	return err
 }
+
+// UpdateProjectContentID 回写平台项目 ID（发布到平台）。
+func (s *Store) UpdateProjectContentID(ctx context.Context, q Querier, id, contentItemID int64) error {
+	_, err := q.Exec(ctx, `UPDATE cub_project SET content_project_id=$2, updated_at=now() WHERE id=$1`, id, contentItemID)
+	return err
+}
+
+// GetLinkReq 取引入申请。
+func (s *Store) GetLinkReq(ctx context.Context, id int64) (LinkReq, error) {
+	var l LinkReq
+	err := s.pool.QueryRow(ctx, `SELECT id, cube_id, content_project_id, initiator_id, target_role, status, created_at
+		FROM cub_project_link_req WHERE id=$1`, id).
+		Scan(&l.ID, &l.CubeID, &l.ContentProjectID, &l.InitiatorID, &l.TargetRole, &l.Status, &l.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return LinkReq{}, ErrNotFound
+	}
+	return l, err
+}
+
+// ListLinkReqs 引入申请列表（status<0 全部）。
+func (s *Store) ListLinkReqs(ctx context.Context, cubeID int64, status int16) ([]LinkReq, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id, cube_id, content_project_id, initiator_id, target_role, status, created_at
+		FROM cub_project_link_req WHERE cube_id=$1 AND ($2<0 OR status=$2) ORDER BY created_at DESC`, cubeID, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []LinkReq
+	for rows.Next() {
+		var l LinkReq
+		if err := rows.Scan(&l.ID, &l.CubeID, &l.ContentProjectID, &l.InitiatorID, &l.TargetRole, &l.Status, &l.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}

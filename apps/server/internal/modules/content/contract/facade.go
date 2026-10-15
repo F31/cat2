@@ -64,4 +64,6 @@ type Facade interface {
 	Get(ctx context.Context, viewerID, itemID int64) (Item, error)
 	ListByOwner(ctx context.Context, ownerID int64, kind string) ([]Item, error)
 	Close(ctx context.Context, userID, itemID int64) (Item, error)
+	// CreateFromCube 由猫立方引入的项目创建平台草稿（只带标题+正文；字段可在平台补全）。
+	CreateFromCube(ctx context.Context, ownerID int64, title, body string) (int64, error)
 }

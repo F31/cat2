@@ -1239,7 +1239,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/cubes/apportion/{groupID}": {
+    "/cube-apportions/{groupID}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1250,6 +1250,58 @@ export interface paths {
         get: operations["getApportion"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/link-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 平台项目引入申请列表 */
+        get: operations["listCubeLinkRequests"];
+        put?: never;
+        /** 引入平台项目（本人/本组织直接加；他组织需项目方确认；普通成员发起需猫蜜确认） */
+        post: operations["requestCubeLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/link-requests/{reqID}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 引入申请决议（项目方确认 / 猫蜜确认） */
+        post: operations["decideCubeLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/projects/{pid}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 立方内未发布项目「发布到平台」（调 content.CreateFromCube 回写 ID） */
+        post: operations["publishCubeProject"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1412,6 +1464,18 @@ export interface components {
             amount_wan?: number;
             /** @description ≤200字 */
             note?: string;
+        };
+        CubeLinkReq: {
+            id: string;
+            cube_id: string;
+            content_project_id: string;
+            initiator_id: string;
+            /** @description 1 项目方确认 / 2 猫蜜确认 */
+            target_role: number;
+            /** @description 0 待确认 / 1 已同意 / 2 已拒绝 */
+            status: number;
+            /** Format: date-time */
+            created_at?: string;
         };
         CubePlan: {
             level: number;
@@ -4238,6 +4302,129 @@ export interface operations {
                     };
                 };
             };
+        };
+    };
+    listCubeLinkRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 申请列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["CubeLinkReq"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    requestCubeLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    content_project_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果（direct=true 表示已直接加入） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            direct?: boolean;
+                            project_id?: string;
+                            request_id?: string;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    decideCubeLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                reqID: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    approve: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果（同意则返回新建项目 id） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            project_id?: string;
+                            approved?: boolean;
+                        };
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    publishCubeProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 平台项目 ID */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            content_project_id?: string;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
 }

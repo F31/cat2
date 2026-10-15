@@ -168,6 +168,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	cubeMod := cube.New(cube.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine, Entities: entityReg,
 		Audit: auditRec, Encryptor: encryptor, Trade: tradeMod.Facade(), Settings: settingsReg,
+		Content: contentMod.Facade(),
 	})
 	mods := []module.Module{
 		dictMod,
