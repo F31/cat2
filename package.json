@@ -11,5 +11,10 @@
   "devDependencies": {
     "json-schema-to-typescript": "^16.0.0",
     "openapi-typescript": "^7.13.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "webpack": "5.91.0"
+    }
   }
 }

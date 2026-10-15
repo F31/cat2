@@ -9,6 +9,7 @@ vendor/
 node_modules/
 dist/
 .turbo/
+.swc/
 
 # 本地环境
 .env
