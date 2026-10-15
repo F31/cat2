@@ -268,6 +268,27 @@ page {
   padding: 28px 24px;
   border-bottom: 1px solid #f0f0f0;
 }
+.menu__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.menu__row-extra {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.row-tag {
+  color: #666;
+  font-size: 22px;
+  background: #f0f0f0;
+  border-radius: 6px;
+  padding: 4px 10px;
+}
+.row-action {
+  color: #d4411e;
+  font-size: 24px;
+}
 
 /* 搜索 */
 .search-row {

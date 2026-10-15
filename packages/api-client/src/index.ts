@@ -127,6 +127,28 @@ export interface Message {
   created_at: string
 }
 
+export interface Target {
+  type: string
+  id: string
+}
+
+export interface FollowItem {
+  follower_id: string
+  target: Target
+  title?: string
+  cover?: string
+  created_at: string
+}
+
+export interface FavoriteItem {
+  id: string
+  target: Target
+  kind: 'person' | 'company' | 'project' | 'product' | 'meeting' | 'event'
+  title?: string
+  cover?: string
+  created_at: string
+}
+
 export interface MembershipQuote {
   level: number
   years: number
@@ -300,10 +322,10 @@ export function createClient(opts: ClientOptions) {
       return call<{ following: boolean }>('DELETE', `/follows/${encodeURIComponent(ref)}`)
     },
     following() {
-      return call<{ items: unknown[] }>('GET', '/follows')
+      return call<{ items: FollowItem[] }>('GET', '/follows')
     },
     followers() {
-      return call<{ items: unknown[] }>('GET', '/followers')
+      return call<{ items: FollowItem[] }>('GET', '/followers')
     },
     favorite(targetRef: string) {
       return call<{ favorited: boolean }>('POST', '/favorites', { target_ref: targetRef })
@@ -311,8 +333,8 @@ export function createClient(opts: ClientOptions) {
     unfavorite(ref: string) {
       return call<{ favorited: boolean }>('DELETE', `/favorites/${encodeURIComponent(ref)}`)
     },
-    favorites(type: string) {
-      return call<{ items: unknown[] }>('GET', `/favorites${qs({ type })}`)
+    favorites(type = '') {
+      return call<{ items: FavoriteItem[] }>('GET', `/favorites${qs({ type })}`)
     },
     followUnread() {
       return call<{ unread: number }>('GET', '/follow-unread')

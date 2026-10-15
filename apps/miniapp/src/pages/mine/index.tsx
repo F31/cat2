@@ -38,8 +38,6 @@ export default function Mine() {
 
   const memberActive = member?.active ?? false
 
-  const placeholder = (title: string) => Taro.showToast({ title: `${title}页后续接入`, icon: 'none' })
-
   return (
     <View className="page">
       <StateView loading={loading} error={error} onRetry={() => void load()}>
@@ -74,13 +72,13 @@ export default function Mine() {
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/card/edit' })}>
             <Text>完善资料 / 编辑名片</Text>
           </View>
-          <View className="menu__item" onClick={() => placeholder('我的收藏')}>
+          <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/social/favorites' })}>
             <Text>我的收藏</Text>
           </View>
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/content/mine' })}>
             <Text>我的发布</Text>
           </View>
-          <View className="menu__item" onClick={() => placeholder('关注与粉丝')}>
+          <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/social/follows' })}>
             <Text>关注与粉丝</Text>
           </View>
         </View>

@@ -104,7 +104,7 @@
 - [x] 10.5 搜索页：关键词 + 六类 Tab 筛选、空态「没有找到相关内容」
 - [ ] 10.6 详情页共用壳：类型/标题/Badges/简介 + 关注Ta/联系Ta（非会员经 `PolicyGate`/70004 引导开通）已实现；「联系Ta」已直进单聊会话页；详细设计 5.6 各区块待补
 - [x] 10.7 四类发布表单 `pages/content/publish`（项目/产品/会议/活动字段独立；标题+区域+行业/需求/供给标签+按类字段；提交复核）；ai-entry 占位待补
-- [ ] 10.8 名片编辑页 `pages/card/edit`（第二层五项+增值画像+联系方式，保存）与我的发布 `pages/content/mine` 已实现；我的收藏/关注粉丝页待补
+- [x] 10.8 名片编辑页 `pages/card/edit`（第二层五项+增值画像+联系方式，保存）与我的发布 `pages/content/mine` 已实现；我的收藏 `pages/social/favorites`（六类分 Tab+取消收藏）与关注/粉丝 `pages/social/follows` 已实现，mine 页入口已接通
 - [x] 10.9 会员开通页：年限选择、原价与折后价同显、协议勾选、「开通后不支持退款」明示、企业版入口（identity_type=2）
 - [x] 10.10 消息列表（单聊会话+未读）+ 系统通知置顶（占位，通知中心随 notice 模块 p3 接入）+ 单聊会话页 `pages/msg/chat`（cursor 增量同步、发送本地追加、3 秒轮询无新消息指数退避至 30 秒、自动已读上报、滚动定位最新消息）；详情「联系Ta」与消息列表均已接通会话页
 - [ ] 10.11 共享组件：`ContentCard`/`PolicyGate`/`ProfilePromptBar` 已落地；TaxonomyPicker/Uploader/CursorList/EmptyState/SubscribeAsk/PayButton 待补
