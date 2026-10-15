@@ -4104,3 +4104,62 @@ func TestIntegrationPermissionMatrixFull(t *testing.T) {
 	}
 	_ = uid
 }
+
+// 业务看板指标（p6 §5.3）：漏斗关键口径经 /metrics 暴露。
+func TestIntegrationBusinessMetrics(t *testing.T) {
+	h := newTestApp(t)
+	uid, tok := loginUser(t, h) // 注册 + 登录
+	setCard(t, h, tok, "王五", "310000", []string{"A01"}, []string{"N1"}, nil)
+	relayAll(t, h)
+	refreshCandidates(t, h)
+	// 匹配 feed 与点击
+	_, _ = h.do(http.MethodGet, "/api/mp/v1/matches?limit=5", tok, nil)
+	_, _ = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/matches/user:%d/explain", uid), tok, nil)
+	// 举报 → 审核积压
+	target, _ := loginUser(t, h)
+	_, _ = h.do(http.MethodPost, "/api/mp/v1/reports", tok, map[string]any{
+		"target_ref": fmt.Sprintf("user:%d", target), "reason_code": "fraud", "detail": "x",
+	})
+	if _, err := h.app.Sched.RunOnce(context.Background(), "trust.sla_monitor"); err != nil {
+		t.Fatalf("审核监控任务失败: %v", err)
+	}
+	// 会员转化 + 支付成功率 + 猫立方开通
+	_, env := h.doH(http.MethodPost, "/api/mp/v1/orders", tok, map[string]any{
+		"biz_type": "member", "amount_fen": 9900,
+		"price_snapshot": map[string]any{"price_fen": 9900, "years": 1},
+	}, map[string]string{"Idempotency-Key": fmt.Sprintf("it-metrics-%d", time.Now().UnixNano())})
+	var order struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &order)
+	payOrderAndNotify(t, h, tok, order.ID)
+	fulfillMemberOrder(t, h, order.ID)
+
+	resp, err := http.Get(h.srv.URL + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	text := string(body)
+	for _, metric := range []string{
+		"catcube_user_registered_total", "catcube_match_feed_total", "catcube_match_click_total",
+		"catcube_order_paid_total", "catcube_member_opened_total", "catcube_review_backlog",
+	} {
+		if !strings.Contains(text, metric) {
+			t.Fatalf("/metrics 缺指标 %s\n%s", metric, text)
+		}
+	}
+	if !strings.Contains(text, "catcube_review_backlog 1") && !strings.Contains(text, "catcube_review_backlog 2") {
+		t.Logf("审核积压 gauge: %s", grepLine(text, "catcube_review_backlog"))
+	}
+}
+
+func grepLine(text, key string) string {
+	for _, l := range strings.Split(text, "\n") {
+		if strings.HasPrefix(l, key+" ") {
+			return l
+		}
+	}
+	return ""
+}

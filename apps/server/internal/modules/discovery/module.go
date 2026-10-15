@@ -14,6 +14,7 @@ import (
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
+	"catcube/internal/kernel/obs"
 	"catcube/internal/kernel/settings"
 	"catcube/internal/modules/discovery/contract"
 	"catcube/internal/modules/discovery/internal/app"
@@ -119,10 +120,12 @@ func (m *Module) handleFeed(w http.ResponseWriter, req *http.Request) {
 		writeDiscErr(w, err)
 		return
 	}
+	obs.Default().Add("catcube_match_feed_total", float64(len(res)))
 	writeData(w, map[string]any{"items": res})
 }
 
 func (m *Module) handleExplain(w http.ResponseWriter, req *http.Request) {
+	obs.Default().Inc("catcube_match_click_total")
 	ref := req.PathValue("ref")
 	if _, _, ok := domain.SplitRef(ref); !ok {
 		writeErr(w, codeParamInvalid, "参数错误")

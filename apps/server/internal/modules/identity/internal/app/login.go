@@ -12,6 +12,7 @@ import (
 
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
+	"catcube/internal/kernel/obs"
 	"catcube/internal/kernel/sensitive"
 	"catcube/internal/modules/identity/contract"
 	"catcube/internal/modules/identity/internal/domain"
@@ -168,6 +169,7 @@ func (s *Service) register(ctx context.Context, openID, phone string, hmac []byt
 			return err
 		}
 		u.ID = id
+		obs.Default().Inc("catcube_user_registered_total")
 		if s.bus == nil {
 			return nil
 		}

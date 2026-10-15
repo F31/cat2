@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"catcube/internal/kernel/obs"
 	"catcube/internal/modules/cube/contract"
 	tradecontract "catcube/internal/modules/trade/contract"
 )
@@ -359,7 +360,11 @@ func (m *Module) BizType() string { return "cube_plan" }
 
 // Fulfill 实现 trade.OrderFulfiller（支付成功后开通订阅）。
 func (m *Module) Fulfill(ctx context.Context, order tradecontract.Order) error {
-	return m.svc.Fulfill(ctx, order)
+	if err := m.svc.Fulfill(ctx, order); err != nil {
+		return err
+	}
+	obs.Default().Inc("catcube_cube_opened_total")
+	return nil
 }
 
 func toApportionDTO(cubeID, id, perFen int64, targetN, pledged int, deadline time.Time, status int16) contract.Apportion {

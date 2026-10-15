@@ -32,6 +32,7 @@ type Config struct {
 	AlertOutboxDead      int64 // 死信条数阈值
 	AlertFulfillRetry    int   // 履约重试次数阈值
 	ContactDailyLimit    int   // 单用户每日联系方式查看上限（0=不限，p6 §1.5）
+	AlertReviewBacklog   int   // 审核积压告警阈值（0=不告警，p6 §5.4）
 
 	// Redis（S1：缓存；未配置则用进程内缓存）
 	RedisAddr     string
@@ -59,6 +60,7 @@ func FromEnv() Config {
 		AlertOutboxDead:      getenvInt("CATCUBE_ALERT_OUTBOX_DEAD", 100),
 		AlertFulfillRetry:    int(getenvInt("CATCUBE_ALERT_FULFILL_RETRY", 5)),
 		ContactDailyLimit:    int(getenvInt("CATCUBE_CONTACT_DAILY_LIMIT", 200)),
+		AlertReviewBacklog:   int(getenvInt("CATCUBE_ALERT_REVIEW_BACKLOG", 200)),
 		RedisAddr:            getenv("CATCUBE_REDIS_ADDR", ""),
 		RedisPassword:        getenv("CATCUBE_REDIS_PASSWORD", ""),
 	}

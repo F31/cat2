@@ -301,6 +301,13 @@ func (m *Module) auditNotify(req *http.Request, res contract.NotifyResult, err e
 	case res.AlreadyPaid:
 		action = "trade:pay:notify:duplicate"
 	}
+	if result == audit.ResultOK && !res.AlreadyPaid {
+		obs.Default().Inc("catcube_order_paid_total")
+		obs.Default().SetGauge("catcube_pay_last_ok_unixtime", float64(time.Now().Unix()))
+	}
+	if result != audit.ResultOK && err != nil && !errors.Is(err, domain.ErrNotifyOutOfOrder) {
+		obs.Default().Inc("catcube_pay_notify_failed_total")
+	}
 	target := ""
 	if res.OrderID != 0 {
 		target = fmt.Sprintf(`{"id":"%d","type":"order"}`, res.OrderID)

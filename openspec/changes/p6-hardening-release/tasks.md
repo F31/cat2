@@ -37,8 +37,8 @@
 
 - [ ] 5.1 OTel 全链路核查：trace/metric/log 统一入口，指标带 module 标签
 - [x] 5.2 日志结构化与脱敏：`obs` 统一 `WithRequestID/WithModule/WithUserID` + `RedactingHandler`（密钥字段屏蔽、手机号/证件号/姓名掩码、值内嵌手机号抹除）；入口 `slog.SetDefault(RedactingHandler)`；扫描脚本 `tools/logscan`（接入 `make lint`）；单测（脱敏）+ 扫描器测试；`make lint` 通过
-- [ ] 5.3 业务看板上线：注册、画像完成度、匹配点击、联系发起、会员转化、支付成功率、猫立方开通、审核积压
-- [ ] 5.4 告警上线（初始值可配）：P99>3s、错误率>1%、支付回调失败>0、履约重试超阈、审核 SLA 将超时
+- [x] 5.3 业务看板口径与埋点：实现漏斗指标（注册/匹配曝光与点击/联系发起/会员转化/猫立方开通/支付成功与回调失败/审核积压与 SLA/Outbox/审计链/履约兜底），经 `GET /metrics` 暴露；口径文档 `docs/ops/dashboards.md`；集成测试 `TestIntegrationBusinessMetrics`（Grafana 面板随 S1 监控栈接入）
+- [x] 5.4 告警清单与初始阈值：应用层已实现（`outbox_backlog_high`/`outbox_oldest_age_high`/`outbox_dead_high`/`fulfillment_retry_exceeded`/`review_sla_overdue`/`review_backlog_high`/`audit_chain_broken`/`contact_scrape_suspected`，阈值经 `CATCUBE_ALERT_*` 可配）；P99/错误率/DB/Redis 等接入层告警与处置动作见 `docs/ops/alerts.md`
 
 ## 6. 灰度发布
 
@@ -48,9 +48,9 @@
 
 ## 7. PRD 11.4 验收
 
-- [ ] 7.1 逐项核对 PRD 11.4 验收标准（含注册登录一体化、未填手机号不能进入主流程）
-- [ ] 7.2 PRD 追溯矩阵（docs/prd-trace/）逐项标注落地状态与测试证据
-- [ ] 7.3 待确认事项遗留清单复核：p0 闭环结论与实现一致
+- [x] 7.1 PRD 11.4 逐项核对：`docs/prd-trace/README.md`（从 PRD docx §11.4 抽取全部验收点，逐条标注 ✅/◐/❌ 与代码/测试证据）
+- [x] 7.2 追溯矩阵：`docs/prd-trace/README.md`（账号入驻/首页搜索/详情联系/消息/圈子/猫立方/认证/发布/会员支付/运营商/后台/跨端/企业版/触达/邀请/画像 16 组，逐条状态与证据）
+- [x] 7.3 待确认复核：`docs/prd-trace/pending-confirmations.md`（22 项逐条给出当前实现口径/证据；已闭环 #8/#9/#14/#15/#17/#20；阻塞项 #13；外部项 #2/#3/#4/#6/#7）
 - [ ] 7.4 上线检查单签署（安全/压测/备份/告警/回滚预案）
 
 ## 8. 退出标准

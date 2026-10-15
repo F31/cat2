@@ -16,6 +16,7 @@ import (
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
+	"catcube/internal/kernel/obs"
 	"catcube/internal/modules/trust/contract"
 	"catcube/internal/ports"
 	"catcube/pkg/ids"
@@ -31,6 +32,8 @@ type Deps struct {
 	Bus        *eventbus.Bus
 	Auth       AuthFunc
 	Audit      *audit.Recorder
+	// AlertReviewBacklog 审核积压告警阈值（0=不告警）
+	AlertReviewBacklog int
 }
 
 // Module trust 模块。
@@ -61,6 +64,25 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/review-tasks", Handler: m.auth(m.handleQueue), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/review-tasks/{id}/resolve", Handler: m.auth(m.handleResolve), Admin: true},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/review-metrics", Handler: m.auth(m.handleMetrics), Admin: true},
+	)
+	r.Jobs = append(r.Jobs,
+		// 审核积压与 SLA 监控（看板 + 告警，p6 §5.3/§5.4）
+		module.JobDef{Name: "trust.sla_monitor", Interval: time.Minute, Run: func(ctx context.Context) error {
+			met, err := m.SLAMetrics(ctx)
+			if err != nil {
+				return err
+			}
+			mm := obs.Default()
+			mm.SetGauge("catcube_review_backlog", float64(met.Pending))
+			mm.SetGauge("catcube_review_sla_overdue", float64(met.Overdue))
+			if met.Overdue > 0 {
+				mm.Alert("review_sla_overdue", fmt.Sprintf("%d 条审核任务超 SLA", met.Overdue))
+			}
+			if th := m.deps.AlertReviewBacklog; th > 0 && met.Pending > th {
+				mm.Alert("review_backlog_high", fmt.Sprintf("审核积压 %d 超过阈值 %d", met.Pending, th))
+			}
+			return nil
+		}},
 	)
 	r.CapProviders = append(r.CapProviders, capProvider{m})
 	// 订阅聊天消息（msg R1 事件，topic 字面量，不 import 高阶 contract）：异步机检，命中入审核队列。

@@ -156,7 +156,8 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		moderationClient = moderation.NewDevClient() // dev/演练实现（生产接微信内容安全适配器）
 		slog.Info("内容安全启用开发实现", "mode", cfg.Moderation)
 	}
-	trustMod := trust.New(trust.Deps{Pool: pool, Moderation: moderationClient, Bus: bus, Auth: authFunc, Audit: auditRec})
+	trustMod := trust.New(trust.Deps{Pool: pool, Moderation: moderationClient, Bus: bus, Auth: authFunc, Audit: auditRec,
+		AlertReviewBacklog: cfg.AlertReviewBacklog})
 	dictMod := dict.New(pool)
 	mediaMod := media.New(pool, storage)
 	entityReg := entityref.NewRegistry()

@@ -13,6 +13,7 @@ import (
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
+	"catcube/internal/kernel/obs"
 	"catcube/internal/kernel/policy"
 	"catcube/internal/kernel/settings"
 	idcontract "catcube/internal/modules/identity/contract"
@@ -124,7 +125,11 @@ func (m *Module) RefundQuote(ctx context.Context, orderID int64) (int64, error) 
 
 func (m *Module) BizType() string { return "member" }
 func (m *Module) Fulfill(ctx context.Context, order tradecontract.Order) error {
-	return m.svc.Fulfill(ctx, order)
+	if err := m.svc.Fulfill(ctx, order); err != nil {
+		return err
+	}
+	obs.Default().Inc("catcube_member_opened_total")
+	return nil
 }
 
 // ---- HTTP 层 ----

@@ -15,6 +15,7 @@ import (
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
+	"catcube/internal/kernel/obs"
 	"catcube/internal/kernel/policy"
 	idcontract "catcube/internal/modules/identity/contract"
 	"catcube/internal/modules/msg/contract"
@@ -28,13 +29,13 @@ import (
 
 // Deps 装配依赖。
 type Deps struct {
-	Pool     *db.Pool
-	Bus      *eventbus.Bus
-	Identity idcontract.Facade
-	Policy   *policy.Engine
-	Resolver *entityref.Registry
-	Realtime ports.Realtime // 一期 Noop（纯异步，无 WebSocket）
-	Audit    *audit.Recorder
+	Pool           *db.Pool
+	Bus            *eventbus.Bus
+	Identity       idcontract.Facade
+	Policy         *policy.Engine
+	Resolver       *entityref.Registry
+	Realtime       ports.Realtime // 一期 Noop（纯异步，无 WebSocket）
+	Audit          *audit.Recorder
 	Storage        ports.Storage                  // 归档压缩上传（未配置对象存储时开发态本地回退）
 	MemberResolver contract.SessionMemberResolver // 群成员解析（cube 注册）
 }
@@ -161,6 +162,7 @@ func (m *Module) handleEnsure(w http.ResponseWriter, req *http.Request) {
 		writeMsgErr(w, err)
 		return
 	}
+	obs.Default().Inc("catcube_session_ensure_total")
 	writeData(w, res)
 }
 
