@@ -5,6 +5,7 @@ package eventbus
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -111,6 +112,7 @@ func (b *Bus) Relay(ctx context.Context, consumer string, limit int) (int, error
 			}
 		}
 		if err := b.dispatch(ctx, e); err != nil {
+			slog.Warn("事件投递失败（订阅处理器错误）", "topic", e.Topic, "event_id", e.ID, "err", err)
 			_ = b.store.MarkRetry(ctx, e.ID)
 			continue
 		}

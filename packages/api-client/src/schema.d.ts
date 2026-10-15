@@ -500,6 +500,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 六类内容检索（关键词与标签独立可用；PG 实现经 Search 端口抽象） */
+        get: operations["search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 匹配卡片流（读预计算候选；首页单次聚合，首屏 ≤3 秒） */
+        get: operations["feed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 我的匹配（与 /feed 同源） */
+        get: operations["listMatches"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/matches/{ref}/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 匹配解释（规则模板生成，不依赖 LLM） */
+        get: operations["explainMatch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sessions": {
         parameters: {
             query?: never;
@@ -983,6 +1051,24 @@ export interface components {
             content: string;
             /** Format: date-time */
             created_at?: string;
+        };
+        MatchReason: {
+            dimension: string;
+            text: string;
+        };
+        DiscoveryCard: {
+            /** @description EntityRef type:id */
+            ref: string;
+            /** @description user/org/content.project/... */
+            type: string;
+            title: string;
+            cover?: string;
+            region?: string;
+            /** @description 匹配分 0~100 */
+            score?: number;
+            member_level?: number;
+            verified?: boolean;
+            reason?: components["schemas"]["MatchReason"][];
         };
     };
     responses: {
@@ -1943,6 +2029,122 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+        };
+    };
+    search: {
+        parameters: {
+            query?: {
+                q?: string;
+                type?: "user" | "org" | "content.project" | "content.product" | "content.meeting" | "content.event";
+                region?: string;
+                industry?: string;
+                need?: string;
+                offer?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 搜索结果（分类返回；空则前端显示「没有找到相关内容」） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["DiscoveryCard"][];
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    feed: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 匹配卡片 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["DiscoveryCard"][];
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listMatches: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 匹配卡片 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["DiscoveryCard"][];
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    explainMatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 解释 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            ref?: string;
+                            score?: number;
+                            reason?: components["schemas"]["MatchReason"][];
+                        };
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     listSessions: {

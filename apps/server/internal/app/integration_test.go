@@ -18,6 +18,7 @@ import (
 
 	"catcube/internal/kernel/config"
 	"catcube/internal/kernel/obs"
+	"catcube/internal/modules/discovery"
 	"catcube/internal/modules/membership"
 	"catcube/internal/modules/trade"
 )
@@ -1096,5 +1097,131 @@ func TestIntegrationMsgFlow(t *testing.T) {
 	_ = h.app.Pool.QueryRow(context.Background(), `SELECT count(1) FROM sys_outbox WHERE topic='msg.MessageSent.v1'`).Scan(&n)
 	if n < 2 {
 		t.Fatalf("应有 ≥2 条 MessageSent 事件，实际 %d", n)
+	}
+}
+
+// relayAll 驱动 Outbox 投递（worker 角色），让事件订阅生效。
+func relayAll(t *testing.T, h *testApp) {
+	t.Helper()
+	ctx := context.Background()
+	for i := 0; i < 30; i++ {
+		n, err := h.app.Bus.Relay(ctx, "test", 1000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n == 0 {
+			return
+		}
+	}
+}
+
+// setCard 补全第二层画像（触发 ProfileUpdated/投影）。
+func setCard(t *testing.T, h *testApp, token, name, region string, industry, need, offer []string) {
+	t.Helper()
+	status, env := h.do(http.MethodPut, "/api/mp/v1/cards/me", token, map[string]any{
+		"name": name, "subject_type_code": "person", "region_code": region,
+		"industry_codes": industry, "need_codes": need, "offer_codes": offer,
+	})
+	if status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("补全名片失败: %d %+v", status, env)
+	}
+}
+
+func refreshCandidates(t *testing.T, h *testApp) {
+	t.Helper()
+	for _, m := range h.app.Modules {
+		if dm, ok := m.(*discovery.Module); ok {
+			if _, err := dm.RefreshAll(context.Background()); err != nil {
+				t.Fatalf("候选刷新失败: %v", err)
+			}
+			return
+		}
+	}
+	t.Fatal("discovery 模块未装载")
+}
+
+// discovery R5：事件投影 → 候选预计算 → feed → 搜索 → 解释 → 先给后要。
+func TestIntegrationDiscoveryFlow(t *testing.T) {
+	h := newTestApp(t)
+	_, aTok := loginUser(t, h)
+	bID, bTok := loginUser(t, h)
+
+	setCard(t, h, aTok, "张三", "310000", []string{"A01"}, []string{"N1"}, []string{"O1"})
+	setCard(t, h, bTok, "李四", "310000", []string{"A01"}, []string{"O1"}, []string{"N1"})
+	relayAll(t, h)
+	refreshCandidates(t, h)
+
+	// A 的 feed 命中 B（供需互补 + 同行业 + 同区域 + 身份互补 → 100）
+	type card struct {
+		Ref    string  `json:"ref"`
+		Type   string  `json:"type"`
+		Title  string  `json:"title"`
+		Score  float64 `json:"score"`
+		Reason []struct {
+			Dimension string `json:"dimension"`
+			Text      string `json:"text"`
+		} `json:"reason"`
+	}
+	_, env := h.do(http.MethodGet, "/api/mp/v1/feed", aTok, nil)
+	var feed struct {
+		Items []card `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &feed)
+	var hit *card
+	for i := range feed.Items {
+		if feed.Items[i].Ref == fmt.Sprintf("user:%d", bID) {
+			hit = &feed.Items[i]
+		}
+	}
+	if hit == nil || hit.Score != 92.5 || len(hit.Reason) == 0 || hit.Title != "李四" {
+		t.Fatalf("A feed 应命中 B（供需/行业/区域满分+身份互补 0.5）: %+v", feed.Items)
+	}
+
+	// 关键词搜索（人物）
+	_, env = h.do(http.MethodGet, "/api/mp/v1/search?q=%E6%9D%8E%E5%9B%9B", "", nil)
+	var sr struct {
+		Items []card `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &sr)
+	if len(sr.Items) == 0 || sr.Items[0].Ref != fmt.Sprintf("user:%d", bID) {
+		t.Fatalf("关键词搜索应命中李四: %+v", sr.Items)
+	}
+	// 类型筛选（无需关键词）
+	_, env = h.do(http.MethodGet, "/api/mp/v1/search?type=user", "", nil)
+	_ = json.Unmarshal(env.Data, &sr)
+	if len(sr.Items) < 2 {
+		t.Fatalf("type=user 应返回 ≥2 条: %+v", sr.Items)
+	}
+	// 非法类型
+	if status, env := h.do(http.MethodGet, "/api/mp/v1/search?type=bad", "", nil); status != http.StatusBadRequest || env.Code != 160001 {
+		t.Fatalf("非法类型应 160001/400: %d %+v", status, env)
+	}
+
+	// 匹配解释
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/matches/user:%d/explain", bID), aTok, nil)
+	var explain struct {
+		Ref    string  `json:"ref"`
+		Score  float64 `json:"score"`
+		Reason []struct {
+			Dimension string `json:"dimension"`
+		} `json:"reason"`
+	}
+	_ = json.Unmarshal(env.Data, &explain)
+	if explain.Score != 92.5 || len(explain.Reason) != 4 {
+		t.Fatalf("解释应 92.5 分 4 维: %+v", explain)
+	}
+
+	// 先给后要：新用户无画像，注册事件触发候选 → feed 非空（回退粗匹配）
+	_, cTok := loginUser(t, h)
+	relayAll(t, h)
+	_, env = h.do(http.MethodGet, "/api/mp/v1/feed", cTok, nil)
+	_ = json.Unmarshal(env.Data, &feed)
+	if len(feed.Items) == 0 {
+		t.Fatal("新用户（无画像）应至少给出粗匹配卡片")
+	}
+
+	// 越权：explain 目标不存在（合法 ref 但无文档）→ 160003/404
+	if status, env := h.do(http.MethodGet, "/api/mp/v1/matches/user:99999999/explain", aTok, nil); status != http.StatusNotFound || env.Code != 160003 {
+		t.Fatalf("无候选应 160003/404: %d %+v", status, env)
 	}
 }

@@ -131,6 +131,26 @@ func (o *Outbox) Claim(ctx context.Context, limit int) ([]eventbus.Event, error)
 	return out, rows.Err()
 }
 
+// List 按发生顺序读取全部事件（只读，供投影回放；不改变投递状态）。
+func (o *Outbox) List(ctx context.Context, limit int) ([]eventbus.Event, error) {
+	rows, err := o.pool.Query(ctx,
+		`SELECT event_id, topic, payload, space_id, occurred_at FROM sys_outbox
+		 ORDER BY occurred_at, event_id LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []eventbus.Event
+	for rows.Next() {
+		var e eventbus.Event
+		if err := rows.Scan(&e.ID, &e.Topic, &e.Payload, &e.SpaceID, &e.OccurredAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 func (o *Outbox) MarkDone(ctx context.Context, id string) error {
 	_, err := o.pool.Exec(ctx, `UPDATE sys_outbox SET status=3, delivered_at=now() WHERE event_id=$1`, id)
 	return err

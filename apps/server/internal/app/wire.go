@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"catcube/internal/adapters/local"
 	"catcube/internal/adapters/oss"
@@ -28,6 +29,7 @@ import (
 	"catcube/internal/kernel/settings"
 	"catcube/internal/modules/content"
 	contentcontract "catcube/internal/modules/content/contract"
+	"catcube/internal/modules/discovery"
 	"catcube/internal/modules/identity"
 	"catcube/internal/modules/membership"
 	"catcube/internal/modules/msg"
@@ -145,10 +147,13 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine,
 		Resolver: entityReg, Realtime: local.RealtimeNoop{},
 	})
+	settingsReg := settings.NewRegistry(nil)
+	discoveryMod := discovery.New(discovery.Deps{
+		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Settings: settingsReg, Outbox: outbox,
+	})
 	tradeMod := trade.New(trade.Deps{
 		Pool: pool, Bus: bus, Pay: pay.NewDevClient(), Identity: identityMod.Facade(),
 	})
-	settingsReg := settings.NewRegistry(nil)
 	membershipMod := membership.New(membership.Deps{
 		Pool: pool, Bus: bus, Trade: tradeMod.Facade(), Verify: verifyMod.Facade(),
 		Identity: identityMod.Facade(), Settings: settingsReg, Policy: policyEngine,
@@ -165,6 +170,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		tradeMod,
 		membershipMod,
 		msgMod,
+		discoveryMod,
 	}
 
 	// 依赖拓扑装载：缺依赖启动即失败
@@ -193,6 +199,15 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 
 	// 履约能力注册（装配根唯一装配扩展点）：会员开通/续期由 trade 支付成功回调触发
 	tradeMod.RegisterFulfiller(membershipMod)
+
+	// 事件投递 worker：轮询 Outbox 分发订阅（至少一次；订阅方幂等）
+	a.scheduler().Register([]scheduler.Job{{
+		Name: "kernel.outbox_relay", Interval: 2 * time.Second,
+		Run: func(ctx context.Context) error {
+			_, err := bus.Relay(ctx, "worker", 200)
+			return err
+		},
+	}})
 
 	// 跨模块扩展点装配（装配根唯一 import 所有模块）：审核对象提供者
 	trustMod.RegisterSubjectProvider(profileMod)

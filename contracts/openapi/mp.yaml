@@ -794,6 +794,134 @@ paths:
                           order_id: { type: string }
                           already_paid: { type: boolean }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /search:
+    get:
+      tags: [discovery]
+      summary: 六类内容检索（关键词与标签独立可用；PG 实现经 Search 端口抽象）
+      operationId: search
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, description: 名称关键词 }
+        - name: type
+          in: query
+          schema: { type: string, enum: [user, org, content.project, content.product, content.meeting, content.event] }
+        - name: region
+          in: query
+          schema: { type: string }
+        - name: industry
+          in: query
+          schema: { type: string, description: '行业 code，逗号分隔' }
+        - name: need
+          in: query
+          schema: { type: string, description: '合作需求 code，逗号分隔' }
+        - name: offer
+          in: query
+          schema: { type: string, description: '合作供给 code，逗号分隔' }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: 搜索结果（分类返回；空则前端显示「没有找到相关内容」）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/DiscoveryCard' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /feed:
+    get:
+      tags: [discovery]
+      summary: 匹配卡片流（读预计算候选；首页单次聚合，首屏 ≤3 秒）
+      operationId: feed
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: 匹配卡片
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/DiscoveryCard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /matches:
+    get:
+      tags: [discovery]
+      summary: 我的匹配（与 /feed 同源）
+      operationId: listMatches
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: 匹配卡片
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/DiscoveryCard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /matches/{ref}/explain:
+    get:
+      tags: [discovery]
+      summary: 匹配解释（规则模板生成，不依赖 LLM）
+      operationId: explainMatch
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          schema: { type: string, description: 'EntityRef，如 user:123' }
+      responses:
+        '200':
+          description: 解释
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          ref: { type: string }
+                          score: { type: number }
+                          reason:
+                            type: array
+                            items: { $ref: '#/components/schemas/MatchReason' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /sessions:
     post:
       tags: [msg]
@@ -1467,6 +1595,27 @@ components:
         msg_type: { type: integer, description: '1文本/2图片' }
         content: { type: string }
         created_at: { type: string, format: date-time }
+    MatchReason:
+      type: object
+      required: [dimension, text]
+      properties:
+        dimension: { type: string }
+        text: { type: string }
+    DiscoveryCard:
+      type: object
+      required: [ref, type, title]
+      properties:
+        ref: { type: string, description: 'EntityRef type:id' }
+        type: { type: string, description: 'user/org/content.project/...' }
+        title: { type: string }
+        cover: { type: string }
+        region: { type: string }
+        score: { type: number, description: 匹配分 0~100 }
+        member_level: { type: integer }
+        verified: { type: boolean }
+        reason:
+          type: array
+          items: { $ref: '#/components/schemas/MatchReason' }
   responses:
     OkEmpty:
       description: 成功（无业务数据）

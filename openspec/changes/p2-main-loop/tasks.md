@@ -42,14 +42,15 @@
 
 ## 5. discovery（R5，规则版）
 
-- [ ] 5.1 迁移：`dsc_search_doc`、`dsc_match_candidates`（4.2.19，唯一键 user_id+candidate_ref）
-- [ ] 5.2 事件订阅投影：`ProfileUpdated/OrgCardUpdated/ContentPublished/TakenDown/CertificationApproved/MemberActivated/Expired/Followed`；下架/关闭事件同步删除或置灰；版本防旧事件覆盖
-- [ ] 5.3 投影回放工具：读模型可随时由事件回放重建
-- [ ] 5.4 匹配候选预计算：画像更新事件触发倒排求交重算 Top-K 写入 `dsc_match_candidates`；「先给后要」注册即按粗标签给 3 条
-- [ ] 5.5 评分公式：需求供给互补 40%+行业 25%（同子行业>同行业）+区域 20%+身份互补 15%；权重 SettingsSchema 配置化带版本；同分按会员等级（企业版>SVIP>VIP>普通），不设推荐位/插队
-- [ ] 5.6 推荐理由规则模板生成（不依赖 LLM）：`GET /matches/{id}/explain`
-- [ ] 5.7 搜索：`GET /search?q=&type=` 六类内容按名称检索（PG pg_trgm/中文分词，经 Search 端口抽象）；标签筛选与关键词独立可用
-- [ ] 5.8 bff/miniapp 聚合：`GET /feed` 单次返回卡片流+画像进度+未读数；`POST /feed/refresh` 换一批；详情页聚合（名片+Badges+会员等级+关注状态）
+- [x] 5.1 迁移：`dsc_search_doc`、`dsc_match_candidates`（唯一键 user_id+candidate_ref）+ `dsc_projection_meta`（pg_trgm 扩展）
+- [x] 5.2 事件订阅投影：`ProfileUpdated/OrgCardUpdated/ContentPublished/TakenDown/Closed/CertificationApproved/MemberActivated/Expired/Followed/UserRegistered/UserDeactivated`；下架/关闭置灰；`search_doc_version` 防旧事件覆盖
+- [x] 5.3 投影回放工具：`Module.Rebuild()` 清空后按 Outbox 事件顺序重放（经 `OutboxReader` 端口，不触碰 sys_ 表）
+- [x] 5.4 匹配候选预计算：画像更新触发重算 Top-K 写入 `dsc_match_candidates`；`discovery.refresh` 周期收敛跨用户新增；「先给后要」注册即给 ≥3 条
+- [x] 5.5 评分公式：需求供给互补 40+行业 25（同子行业>同行业）+区域 20+身份互补 15；权重 SettingsSchema 配置化；同分按会员等级→近期活跃
+- [x] 5.6 推荐理由规则模板生成（不依赖 LLM）：`GET /matches/{ref}/explain`
+- [x] 5.7 搜索：`GET /search?q=&type=` 六类按名称检索（`dsc_` 读模型 + pg_trgm，经 discovery 内 `Repo` 抽象）；标签筛选与关键词独立可用（外部引擎切换走 ports.Search 留后续）
+- [ ] 5.8 `/feed` 卡片流已实现（读预计算候选）；`POST /feed/refresh` 换一批、画像进度+未读数聚合、详情页聚合属 bff/miniapp 层，待该层落地
+- 备注：新增内核事件投递 worker `kernel.outbox_relay`（Outbox→订阅）；修 identity 事件 user_id 未按契约输出字符串的 bug
 
 ## 6. trust（完整链路）
 

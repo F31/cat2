@@ -269,6 +269,36 @@ func (e CreateUploadJSONBodyContentType) Valid() bool {
 	}
 }
 
+// Defines values for SearchParamsType.
+const (
+	ContentEvent   SearchParamsType = "content.event"
+	ContentMeeting SearchParamsType = "content.meeting"
+	ContentProduct SearchParamsType = "content.product"
+	ContentProject SearchParamsType = "content.project"
+	Org            SearchParamsType = "org"
+	User           SearchParamsType = "user"
+)
+
+// Valid indicates whether the value is a known member of the SearchParamsType enum.
+func (e SearchParamsType) Valid() bool {
+	switch e {
+	case ContentEvent:
+		return true
+	case ContentMeeting:
+		return true
+	case ContentProduct:
+		return true
+	case ContentProject:
+		return true
+	case Org:
+		return true
+	case User:
+		return true
+	default:
+		return false
+	}
+}
+
 // Card defines model for Card.
 type Card struct {
 	AdvantageField *string `json:"advantage_field,omitempty"`
@@ -432,6 +462,25 @@ type DictItem struct {
 	Sort       *int    `json:"sort,omitempty"`
 }
 
+// DiscoveryCard defines model for DiscoveryCard.
+type DiscoveryCard struct {
+	Cover       *string        `json:"cover,omitempty"`
+	MemberLevel *int           `json:"member_level,omitempty"`
+	Reason      *[]MatchReason `json:"reason,omitempty"`
+
+	// Ref EntityRef type:id
+	Ref    string  `json:"ref"`
+	Region *string `json:"region,omitempty"`
+
+	// Score 匹配分 0~100
+	Score *float32 `json:"score,omitempty"`
+	Title string   `json:"title"`
+
+	// Type user/org/content.project/...
+	Type     string `json:"type"`
+	Verified *bool  `json:"verified,omitempty"`
+}
+
 // Envelope defines model for Envelope.
 type Envelope struct {
 	// Code 0=成功；否则 MMNNNN 错误码
@@ -478,6 +527,12 @@ type LoginData struct {
 
 	// UserId int64 字符串
 	UserId string `json:"user_id"`
+}
+
+// MatchReason defines model for MatchReason.
+type MatchReason struct {
+	Dimension string `json:"dimension"`
+	Text      string `json:"text"`
 }
 
 // MembershipMember defines model for MembershipMember.
@@ -777,9 +832,19 @@ type FavoriteTargetParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// FeedParams defines parameters for Feed.
+type FeedParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // FollowTargetParams defines parameters for FollowTarget.
 type FollowTargetParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// ListMatchesParams defines parameters for ListMatches.
+type ListMatchesParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // CreateUploadJSONBody defines parameters for CreateUpload.
@@ -820,6 +885,20 @@ type PayNotifyJSONBody map[string]interface{}
 type ReportTargetParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
+
+// SearchParams defines parameters for Search.
+type SearchParams struct {
+	Q        *string           `form:"q,omitempty" json:"q,omitempty"`
+	Type     *SearchParamsType `form:"type,omitempty" json:"type,omitempty"`
+	Region   *string           `form:"region,omitempty" json:"region,omitempty"`
+	Industry *string           `form:"industry,omitempty" json:"industry,omitempty"`
+	Need     *string           `form:"need,omitempty" json:"need,omitempty"`
+	Offer    *string           `form:"offer,omitempty" json:"offer,omitempty"`
+	Limit    *int              `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// SearchParamsType defines parameters for Search.
+type SearchParamsType string
 
 // EnsureSessionJSONBody defines parameters for EnsureSession.
 type EnsureSessionJSONBody struct {
@@ -967,6 +1046,9 @@ type ServerInterface interface {
 	// UnfavoriteTarget 取消收藏
 	// (DELETE /favorites/{ref})
 	UnfavoriteTarget(w http.ResponseWriter, r *http.Request, ref string)
+	// Feed 匹配卡片流（读预计算候选；首页单次聚合，首屏 ≤3 秒）
+	// (GET /feed)
+	Feed(w http.ResponseWriter, r *http.Request, params FeedParams)
 	// GetFollowUnread 关注动态未读数
 	// (GET /follow-unread)
 	GetFollowUnread(w http.ResponseWriter, r *http.Request)
@@ -982,6 +1064,12 @@ type ServerInterface interface {
 	// UnfollowTarget 取关（幂等）
 	// (DELETE /follows/{ref})
 	UnfollowTarget(w http.ResponseWriter, r *http.Request, ref string)
+	// ListMatches 我的匹配（与 /feed 同源）
+	// (GET /matches)
+	ListMatches(w http.ResponseWriter, r *http.Request, params ListMatchesParams)
+	// ExplainMatch 匹配解释（规则模板生成，不依赖 LLM）
+	// (GET /matches/{ref}/explain)
+	ExplainMatch(w http.ResponseWriter, r *http.Request, ref string)
 	// CreateUpload 申请预签名上传（JPG/PNG ≤5MB）
 	// (POST /media/uploads)
 	CreateUpload(w http.ResponseWriter, r *http.Request, params CreateUploadParams)
@@ -1021,6 +1109,9 @@ type ServerInterface interface {
 	// ReportTarget 举报（入人工复核队列，24h SLA）
 	// (POST /reports)
 	ReportTarget(w http.ResponseWriter, r *http.Request, params ReportTargetParams)
+	// Search 六类内容检索（关键词与标签独立可用；PG 实现经 Search 端口抽象）
+	// (GET /search)
+	Search(w http.ResponseWriter, r *http.Request, params SearchParams)
 	// ListSessions 我的会话列表（含未读数）
 	// (GET /sessions)
 	ListSessions(w http.ResponseWriter, r *http.Request)
@@ -1707,6 +1798,39 @@ func (siw *ServerInterfaceWrapper) UnfavoriteTarget(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// Feed operation middleware
+func (siw *ServerInterfaceWrapper) Feed(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params FeedParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Feed(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetFollowUnread operation middleware
 func (siw *ServerInterfaceWrapper) GetFollowUnread(w http.ResponseWriter, r *http.Request) {
 
@@ -1811,6 +1935,65 @@ func (siw *ServerInterfaceWrapper) UnfollowTarget(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UnfollowTarget(w, r, ref)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMatches operation middleware
+func (siw *ServerInterfaceWrapper) ListMatches(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListMatchesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMatches(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExplainMatch operation middleware
+func (siw *ServerInterfaceWrapper) ExplainMatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "ref" -------------
+	var ref string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "ref", r.PathValue("ref"), &ref, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ref", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExplainMatch(w, r, ref)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2154,6 +2337,117 @@ func (siw *ServerInterfaceWrapper) ReportTarget(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReportTarget(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Search operation middleware
+func (siw *ServerInterfaceWrapper) Search(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "type", r.URL.Query(), &params.Type, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "region" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "region", r.URL.Query(), &params.Region, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "region"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "region", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "industry" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "industry", r.URL.Query(), &params.Industry, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "industry"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "industry", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "need" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "need", r.URL.Query(), &params.Need, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "need"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "need", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offer" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offer", r.URL.Query(), &params.Offer, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offer"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offer", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Search(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2509,6 +2803,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/orders/{id}", wrapper.GetOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/orders/{id}/pay", wrapper.PayOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/pay/notify", wrapper.PayNotify)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/search", wrapper.Search)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/feed", wrapper.Feed)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/matches", wrapper.ListMatches)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/matches/{ref}/explain", wrapper.ExplainMatch)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/sessions", wrapper.ListSessions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/sessions", wrapper.EnsureSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/sessions/{id}/messages", wrapper.SyncMessages)
