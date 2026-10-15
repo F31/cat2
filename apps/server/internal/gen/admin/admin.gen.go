@@ -76,6 +76,14 @@ type AdminMember struct {
 	UserId *string `json:"user_id,omitempty"`
 }
 
+// AdminSection defines model for AdminSection.
+type AdminSection struct {
+	Key    string `json:"key"`
+	Label  string `json:"label"`
+	Module string `json:"module"`
+	Path   string `json:"path"`
+}
+
 // AdminUser defines model for AdminUser.
 type AdminUser struct {
 	CreatedAt *time.Time `json:"created_at,omitempty"`
@@ -115,6 +123,14 @@ type ContentItem struct {
 
 // ContentItemKind defines model for ContentItem.Kind.
 type ContentItemKind string
+
+// DeadLetter defines model for DeadLetter.
+type DeadLetter struct {
+	EventId    string    `json:"event_id"`
+	OccurredAt time.Time `json:"occurred_at"`
+	SpaceId    *int      `json:"space_id,omitempty"`
+	Topic      string    `json:"topic"`
+}
 
 // Envelope defines model for Envelope.
 type Envelope struct {
@@ -297,12 +313,24 @@ type ServerInterface interface {
 	// AdminTakedownContent 下架内容（记录原因）
 	// (POST /contents/{id}/takedown)
 	AdminTakedownContent(w http.ResponseWriter, r *http.Request, id string)
+	// AdminDeadLetters 死信队列（按时间倒序）
+	// (GET /dead-letters)
+	AdminDeadLetters(w http.ResponseWriter, r *http.Request)
+	// AdminReplayDeadLetter 死信重放（复位 status=0/retry=0）
+	// (POST /dead-letters/{eventID}/replay)
+	AdminReplayDeadLetter(w http.ResponseWriter, r *http.Request, eventID string)
 	// AdminRetryFulfillment 履约补偿重试（死信重置）
 	// (POST /fulfillments/{orderID}/retry)
 	AdminRetryFulfillment(w http.ResponseWriter, r *http.Request, orderID string)
 	// AdminListMembers 会员列表（按等级/状态）
 	// (GET /members)
 	AdminListMembers(w http.ResponseWriter, r *http.Request, params AdminListMembersParams)
+	// AdminMenus 后台菜单声明（AdminSection 声明式；p4 扩菜单级/操作级权限点）
+	// (GET /menus)
+	AdminMenus(w http.ResponseWriter, r *http.Request)
+	// AdminNoticeTemplates 通知模板（只读；编辑随 p4）
+	// (GET /notice-templates)
+	AdminNoticeTemplates(w http.ResponseWriter, r *http.Request)
 	// AdminListOrders 订单列表（按状态）
 	// (GET /orders)
 	AdminListOrders(w http.ResponseWriter, r *http.Request, params AdminListOrdersParams)
@@ -423,6 +451,46 @@ func (siw *ServerInterfaceWrapper) AdminTakedownContent(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// AdminDeadLetters operation middleware
+func (siw *ServerInterfaceWrapper) AdminDeadLetters(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminDeadLetters(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminReplayDeadLetter operation middleware
+func (siw *ServerInterfaceWrapper) AdminReplayDeadLetter(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "eventID" -------------
+	var eventID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "eventID", r.PathValue("eventID"), &eventID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "eventID", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminReplayDeadLetter(w, r, eventID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminRetryFulfillment operation middleware
 func (siw *ServerInterfaceWrapper) AdminRetryFulfillment(w http.ResponseWriter, r *http.Request) {
 
@@ -499,6 +567,34 @@ func (siw *ServerInterfaceWrapper) AdminListMembers(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminListMembers(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminMenus operation middleware
+func (siw *ServerInterfaceWrapper) AdminMenus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminMenus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminNoticeTemplates operation middleware
+func (siw *ServerInterfaceWrapper) AdminNoticeTemplates(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminNoticeTemplates(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -872,6 +968,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/menus", wrapper.AdminMenus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/dead-letters", wrapper.AdminDeadLetters)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/dead-letters/{eventID}/replay", wrapper.AdminReplayDeadLetter)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/notice-templates", wrapper.AdminNoticeTemplates)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/users", wrapper.AdminListUsers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/users/{id}/ban", wrapper.AdminBanUser)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/users/{id}/unban", wrapper.AdminUnbanUser)

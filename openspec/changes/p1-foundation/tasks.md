@@ -87,7 +87,7 @@
 - [x] 9.6 `authz_ver` 递增机制与网关比对（无陈旧窗口）；订阅 `AuthzChanged` 类内部触发点
 - [x] 9.7 注销与匿名化：`Deactivate` 发布 `identity.UserDeactivated`，本模块处理自身数据匿名化
 - [x] 9.8 contract：`Authenticate`、`SessionOf`、`UserBrief`、`Deactivate`、`AuthzBump`；注册 CapabilityProvider（账号状态；实名先返回未实名）
-- [ ] 9.9 admin/：用户列表、封禁的 AdminSection 声明（页面 p4）
+- [x] 9.9 admin/ AdminSection：`kernel/module.Registry.AdminSections` + 装配根集中声明（identity/content/trust/trade/membership/cube/circle/notice/ops/dict/profile）；`GET /api/admin/v1/menus` 按启用模块返回；admin-web 侧栏由声明驱动（拉取失败回退静态）
 - [x] 9.10 状态/策略测试：domain 单测（锁定/会话上限/手机号）+ 集成测试（`integration_test.go`：登录、短信、令牌轮换、会话上限、注销事件、authz_ver 陈旧窗口）
 
 ## 10. trust 模块骨架（R0）
@@ -107,7 +107,7 @@
 - [ ] 11.4 画像字段模板：表结构与字段池已建；模板渲染/校验服务为占位
 - [x] 11.5 `TagSet` 值对象与 `ValidateTagSet` 统一校验（非法 code 拒绝）
 - [x] 11.6 `contracts/seeds/` 种子导入命令（幂等）：行业两级、区域省市县、合作需求/供给、会议/活动领域、主体类型六类（`catcube seed`）
-- [ ] 11.7 admin/：主体类型、选项管理、画像字段模板的 AdminSection 声明（页面 p4）
+- [x] 11.7 admin/：`dict.taxonomy`（主体类型与选项）、`profile.templates`（画像字段模板）AdminSection 声明已登记（页面 p4）
 
 ## 12. media 模块（共享业务域）
 
@@ -127,8 +127,8 @@
 ## 14. S0 部署
 
 - [x] 14.1 `deploy/compose`：app（全角色全模块）+ PostgreSQL 一键起（`make up`；已真实启动验证，宿主端口冲突时用 APP_PORT 覆盖）
-- [ ] 14.2 PITR 备份配置（WAL 归档 + 每日全备）
-- [ ] 14.3 前端构建与本地联调脚本
+- [x] 14.2 PITR 备份：S0 compose db 开启 `wal_level=replica`/`archive_mode`/`archive_command`（WAL 归档卷）+ `backup` 边车每日 `pg_basebackup` 与保留清理（`deploy/compose/backup.sh`）+ 恢复步骤 `restore.md`；`docker compose config` 校验通过
+- [x] 14.3 前端脚本：Makefile `install`/`typecheck`/`build-web`/`dev-admin`/`dev-miniapp`（后台 Vite 代理 /api→8080；小程序 watch 构建导入 dist）；`make typecheck` 通过
 
 ## 15. 退出标准
 

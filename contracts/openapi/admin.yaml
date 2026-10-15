@@ -21,6 +21,85 @@ tags:
 security:
   - bearerAuth: []
 paths:
+  /menus:
+    get:
+      tags: [admin-governance]
+      summary: 后台菜单声明（AdminSection 声明式；p4 扩菜单级/操作级权限点）
+      operationId: adminMenus
+      responses:
+        '200':
+          description: 菜单列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/AdminSection' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /dead-letters:
+    get:
+      tags: [admin-governance]
+      summary: 死信队列（按时间倒序）
+      operationId: adminDeadLetters
+      responses:
+        '200':
+          description: 死信列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/DeadLetter' }
+  /dead-letters/{eventID}/replay:
+    post:
+      tags: [admin-governance]
+      summary: 死信重放（复位 status=0/retry=0）
+      operationId: adminReplayDeadLetter
+      parameters:
+        - { name: eventID, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { type: object, properties: { replayed: { type: boolean } } } }
+  /notice-templates:
+    get:
+      tags: [admin-governance]
+      summary: 通知模板（只读；编辑随 p4）
+      operationId: adminNoticeTemplates
+      responses:
+        '200':
+          description: 模板列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { type: object } }
   /users:
     get:
       tags: [admin-identity]
@@ -406,6 +485,22 @@ components:
       type: object
       properties:
         status: { type: integer }
+    AdminSection:
+      type: object
+      required: [key, label, path, module]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        path: { type: string }
+        module: { type: string }
+    DeadLetter:
+      type: object
+      required: [event_id, topic, occurred_at]
+      properties:
+        event_id: { type: string }
+        topic: { type: string }
+        space_id: { type: integer }
+        occurred_at: { type: string, format: date-time }
     AdminUser:
       type: object
       properties:

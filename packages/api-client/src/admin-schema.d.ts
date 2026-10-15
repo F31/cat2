@@ -4,6 +4,74 @@
  */
 
 export interface paths {
+    "/menus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 后台菜单声明（AdminSection 声明式；p4 扩菜单级/操作级权限点） */
+        get: operations["adminMenus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dead-letters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 死信队列（按时间倒序） */
+        get: operations["adminDeadLetters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dead-letters/{eventID}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 死信重放（复位 status=0/retry=0） */
+        post: operations["adminReplayDeadLetter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notice-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 通知模板（只读；编辑随 p4） */
+        get: operations["adminNoticeTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -225,6 +293,19 @@ export interface components {
         StatusData: {
             status?: number;
         };
+        AdminSection: {
+            key: string;
+            label: string;
+            path: string;
+            module: string;
+        };
+        DeadLetter: {
+            event_id: string;
+            topic: string;
+            space_id?: number;
+            /** Format: date-time */
+            occurred_at: string;
+        };
         AdminUser: {
             id?: string;
             nickname?: string;
@@ -381,6 +462,105 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    adminMenus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 菜单列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["AdminSection"][];
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    adminDeadLetters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 死信列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["DeadLetter"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    adminReplayDeadLetter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            replayed?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    adminNoticeTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 模板列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: Record<string, never>[];
+                        };
+                    };
+                };
+            };
+        };
+    };
     adminListUsers: {
         parameters: {
             query?: {

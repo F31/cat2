@@ -1,11 +1,14 @@
+import { useEffect, useState } from 'react'
 import { Layout, Menu, Button, Space } from 'antd'
+import type { MenuProps } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { clearToken } from '../auth'
+import { adminApi } from '../api/admin'
 
 const { Header, Sider, Content } = Layout
 
-// 后台壳：侧栏菜单 + 顶栏 + 内容区。菜单项对应各模块基础页面。
-const MENU = [
+// 后台壳：菜单由服务端 AdminSection 声明（p1 §9.9）；拉取失败回退静态菜单。
+const FALLBACK: MenuProps['items'] = [
   { key: '/dashboard', label: '概览' },
   { key: '/users', label: '用户' },
   { key: '/contents', label: '内容' },
@@ -19,7 +22,26 @@ const MENU = [
 export default function AdminLayout() {
   const navigate = useNavigate()
   const location = useLocation()
-  const selected = MENU.find((m) => location.pathname.startsWith(m.key))?.key ?? '/dashboard'
+  const [items, setItems] = useState<MenuProps['items']>(FALLBACK)
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await adminApi.menus()
+        if (res.items?.length) {
+          setItems([
+            { key: '/dashboard', label: '概览' },
+            ...res.items.map((m) => ({ key: m.path, label: m.label })),
+          ])
+        }
+      } catch {
+        /* 回退静态菜单 */
+      }
+    })()
+  }, [])
+
+  const menuKeys = (items ?? []).map((i) => String((i as { key: string }).key))
+  const selected = menuKeys.find((k) => location.pathname.startsWith(k)) ?? '/dashboard'
 
   const logout = () => {
     clearToken()
@@ -34,7 +56,7 @@ export default function AdminLayout() {
           theme="dark"
           mode="inline"
           selectedKeys={[selected]}
-          items={MENU}
+          items={items}
           onClick={(e) => navigate(e.key)}
         />
       </Sider>

@@ -3440,3 +3440,33 @@ func TestIntegrationExpirySample(t *testing.T) {
 		t.Fatal("非法表名应被拒")
 	}
 }
+
+// 后台菜单声明（p1 §9.9/§11.7）：AdminSection 声明式返回，内容随启用模块。
+func TestIntegrationAdminMenus(t *testing.T) {
+	h := newTestApp(t)
+	_, tok := loginUser(t, h)
+	_, env := h.do(http.MethodGet, "/api/admin/v1/menus", tok, nil)
+	var res struct {
+		Items []struct {
+			Key    string `json:"key"`
+			Path   string `json:"path"`
+			Module string `json:"module"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &res)
+	want := map[string]bool{
+		"identity.users": true, "content.contents": true, "trust.reviews": true,
+		"trade.orders": true, "membership.members": true, "cube.cubes": true,
+		"circle.circles": true, "notice.templates": true, "ops.dead_letters": true,
+	}
+	for _, it := range res.Items {
+		delete(want, it.Key)
+	}
+	if len(want) != 0 {
+		t.Fatalf("菜单声明缺失: %+v", want)
+	}
+	// 未登录拒绝
+	if s, _ := h.do(http.MethodGet, "/api/admin/v1/menus", "", nil); s != http.StatusUnauthorized {
+		t.Fatalf("未登录应 401: %d", s)
+	}
+}

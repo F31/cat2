@@ -55,6 +55,13 @@ export type ReviewTask = Req<
 
 export type ReviewMetrics = Req<'SLAMetric', 'pending' | 'overdue' | 'avg_review_seconds'>
 
+export interface AdminMenu {
+  key: string
+  label: string
+  path: string
+  module: string
+}
+
 export interface DeadLetter {
   event_id: string
   topic: string
@@ -137,6 +144,10 @@ export const adminApi = {
 
   noticeTemplates() {
     return call<{ items: NoticeTemplate[] }>('GET', '/admin/v1/notice-templates')
+  },
+
+  menus() {
+    return call<{ items: AdminMenu[] }>('GET', '/admin/v1/menus')
   },
 
   deadLetters() {

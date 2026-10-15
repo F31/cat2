@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"log/slog"
@@ -271,6 +272,25 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		trustMod.RegisterSubjectProvider(contentMod.ProviderFor(k))
 	}
 
+	// 后台菜单声明（p1 §9.9/§11.7）：模块 → AdminSection 声明式；p4 扩为菜单级/操作级权限点
+	adminMenus := adminSectionsFor(ordered)
+	a.Mux.HandleFunc("GET /api/admin/v1/menus", func(w http.ResponseWriter, req *http.Request) {
+		token := ""
+		if h := req.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
+			token = strings.TrimPrefix(h, "Bearer ")
+		}
+		if token == "" {
+			http.Error(w, `{"code":2,"message":"未登录"}`, http.StatusUnauthorized)
+			return
+		}
+		if _, _, err := identityMod.Facade().Authenticate(req.Context(), token); err != nil {
+			http.Error(w, `{"code":2,"message":"登录已失效"}`, http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "ok", "data": map[string]any{"items": adminMenus}})
+	})
+
 	// 健康检查
 	a.Mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -311,6 +331,28 @@ func SeedDict(ctx context.Context, a *App, dir string) (int, error) {
 		}
 	}
 	return 0, fmt.Errorf("dict 模块未装载")
+}
+
+// adminSectionsFor 后台菜单声明（装配根集中声明，p4 改为模块 AdminSection + 操作级权限点）。
+func adminSectionsFor(mods []module.Module) []module.AdminSection {
+	decl := map[string][]module.AdminSection{
+		"identity":   {{Key: "identity.users", Label: "用户管理", Path: "/users", Module: "identity"}},
+		"content":    {{Key: "content.contents", Label: "内容管理", Path: "/contents", Module: "content"}},
+		"trust":      {{Key: "trust.reviews", Label: "审核队列", Path: "/reviews", Module: "trust"}},
+		"trade":      {{Key: "trade.orders", Label: "订单管理", Path: "/orders", Module: "trade"}},
+		"membership": {{Key: "membership.members", Label: "会员管理", Path: "/members", Module: "membership"}},
+		"cube":       {{Key: "cube.cubes", Label: "猫立方管理", Path: "/cubes", Module: "cube"}},
+		"circle":     {{Key: "circle.circles", Label: "圈子管理", Path: "/circles", Module: "circle"}},
+		"profile":    {{Key: "profile.templates", Label: "画像字段模板", Path: "/profile-templates", Module: "profile"}},
+		"notice":     {{Key: "notice.templates", Label: "通知模板", Path: "/templates", Module: "notice"}},
+		"ops":        {{Key: "ops.dead_letters", Label: "死信队列", Path: "/dead-letters", Module: "ops"}},
+		"dict":       {{Key: "dict.taxonomy", Label: "主体类型与选项", Path: "/dict", Module: "dict"}},
+	}
+	var out []module.AdminSection
+	for _, m := range mods {
+		out = append(out, decl[m.Name()]...)
+	}
+	return out
 }
 
 // selectModules 按 --modules 过滤（空=全部）：共享域与 ops 始终装载；

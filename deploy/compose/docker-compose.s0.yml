@@ -1,7 +1,20 @@
-# S0 一体形态：app（全角色全模块）+ PostgreSQL，PITR 备份依赖云侧/外部挂载
+# S0 一体形态：app（全角色全模块）+ PostgreSQL + PITR 备份
+# - WAL 归档：db 以 archive_command 落盘 /wal-archive（增量）
+# - 每日全备：backup 边车 pg_basebackup（基线）+ 保留清理
+# - 恢复：还原最近全备后回放 WAL 至目标时间点（见 deploy/compose/restore.md）
 services:
   db:
     image: postgres:16
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_timeout=60
+      - -c
+      - archive_command=test ! -f /wal-archive/%f && cp %p /wal-archive/%f
     environment:
       POSTGRES_USER: catcube
       POSTGRES_PASSWORD: catcube
@@ -10,6 +23,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - walarchive:/wal-archive
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U catcube"]
       interval: 5s
@@ -31,5 +45,26 @@ services:
       db:
         condition: service_healthy
 
+  # PITR 边车：每日全备 + 保留清理（与 db 的 WAL 归档配合）
+  backup:
+    image: postgres:16
+    environment:
+      PGHOST: db
+      PGUSER: catcube
+      PGPASSWORD: catcube
+      BACKUP_DIR: /backups
+      WAL_DIR: /wal-archive
+      RETAIN_DAYS: "14"
+    volumes:
+      - ./backup.sh:/backup.sh:ro
+      - pgbackups:/backups
+      - walarchive:/wal-archive
+    entrypoint: ["bash", "/backup.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   pgdata:
+  walarchive:
+  pgbackups:

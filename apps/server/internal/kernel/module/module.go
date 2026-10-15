@@ -45,6 +45,14 @@ type Route struct {
 	Admin   bool // true=后台路由（RBAC 过滤）
 }
 
+// AdminSection 后台菜单声明段（p1 §9.9/§11.7；菜单级+操作级权限点细化在 p4）。
+type AdminSection struct {
+	Key    string // 稳定键，如 identity.users
+	Label  string // 菜单名
+	Path   string // 前端路由，如 /users
+	Module string // 归属模块
+}
+
 // JobDef 定时任务（scheduler 执行，PG 咨询锁单活）。
 type JobDef struct {
 	Name     string
@@ -60,6 +68,7 @@ type Registry struct {
 	EventSubs     []eventbus.Subscription
 	Jobs          []JobDef
 	StateMachines []statemachine.Def
+	AdminSections []AdminSection
 	Settings      []settings.Schema
 	Quotas        []quota.Def
 	PolicyRules   []policy.Rule
