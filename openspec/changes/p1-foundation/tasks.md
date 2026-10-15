@@ -37,7 +37,7 @@
 - [x] 4.4 `pkg/money`：int64 分运算、折扣系数 numeric(6,4)、四舍五入到分（规则入配置）
 - [x] 4.5 `pkg/clock`：UTC 存储与 Asia/Shanghai 自然日换算
 - [x] 4.6 `pkg/mask`、`pkg/retry`、`pkg/validate`、`pkg/phone`（手机号/证件号格式）
-- [ ] 4.7 每个包纯函数单测（ids/money/page/clock 已测；errs/mask/retry/validate/phone 待补）；`pkg/` 不得 import 任何内部包（archcheck 覆盖）
+- [x] 4.7 每个包纯函数单测（ids/money/page/clock + errs/mask/retry/validate/phone 全测）；`pkg/` 不得 import 任何内部包（archcheck 覆盖）
 
 ## 5. kernel：装载、配置、迁移、可观测
 
