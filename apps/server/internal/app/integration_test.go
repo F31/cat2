@@ -3470,3 +3470,56 @@ func TestIntegrationAdminMenus(t *testing.T) {
 		t.Fatalf("未登录应 401: %d", s)
 	}
 }
+
+// 特性开关灰度（p6 前置）：后台配置（白名单/比例）→ 客户端评估按用户命中。
+func TestIntegrationFeatureFlags(t *testing.T) {
+	h := newTestApp(t)
+	uid, tok := loginUser(t, h)
+	_, otherTok := loginUser(t, h)
+	// 后台配置：仅白名单命中当前用户
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/feature-flags/demo.flag", tok, map[string]any{
+		"enabled": true, "ratio": 0, "users": []int64{uid},
+	}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("配置开关失败: %d %+v", s, e)
+	}
+	_, env := h.do(http.MethodGet, "/api/mp/v1/flags", tok, nil)
+	var mine struct {
+		Flags map[string]bool `json:"flags"`
+	}
+	_ = json.Unmarshal(env.Data, &mine)
+	if !mine.Flags["demo.flag"] {
+		t.Fatalf("白名单用户应命中: %+v", mine.Flags)
+	}
+	_, env = h.do(http.MethodGet, "/api/mp/v1/flags", otherTok, nil)
+	var other struct {
+		Flags map[string]bool `json:"flags"`
+	}
+	_ = json.Unmarshal(env.Data, &other)
+	if other.Flags["demo.flag"] {
+		t.Fatalf("非白名单用户不应命中: %+v", other.Flags)
+	}
+	// 关闭 → 全不命中
+	_, _ = h.do(http.MethodPut, "/api/admin/v1/feature-flags/demo.flag", tok, map[string]any{"enabled": false})
+	_, env = h.do(http.MethodGet, "/api/mp/v1/flags", tok, nil)
+	_ = json.Unmarshal(env.Data, &mine)
+	if mine.Flags["demo.flag"] {
+		t.Fatal("关闭后不应命中")
+	}
+	// 后台列表可见
+	_, env = h.do(http.MethodGet, "/api/admin/v1/feature-flags", tok, nil)
+	var list struct {
+		Items []struct {
+			Key string `json:"key"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &list)
+	found := false
+	for _, it := range list.Items {
+		if it.Key == "demo.flag" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("后台应列出开关: %+v", list.Items)
+	}
+}

@@ -146,6 +146,14 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// FeatureFlag defines model for FeatureFlag.
+type FeatureFlag struct {
+	Enabled bool   `json:"enabled"`
+	Key     string `json:"key"`
+	Ratio   *int   `json:"ratio,omitempty"`
+	Users   *[]int `json:"users,omitempty"`
+}
+
 // Order defines model for Order.
 type Order struct {
 	AmountFen     int                     `json:"amount_fen"`
@@ -248,6 +256,13 @@ type AdminTakedownContentJSONBody struct {
 	Reason string `json:"reason"`
 }
 
+// AdminSetFeatureFlagJSONBody defines parameters for AdminSetFeatureFlag.
+type AdminSetFeatureFlagJSONBody struct {
+	Enabled bool   `json:"enabled"`
+	Ratio   *int   `json:"ratio,omitempty"`
+	Users   *[]int `json:"users,omitempty"`
+}
+
 // AdminListMembersParams defines parameters for AdminListMembers.
 type AdminListMembersParams struct {
 	Level  *int `form:"level,omitempty" json:"level,omitempty"`
@@ -296,6 +311,9 @@ type AdminBanUserJSONBody struct {
 // AdminTakedownContentJSONRequestBody defines body for AdminTakedownContent for application/json ContentType.
 type AdminTakedownContentJSONRequestBody AdminTakedownContentJSONBody
 
+// AdminSetFeatureFlagJSONRequestBody defines body for AdminSetFeatureFlag for application/json ContentType.
+type AdminSetFeatureFlagJSONRequestBody AdminSetFeatureFlagJSONBody
+
 // AdminRefundJSONRequestBody defines body for AdminRefund for application/json ContentType.
 type AdminRefundJSONRequestBody AdminRefundJSONBody
 
@@ -319,6 +337,12 @@ type ServerInterface interface {
 	// AdminReplayDeadLetter 死信重放（复位 status=0/retry=0）
 	// (POST /dead-letters/{eventID}/replay)
 	AdminReplayDeadLetter(w http.ResponseWriter, r *http.Request, eventID string)
+	// AdminFeatureFlags 特性开关列表（灰度）
+	// (GET /feature-flags)
+	AdminFeatureFlags(w http.ResponseWriter, r *http.Request)
+	// AdminSetFeatureFlag 配置特性开关（enabled/ratio/users）
+	// (PUT /feature-flags/{key})
+	AdminSetFeatureFlag(w http.ResponseWriter, r *http.Request, key string)
 	// AdminRetryFulfillment 履约补偿重试（死信重置）
 	// (POST /fulfillments/{orderID}/retry)
 	AdminRetryFulfillment(w http.ResponseWriter, r *http.Request, orderID string)
@@ -482,6 +506,46 @@ func (siw *ServerInterfaceWrapper) AdminReplayDeadLetter(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminReplayDeadLetter(w, r, eventID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminFeatureFlags operation middleware
+func (siw *ServerInterfaceWrapper) AdminFeatureFlags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminFeatureFlags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminSetFeatureFlag operation middleware
+func (siw *ServerInterfaceWrapper) AdminSetFeatureFlag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "key" -------------
+	var key string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", r.PathValue("key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminSetFeatureFlag(w, r, key)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -969,6 +1033,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/menus", wrapper.AdminMenus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/feature-flags", wrapper.AdminFeatureFlags)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/feature-flags/{key}", wrapper.AdminSetFeatureFlag)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/dead-letters", wrapper.AdminDeadLetters)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/dead-letters/{eventID}/replay", wrapper.AdminReplayDeadLetter)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/notice-templates", wrapper.AdminNoticeTemplates)

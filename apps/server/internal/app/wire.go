@@ -25,6 +25,7 @@ import (
 	"catcube/internal/kernel/config"
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
+	"catcube/internal/kernel/featureflag"
 	"catcube/internal/kernel/migrate"
 	"catcube/internal/kernel/module"
 	"catcube/internal/kernel/obs"
@@ -184,7 +185,8 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	noticeMod := notice.New(notice.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Circle: circleMod.Facade(),
 	})
-	opsMod := ops.New(ops.Deps{Pool: pool, Identity: identityMod.Facade(), Outbox: outbox, Bus: bus})
+	opsMod := ops.New(ops.Deps{Pool: pool, Identity: identityMod.Facade(), Outbox: outbox, Bus: bus,
+		Flags: featureflag.NewStore(pool)})
 	mods := []module.Module{
 		dictMod,
 		mediaMod,

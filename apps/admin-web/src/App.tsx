@@ -10,6 +10,7 @@ import Orders from './pages/Orders'
 import Members from './pages/Members'
 import Templates from './pages/Templates'
 import DeadLetters from './pages/DeadLetters'
+import FeatureFlags from './pages/FeatureFlags'
 import Dashboard from './pages/Dashboard'
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="members" element={<Members />} />
         <Route path="templates" element={<Templates />} />
         <Route path="dead-letters" element={<DeadLetters />} />
+        <Route path="feature-flags" element={<FeatureFlags />} />
       </Route>
     </Routes>
   )

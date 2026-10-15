@@ -10,6 +10,7 @@ import (
 
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
+	"catcube/internal/kernel/featureflag"
 	"catcube/internal/kernel/module"
 	idcontract "catcube/internal/modules/identity/contract"
 )
@@ -20,6 +21,7 @@ type Deps struct {
 	Identity idcontract.Facade
 	Outbox   eventbus.OutboxStore
 	Bus      *eventbus.Bus
+	Flags    *featureflag.Store
 }
 
 // Module ops 模块。
@@ -37,6 +39,10 @@ func (m *Module) Register(r *module.Registry) error {
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/dead-letters", Handler: m.auth(m.handleList), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/dead-letters/{eventID}/replay", Handler: m.auth(m.handleReplay), Admin: true},
+		// 特性开关（灰度发布）：后台配置 + 客户端评估
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/feature-flags", Handler: m.auth(m.handleFlags), Admin: true},
+		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/feature-flags/{key}", Handler: m.auth(m.handleSetFlag), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/flags", Handler: m.auth(m.handleMyFlags)},
 	)
 	return nil
 }
@@ -55,6 +61,67 @@ func (m *Module) handleList(w http.ResponseWriter, req *http.Request) {
 		})
 	}
 	writeData(w, map[string]any{"items": items})
+}
+
+// handleFlags 后台：开关列表。
+func (m *Module) handleFlags(w http.ResponseWriter, req *http.Request) {
+	if m.deps.Flags == nil {
+		writeData(w, map[string]any{"items": []any{}})
+		return
+	}
+	list, err := m.deps.Flags.List(req.Context())
+	if err != nil {
+		writeErr(w, 9, "服务错误")
+		return
+	}
+	items := make([]map[string]any, 0, len(list))
+	for _, f := range list {
+		items = append(items, map[string]any{"key": f.Key, "enabled": f.Enabled,
+			"ratio": f.Rules.Ratio, "users": f.Rules.Users})
+	}
+	writeData(w, map[string]any{"items": items})
+}
+
+// handleSetFlag 后台：配置开关（enabled/ratio/users）。
+func (m *Module) handleSetFlag(w http.ResponseWriter, req *http.Request) {
+	key := req.PathValue("key")
+	if key == "" || m.deps.Flags == nil {
+		writeErr(w, 1, "参数错误")
+		return
+	}
+	var body struct {
+		Enabled bool    `json:"enabled"`
+		Ratio   int     `json:"ratio"`
+		Users   []int64 `json:"users"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeErr(w, 1, "参数错误")
+		return
+	}
+	if body.Ratio < 0 || body.Ratio > 100 {
+		writeErr(w, 1, "ratio 需在 0-100")
+		return
+	}
+	if err := m.deps.Flags.Set(req.Context(), featureflag.Flag{Key: key, Enabled: body.Enabled,
+		Rules: featureflag.Rules{Users: body.Users, Ratio: body.Ratio}}); err != nil {
+		writeErr(w, 9, "服务错误")
+		return
+	}
+	writeData(w, map[string]any{"saved": true})
+}
+
+// handleMyFlags 客户端：按当前用户评估全部开关（灰度放量入口）。
+func (m *Module) handleMyFlags(w http.ResponseWriter, req *http.Request) {
+	out := map[string]bool{}
+	if m.deps.Flags != nil {
+		if list, err := m.deps.Flags.List(req.Context()); err == nil {
+			uid := userIDFrom(req.Context())
+			for _, f := range list {
+				out[f.Key] = featureflag.Eval(f, uid)
+			}
+		}
+	}
+	writeData(w, map[string]any{"flags": out})
 }
 
 func (m *Module) handleReplay(w http.ResponseWriter, req *http.Request) {
@@ -92,6 +159,13 @@ func (m *Module) auth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 type ctxUserID struct{}
+
+func userIDFrom(ctx context.Context) int64 {
+	if v, ok := ctx.Value(ctxUserID{}).(int64); ok {
+		return v
+	}
+	return 0
+}
 
 func bearer(req *http.Request) string {
 	if h := req.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {

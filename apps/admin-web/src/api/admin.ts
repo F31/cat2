@@ -62,6 +62,13 @@ export interface AdminMenu {
   module: string
 }
 
+export interface FeatureFlag {
+  key: string
+  enabled: boolean
+  ratio?: number
+  users?: number[]
+}
+
 export interface DeadLetter {
   event_id: string
   topic: string
@@ -148,6 +155,13 @@ export const adminApi = {
 
   menus() {
     return call<{ items: AdminMenu[] }>('GET', '/admin/v1/menus')
+  },
+
+  featureFlags() {
+    return call<{ items: FeatureFlag[] }>('GET', '/admin/v1/feature-flags')
+  },
+  setFeatureFlag(key: string, enabled: boolean, ratio = 0, users: number[] = []) {
+    return call<{ saved: boolean }>('PUT', `/admin/v1/feature-flags/${key}`, { enabled, ratio, users })
   },
 
   deadLetters() {

@@ -43,6 +43,54 @@ paths:
                             type: array
                             items: { $ref: '#/components/schemas/AdminSection' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /feature-flags:
+    get:
+      tags: [admin-governance]
+      summary: 特性开关列表（灰度）
+      operationId: adminFeatureFlags
+      responses:
+        '200':
+          description: 开关列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { $ref: '#/components/schemas/FeatureFlag' } }
+  /feature-flags/{key}:
+    put:
+      tags: [admin-governance]
+      summary: 配置特性开关（enabled/ratio/users）
+      operationId: adminSetFeatureFlag
+      parameters:
+        - { name: key, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+                ratio: { type: integer, minimum: 0, maximum: 100 }
+                users: { type: array, items: { type: integer } }
+      responses:
+        '200':
+          description: 结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { type: object, properties: { saved: { type: boolean } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /dead-letters:
     get:
       tags: [admin-governance]
@@ -485,6 +533,14 @@ components:
       type: object
       properties:
         status: { type: integer }
+    FeatureFlag:
+      type: object
+      required: [key, enabled]
+      properties:
+        key: { type: string }
+        enabled: { type: boolean }
+        ratio: { type: integer }
+        users: { type: array, items: { type: integer } }
     AdminSection:
       type: object
       required: [key, label, path, module]
