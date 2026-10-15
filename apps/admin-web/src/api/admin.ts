@@ -1,4 +1,9 @@
+import type { adminComponents } from '@catcube/api-client'
 import { getToken, setToken } from '../auth'
+
+// DTO 由契约生成（contracts/openapi/admin.yaml → make gen），避免前后端漂移。
+type Schemas = adminComponents['schemas']
+type Req<K extends keyof Schemas, F extends keyof Schemas[K]> = Required<Pick<Schemas[K], F>>
 
 interface Envelope<T> {
   code: number
@@ -30,57 +35,25 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return env.data as T
 }
 
-export interface AdminUser {
-  id: string
-  nickname: string
-  status: number
-  identity_type: number
-  realname_status: number
-  phone_masked: string
-  created_at: string
-}
+export type AdminUser = Req<
+  'AdminUser',
+  'id' | 'nickname' | 'status' | 'identity_type' | 'realname_status' | 'phone_masked' | 'created_at'
+>
 
-export interface AdminContent {
-  id: string
-  kind: string
-  title: string
-  status: number
+export type AdminContent = Req<'ContentItem', 'id' | 'kind' | 'title' | 'status'> & {
   reject_reason?: string
 }
 
-export interface AdminOrder {
-  id: string
-  biz_type: string
-  amount_fen: number
-  status: number
-  pay_expire_at: string
-  created_at?: string
-}
+export type AdminOrder = Req<'Order', 'id' | 'biz_type' | 'amount_fen' | 'status' | 'pay_expire_at'>
 
-export interface AdminMember {
-  user_id: string
-  level: number
-  status: number
-  started_at: string
-  expires_at: string
-}
+export type AdminMember = Req<'AdminMember', 'user_id' | 'level' | 'status' | 'started_at' | 'expires_at'>
 
-export interface ReviewTask {
-  id: string
-  source: number
-  subject_type: string
-  subject_id: string
-  risk_level: number
-  status: number
-  reason?: string
-  sla_overdue: boolean
-}
+export type ReviewTask = Req<
+  'ReviewTask',
+  'id' | 'source' | 'subject_type' | 'subject_id' | 'risk_level' | 'status' | 'sla_overdue'
+> & { reason?: string }
 
-export interface ReviewMetrics {
-  pending: number
-  overdue: number
-  avg_review_seconds: number
-}
+export type ReviewMetrics = Req<'SLAMetric', 'pending' | 'overdue' | 'avg_review_seconds'>
 
 export const adminApi = {
   // 开发态登录：微信登录适配器以手机号为 code。
