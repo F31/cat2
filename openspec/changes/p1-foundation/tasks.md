@@ -42,7 +42,7 @@
 ## 5. kernel：装载、配置、迁移、可观测
 
 - [x] 5.1 `kernel/module`：Module 接口（`Register` 路由/事件/任务/策略/状态机/配置/配额）与装载器；按 `DependsOn` 拓扑排序，缺依赖**启动即失败**
-- [ ] 5.2 `catcube serve --roles=api,worker,scheduler,admin --modules=...` 角色与模块开关（roles 已支持，--modules 开关未实现）
+- [x] 5.2 `catcube serve --roles=... --modules=...`：roles 支持；`--modules`（或 `CATCUBE_MODULES`）模块开关实现——共享域与 ops 始终装载、依赖传递补齐、未知模块报错（`selectModules` 单测覆盖）；为 p5「ai 未装载可降级」前置
 - [x] 5.3 `kernel/config`：启动配置（环境变量 `CATCUBE_*`）三层配置的第一层
 - [x] 5.4 `kernel/settings`：`sys_settings`（scope+key+value+type+version+effective_at+operator）；模块注册 `SettingsSchema` 声明键/类型/范围/默认值/是否敏感；scope 取值顺序 space → platform（一期 space 恒 1）
 - [x] 5.5 `kernel/migrate`：按 DependsOn 拓扑执行、`sys_migration` 记录执行历史（expand → migrate → contract 三步式未实现，当前为普通版本迁移）

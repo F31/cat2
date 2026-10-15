@@ -54,6 +54,19 @@ func split(s string) []string {
 	return strings.Split(s, ",")
 }
 
+// HasModule 是否启用某模块（空列表=全部启用）。
+func (c Config) HasModule(name string) bool {
+	if len(c.Modules) == 0 {
+		return true
+	}
+	for _, m := range c.Modules {
+		if m == name {
+			return true
+		}
+	}
+	return false
+}
+
 // HasRole 是否启用某角色。
 func (c Config) HasRole(role string) bool {
 	for _, r := range c.Roles {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"catcube/internal/app"
@@ -18,6 +19,16 @@ func main() {
 		os.Exit(1)
 	}
 	cfg := config.FromEnv()
+	// 命令行覆盖：--modules=a,b,c（未指定则用 CATCUBE_MODULES / 全部）
+	for _, arg := range os.Args[2:] {
+		if v, ok := strings.CutPrefix(arg, "--modules="); ok {
+			if v == "" {
+				cfg.Modules = nil
+			} else {
+				cfg.Modules = strings.Split(v, ",")
+			}
+		}
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 

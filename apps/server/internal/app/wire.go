@@ -203,6 +203,13 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		discoveryMod,
 	}
 
+	// 模块开关（--modules / CATCUBE_MODULES）：空=全部；共享域与 ops 始终装载
+	selected, err := selectModules(mods, cfg.Modules)
+	if err != nil {
+		return nil, err
+	}
+	mods = selected
+
 	// 依赖拓扑装载：缺依赖启动即失败
 	ordered, err := module.Load(mods)
 	if err != nil {
@@ -304,6 +311,48 @@ func SeedDict(ctx context.Context, a *App, dir string) (int, error) {
 		}
 	}
 	return 0, fmt.Errorf("dict 模块未装载")
+}
+
+// selectModules 按 --modules 过滤（空=全部）：共享域与 ops 始终装载；
+// 被启用模块的依赖自动向上补齐（传递闭包），未知模块名报错。
+func selectModules(all []module.Module, enabled []string) ([]module.Module, error) {
+	if len(enabled) == 0 {
+		return all, nil
+	}
+	byName := map[string]module.Module{}
+	for _, m := range all {
+		byName[m.Name()] = m
+	}
+	on := map[string]bool{}
+	for _, n := range enabled {
+		if _, ok := byName[n]; !ok {
+			return nil, fmt.Errorf("modules: 未知模块 %q", n)
+		}
+		on[n] = true
+	}
+	// 传递补齐依赖
+	changed := true
+	for changed {
+		changed = false
+		for name := range on {
+			for _, dep := range byName[name].DependsOn() {
+				if _, ok := byName[dep]; !ok {
+					return nil, fmt.Errorf("modules: %q 依赖缺失的 %q", name, dep)
+				}
+				if !on[dep] {
+					on[dep] = true
+					changed = true
+				}
+			}
+		}
+	}
+	var out []module.Module
+	for _, m := range all {
+		if m.Rank() == module.RankShared || m.Name() == "ops" || on[m.Name()] {
+			out = append(out, m)
+		}
+	}
+	return out, nil
 }
 
 // RunMigrations 执行内核表 + 各模块迁移（按拓扑顺序）。
