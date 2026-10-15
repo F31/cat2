@@ -1,3 +1,1 @@
-export default definePageConfig({
-  navigationBarTitleText: '猫立方',
-})
+export default definePageConfig({ navigationBarTitleText: '猫立方' })

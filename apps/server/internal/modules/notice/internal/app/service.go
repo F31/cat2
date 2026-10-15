@@ -173,6 +173,27 @@ func (s *Service) RunDigest(ctx context.Context) error {
 	return nil
 }
 
+// Template 对外模板视图。
+type Template struct {
+	Code       string   `json:"code"`
+	Module     string   `json:"module"`
+	TitleTpl   string   `json:"title_tpl"`
+	ContentTpl string   `json:"content_tpl"`
+	Channels   []string `json:"channels"`
+	MergeRule  string   `json:"merge_rule,omitempty"`
+	Closeable  bool     `json:"closeable"`
+}
+
+// Templates 模板列表（后台只读）。
+func (s *Service) Templates(_ context.Context) ([]Template, error) {
+	out := make([]Template, 0, len(Templates))
+	for _, t := range Templates {
+		out = append(out, Template{Code: t.Code, Module: t.Module, TitleTpl: t.TitleTpl,
+			ContentTpl: t.ContentTpl, Channels: t.Channels, MergeRule: t.MergeRule, Closeable: t.Closeable})
+	}
+	return out, nil
+}
+
 // ---- 查询与偏好 ----
 
 func (s *Service) List(ctx context.Context, userID int64, unreadOnly bool, limit int) ([]contract.Notice, error) {

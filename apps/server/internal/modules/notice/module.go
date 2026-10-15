@@ -59,6 +59,8 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/notice-preferences", Handler: m.auth(m.handlePreferences)},
 		module.Route{Method: http.MethodPut, Path: "/api/mp/v1/notice-preferences", Handler: m.auth(m.handleSetPreference)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/subscribe-quota/apply", Handler: m.auth(m.handleApplyQuota)},
+		// 后台：模板与公告管理（页面随 p4；此处提供只读列表）
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/notice-templates", Handler: m.auth(m.handleAdminTemplates), Admin: true},
 	)
 	// 订阅全部业务事件（事件驱动触达）
 	for _, topic := range app.Topics() {
@@ -167,6 +169,16 @@ func (m *Module) handleApplyQuota(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	writeData(w, map[string]any{"applied": true})
+}
+
+// handleAdminTemplates 后台模板列表（只读；编辑页随 p4）。
+func (m *Module) handleAdminTemplates(w http.ResponseWriter, req *http.Request) {
+	list, err := m.svc.Templates(req.Context())
+	if err != nil {
+		writeNoticeErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"items": list})
 }
 
 // ---- 辅助 ----

@@ -225,6 +225,157 @@ export interface CertifyInput {
   extra?: Record<string, string>
 }
 
+// ---- p3 协作（cube/circle/notice）----
+
+export interface Cube {
+  id: string
+  name: string
+  leader_id: string
+  honey_id: string
+  plan_level: number
+  plan_expire_at?: string | null
+  status: number
+  member_count: number
+  region_code?: string
+  my_role?: number
+  intro?: string
+}
+
+export interface CubeMember {
+  user_id: string
+  role: number
+  status: number
+  joined_at: string
+}
+
+export interface CubeProject {
+  id: string
+  cube_id: string
+  type: number
+  content_project_id?: string
+  name: string
+  related_customer?: string
+  leader_id: string
+  progress: number
+  todo_count: number
+  status: number
+  platform_status?: string
+}
+
+export interface CubeTask {
+  id: string
+  cube_id: string
+  project_id?: string | null
+  title: string
+  assignee_id: string
+  progress: number
+  confirm_user_id?: string
+  due_at?: string | null
+  status: number
+  reject_reason?: string
+  reopened_count: number
+}
+
+export interface CubeReport {
+  id: string
+  cube_id: string
+  project_id?: string | null
+  reporter_id: string
+  customer_name: string
+  customer_type?: string
+  region_code?: string
+  amount_wan?: number
+  note?: string
+  status: number
+  reject_reason?: string
+}
+
+export interface CubeResearch {
+  id: string
+  project_id: string
+  content: string
+  decision?: string
+  operator_id: string
+  created_at: string
+}
+
+export interface CubePlan {
+  level: number
+  name: string
+  cube_limit: number
+  member_limit: number
+  price_fen: number
+}
+
+export interface CubeApportion {
+  id: string
+  cube_id: string
+  per_fen: number
+  target_n: number
+  pledged_count: number
+  deadline: string
+  status: number
+}
+
+export interface Circle {
+  id: string
+  name: string
+  type: number
+  status: number
+  owner_user_id: string
+  member_count: number
+  end_at?: string | null
+  intro?: string
+  region_code?: string
+  my_role?: number
+  joined?: boolean
+  recommendable?: boolean
+}
+
+export interface CircleDemand {
+  id: string
+  circle_id: string
+  author_id: string
+  title: string
+  content: string
+  demand_type?: string
+  region_code?: string
+  industry_codes?: string[]
+  expire_at: string
+  scope: number
+  status: number
+  contact_phone?: string
+  transfer_ref?: string
+  created_at: string
+}
+
+export interface CircleMount {
+  id: string
+  circle_id: string
+  item_ref: string
+  mounted_by: string
+  mount_type: number
+  approval_status: number
+  status: number
+}
+
+export interface Notice {
+  id: string
+  template_code: string
+  title: string
+  content: string
+  ref?: string
+  channel: string
+  is_read: boolean
+  created_at: string
+}
+
+export interface NoticePreference {
+  template_code: string
+  enabled: boolean
+  closeable: boolean
+}
+
 export interface UploadTicket {
   file_id: string
   upload_url: string
@@ -474,6 +625,180 @@ export function createClient(opts: ClientOptions) {
     // ---- 媒体 ----
     createUpload(filename: string, contentType: string, size: number) {
       return call<UploadTicket>('POST', '/media/uploads', { filename, content_type: contentType, size })
+    },
+
+    // ---- 猫立方 ----
+    listCubes() {
+      return call<{ items: Cube[] }>('GET', '/cubes')
+    },
+    cubeHome() {
+      return call<{ cubes: Cube[]; todo_count: number; unread: number }>('GET', '/aggregate/cube-home')
+    },
+    createCube(body: Record<string, unknown>) {
+      return call<Cube>('POST', '/cubes', body)
+    },
+    cubeDetail(id: string) {
+      return call<Cube>('GET', `/cubes/${id}`)
+    },
+    cubeInvite(id: string) {
+      return call<{ code: string; expire_at: string }>('POST', `/cubes/${id}/invites`)
+    },
+    joinCube(code: string) {
+      return call<Cube>('POST', '/cubes/join', { code })
+    },
+    cubeMembers(id: string) {
+      return call<{ items: CubeMember[] }>('GET', `/cubes/${id}/members`)
+    },
+    removeCubeMember(id: string, uid: string, reason = '') {
+      return call<{ removed: boolean }>('POST', `/cubes/${id}/members/${uid}/remove`, { reason })
+    },
+    leaveCube(id: string) {
+      return call<{ left: boolean }>('POST', `/cubes/${id}/leave`)
+    },
+    transferCube(id: string, toUserId: string) {
+      return call<{ transferred: boolean }>('POST', `/cubes/${id}/transfer`, { to_user_id: toUserId })
+    },
+    dissolveCube(id: string) {
+      return call<{ dissolved: boolean }>('POST', `/cubes/${id}/dissolve`)
+    },
+    cubeProjects(id: string, type?: number) {
+      return call<{ items: CubeProject[] }>('GET', `/cubes/${id}/projects${qs({ type })}`)
+    },
+    createCubeProject(id: string, body: Record<string, unknown>) {
+      return call<CubeProject>('POST', `/cubes/${id}/projects`, body)
+    },
+    closeCubeProject(id: string, pid: string) {
+      return call<{ closed: boolean }>('POST', `/cubes/${id}/projects/${pid}/close`)
+    },
+    reopenCubeProject(id: string, pid: string) {
+      return call<{ reopened: boolean }>('POST', `/cubes/${id}/projects/${pid}/reopen`)
+    },
+    cubeResearch(id: string, pid: string) {
+      return call<{ items: CubeResearch[] }>('GET', `/cubes/${id}/projects/${pid}/research`)
+    },
+    addCubeResearch(id: string, pid: string, content: string, decision = '') {
+      return call<CubeResearch>('POST', `/cubes/${id}/projects/${pid}/research`, { content, decision })
+    },
+    cubeTasks(id: string, projectId?: string) {
+      return call<{ items: CubeTask[] }>('GET', `/cubes/${id}/tasks${qs({ project_id: projectId })}`)
+    },
+    createCubeTask(id: string, body: Record<string, unknown>) {
+      return call<CubeTask>('POST', `/cubes/${id}/tasks`, body)
+    },
+    cubeTaskAction(id: string, tid: string, action: string, body: Record<string, unknown> = {}) {
+      return call<unknown>('POST', `/cubes/${id}/tasks/${tid}/${action}`, body)
+    },
+    submitCubeReport(id: string, body: Record<string, unknown>) {
+      return call<{ report: CubeReport; duplicate: boolean }>('POST', `/cubes/${id}/reports`, body)
+    },
+    cubeReports(id: string, projectId?: string) {
+      return call<{ items: CubeReport[] }>('GET', `/cubes/${id}/reports${qs({ project_id: projectId })}`)
+    },
+    decideCubeReport(id: string, rid: string, approve: boolean, reason = '') {
+      return call<unknown>('POST', `/cubes/${id}/reports/${rid}/${approve ? 'confirm' : 'reject'}`, { reason })
+    },
+    cubePlans() {
+      return call<{ items: CubePlan[] }>('GET', '/cubes/plans')
+    },
+    changeCubePlan(id: string, level: number, years = 1) {
+      return call<{ order_id: string; amount_fen: number }>('POST', `/cubes/${id}/plan`, { level, years })
+    },
+    initiateApportion(id: string, level: number, n: number, memberIds: string[] = []) {
+      return call<CubeApportion>('POST', `/cubes/${id}/apportion`, { level, n, member_ids: memberIds })
+    },
+    pledgeApportion(id: string, groupId: string) {
+      return call<{ order_id: string }>('POST', `/cubes/${id}/apportion/pledge`, { group_id: groupId })
+    },
+    exitApportion(id: string, groupId: string) {
+      return call<{ exited: boolean }>('POST', `/cubes/${id}/apportion/exit`, { group_id: groupId })
+    },
+    cubeApportion(groupId: string) {
+      return call<CubeApportion>('GET', `/cube-apportions/${groupId}`)
+    },
+    requestCubeLink(id: string, contentProjectId: string) {
+      return call<{ direct: boolean; project_id: string; request_id: string }>('POST', `/cubes/${id}/link-requests`, { content_project_id: contentProjectId })
+    },
+    cubeLinkRequests(id: string) {
+      return call<{ items: unknown[] }>('GET', `/cubes/${id}/link-requests`)
+    },
+    decideCubeLink(id: string, reqId: string, approve: boolean) {
+      return call<{ project_id: string; approved: boolean }>('POST', `/cubes/${id}/link-requests/${reqId}/decide`, { approve })
+    },
+    publishCubeProject(id: string, pid: string) {
+      return call<{ content_project_id: string }>('POST', `/cubes/${id}/projects/${pid}/publish`)
+    },
+
+    // ---- 圈子 ----
+    listCircles() {
+      return call<{ items: Circle[] }>('GET', '/circles')
+    },
+    circleDetail(id: string) {
+      return call<Circle>('GET', `/circles/${id}`)
+    },
+    circleDetailAgg(id: string) {
+      return call<{ circle: Circle; owner?: unknown; member_count: number; joined: boolean }>('GET', `/aggregate/circle-detail${qs({ ref: `circle:${id}` })}`)
+    },
+    createCircle(body: Record<string, unknown>) {
+      return call<Circle>('POST', '/circles', body)
+    },
+    applyCircle(id: string) {
+      return call<{ applied: boolean }>('POST', `/circles/${id}/apply`)
+    },
+    circleInvite(id: string) {
+      return call<{ code: string; expire_at: string }>('POST', `/circles/${id}/invite`)
+    },
+    joinCircle(code: string) {
+      return call<Circle>('POST', '/circles/join', { code })
+    },
+    circleMembers(id: string) {
+      return call<{ items: string[] }>('GET', `/circles/${id}/members`)
+    },
+    dissolveCircle(id: string) {
+      return call<{ dissolved: boolean }>('POST', `/circles/${id}/dissolve`)
+    },
+    convertCircle(id: string) {
+      return call<{ converted: boolean }>('POST', `/circles/${id}/convert`)
+    },
+    listCircleDemands(id: string, limit = 20) {
+      return call<{ items: CircleDemand[] }>('GET', `/circles/${id}/demands${qs({ limit })}`)
+    },
+    publishCircleDemand(id: string, body: Record<string, unknown>) {
+      return call<CircleDemand>('POST', `/circles/${id}/demands`, body)
+    },
+    renewCircleDemand(did: string) {
+      return call<{ renewed: boolean }>('POST', `/circles/demands/${did}/renew`)
+    },
+    publishCircleFeed(id: string, text: string, isAnnouncement = false) {
+      return call<{ id: string }>('POST', `/circles/${id}/feeds`, { text, is_announcement: isAnnouncement })
+    },
+    mountCircleItem(id: string, itemRef: string) {
+      return call<{ mount: CircleMount; direct: boolean }>('POST', `/circles/${id}/mounts`, { item_ref: itemRef })
+    },
+    circleMounts(id: string) {
+      return call<{ items: CircleMount[] }>('GET', `/circles/${id}/mounts`)
+    },
+    decideCircleMount(mid: string, approve: boolean) {
+      return call<{ approved: boolean }>('POST', `/circles/mounts/${mid}/decide`, { approve })
+    },
+    demandToCube(id: string, did: string, cubeId: string) {
+      return call<{ project_id: string }>('POST', `/circles/${id}/demands/${did}/to-cube`, { cube_id: cubeId })
+    },
+
+    // ---- 通知中心 ----
+    listNotices(unreadOnly = false, limit = 20) {
+      return call<{ items: Notice[]; unread: number }>('GET', `/notices${qs({ unread: unreadOnly ? 1 : undefined, limit })}`)
+    },
+    readNotice(id: string) {
+      return call<{ read: boolean }>('POST', `/notices/${id}/read`)
+    },
+    noticePreferences() {
+      return call<{ items: NoticePreference[] }>('GET', '/notice-preferences')
+    },
+    setNoticePreference(templateCode: string, enabled: boolean) {
+      return call<{ saved: boolean }>('PUT', '/notice-preferences', { template_code: templateCode, enabled })
+    },
+    applySubscribeQuota(templateCode: string, n = 1) {
+      return call<{ applied: boolean }>('POST', '/subscribe-quota/apply', { template_code: templateCode, n })
     },
   }
 }

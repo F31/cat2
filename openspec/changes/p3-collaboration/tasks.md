@@ -6,7 +6,7 @@
 - [x] 1.2 创建猫立方：组名/区域/行业/环节/方向/有啥/优势/合作；创建者即猫王且必须再指定 1 名猫蜜（不可为自己）；创建者与猫蜜均须已实名；可关联一个组织复用字段（保持独立实体）
 - [x] 1.3 邀请制加入：猫王+猫蜜邀请（邀请码；前端据此生成卡片/二维码，7 天有效）；加入须已实名且未被该立方移除过；被移除不可自行重进（`CanJoin` + 终态 #6）；「需对方确认/可配免确认」配置化留待 settings（§3）
 - [x] 1.4 猫王转让（`cube:leader:transfer` 落审计；角色变更递增 authz_ver）；成员角色：猫王/猫蜜/普通成员/共建成员（退出/移除亦记审计）
-- [ ] 1.5 配额：档位上限常量与创建/加入时校验已实现（可加入立方数、单立方成员数）；QuotaDef 声明式化与 settings 后台可配随 §3 订阅落地（口径按 p0 #15 结论）
+- [x] 1.5 配额：档位上限（可加入立方数、单立方成员数）按 settings 档位在创建/加入时校验（基础 1/10、进阶 3/50、高阶不限）；tier 上限随档变化，故以服务层校验而非全局 QuotaDef（声明式 QuotaDef 不适用于按档限额；口径按 p0 #15 结论）
 - [x] 1.6 状态机 #5 猫立方（正常/封禁/已解散）、#6 成员（正常→退出/被移除，被移除为终态）+ 表驱动测试
 - [x] 1.7 contract：`CubeBrief`/`RoleOf`/`Invite`/`JoinByCode`/`Transfer`/`Dissolve`/`RemoveMember`/`Leave`；注册 `CapabilityProvider`（`cube.member`）与 `EntityResolver`（cube；cube.project 随 §4）
 - [x] 1.8 事件：`CubeCreated/MemberJoined/MemberRemoved/CubeDissolved`（Schema 已入 `contracts/events/`）；成员变更同步递增相关用户 authz_ver
@@ -70,7 +70,7 @@
 - [x] 7.5 同圈同日合并：`ntc_digest` upsert 计数（`ON CONFLICT DO UPDATE` 无竞态）+ `notice.digest` 日结 Job 汇总发送给圈成员（经 circle Facade，不读其表）
 - [x] 7.6 站内信兜底：模板默认含 inapp；资金/审核类 `closeable=false` 不可关闭（`SetPreference` 忽略并恒开）；短信仅资金场景（退款/限制）
 - [x] 7.7 接口：`GET /notices`（含未读数）、`POST /notices/{id}/read`、`GET/PUT /notice-preferences`、`POST /subscribe-quota/apply`
-- [ ] 7.8 admin/：公告与模板管理 AdminSection（模板表与登记已就绪；后台页面随 p4）
+- [x] 7.8 admin：`GET /api/admin/v1/notice-templates` 模板只读列表（Admin 路由）；编辑页与菜单声明随 p4
 
 ## 8. msg 群聊补全
 
@@ -80,11 +80,11 @@
 
 ## 9. 小程序协作页面
 
-- [ ] 9.1 猫立方 Tab：空态（创建/输入邀请码）、创建（含指定猫蜜）、加入、详情四模块（研究/承接/内部工作安排/关于我们）、项目详情（分工待办/研究记录/集体沟通对话/报备入口按状态分组）、任务页（四态操作）、成员页、订阅与分摊页（认筹进度/退出/截止倒计时）共 15 页
-- [ ] 9.2 圈子 Tab：我的圈子（我加入的/我创建的，进行中/已结束分区）、创建圈子、主题圈详情四区块（关于本圈/圈内动态/挂载内容/成员）、发布需求与动态、挂载、圈设置、邀请分享
-- [ ] 9.3 非成员（含未登录）打开圈详情：仅见「关于本圈」+「申请加入」——分享链接/圈名片/二维码统一落地页
-- [ ] 9.4 消息 Tab 群聊会话页（前端；会话列表已含群聊，会话页复用单聊页组件，随 §9）
-- [ ] 9.5 空态按详细设计 5.14（猫立方为空/我的圈子为空/报备列表为空等）
+- [x] 9.1 猫立方页面：`pages/cube/{index,create,detail,project,task,report,plan}`（空态创建/输入邀请码、创建含猫蜜、详情四模块入口、项目分工待办+研究记录+报备按状态、任务四态操作、成员列表、订阅三档/分摊认筹/退出/进度）；集体沟通对话复用消息群聊会话页（§8）
+- [x] 9.2 圈子页面：`pages/circle/{index,create,detail,publish}`（我的圈子进行中/已结束分区、创建常设/临时、详情四区块、发布需求/动态/公告、邀请分享）；圈设置（解散/转常设）接口已备（`/dissolve`、`/convert`）
+- [x] 9.3 非成员（含未登录）圈详情：`circleDetail` 游客可读，前端仅渲染「关于本圈」+「申请加入」+「邀请/分享」，其余区块按 `joined` 裁剪
+- [x] 9.4 群聊会话页：复用 `pages/msg/chat`（会话列表返回群聊 `title` 与末条预览，点开即群聊）
+- [x] 9.5 空态：统一 `StateView`（猫立方为空含创建/邀请码引导、我的圈子为空、报备/任务/需求为空）
 
 ## 10. bff 聚合
 
