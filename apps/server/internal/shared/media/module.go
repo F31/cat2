@@ -3,8 +3,10 @@ package media
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"catcube/internal/kernel/db"
@@ -93,20 +95,39 @@ func (m *Module) Unbind(ctx context.Context, fileID int64, _ string) error {
 	return err
 }
 
+// handleUpload 申请预签名直传（契约：JSON body {filename, content_type, size}）。
 func (m *Module) handleUpload(w http.ResponseWriter, req *http.Request) {
-	mime := req.URL.Query().Get("mime")
-	purpose := req.URL.Query().Get("purpose")
-	var size int64
-	_, _ = fmt.Sscanf(req.URL.Query().Get("size"), "%d", &size)
-	ticket, err := m.Upload(req.Context(), mime, size, purpose)
-	w.Header().Set("Content-Type", "application/json")
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, `{"message":%q}`, err.Error())
+	var body struct {
+		Filename    string `json:"filename"`
+		ContentType string `json:"content_type"`
+		Size        int64  `json:"size"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil ||
+		body.Filename == "" || body.ContentType == "" || body.Size <= 0 {
+		writeMediaErr(w, http.StatusBadRequest, 1, "参数错误")
 		return
 	}
-	fmt.Fprintf(w, `{"data":{"file_id":"%d","upload_url":%q,"expires_at":%q}}`,
-		ticket.FileID, ticket.UploadURL, ticket.ExpiresAt)
+	ticket, err := m.Upload(req.Context(), body.ContentType, body.Size, "user")
+	if err != nil {
+		writeMediaErr(w, http.StatusBadRequest, 1, err.Error())
+		return
+	}
+	writeMediaData(w, map[string]any{
+		"file_id":    strconv.FormatInt(ticket.FileID, 10),
+		"upload_url": ticket.UploadURL,
+		"expires_in": int(time.Until(ticket.ExpiresAt).Seconds()),
+	})
+}
+
+func writeMediaData(w http.ResponseWriter, data any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "ok", "data": data})
+}
+
+func writeMediaErr(w http.ResponseWriter, status, code int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{"code": code, "message": message})
 }
 
 var _ contract.Facade = (*Module)(nil)

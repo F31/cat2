@@ -5,6 +5,7 @@ import { api } from '../../services/request'
 import { ensureLogin } from '../../services/auth'
 import FormField from '../../components/FormField'
 import TagPicker from '../../components/TagPicker'
+import Uploader from '../../components/Uploader'
 
 interface FieldDef {
   key: string
@@ -66,6 +67,7 @@ export default function Publish() {
   const router = useRouter()
   const [kind, setKind] = useState(router.params.kind && FIELDS[router.params.kind] ? router.params.kind : 'project')
   const [title, setTitle] = useState('')
+  const [cover, setCover] = useState('')
   const [region, setRegion] = useState('')
   const [industry, setIndustry] = useState<string[]>([])
   const [need, setNeed] = useState<string[]>([])
@@ -99,6 +101,7 @@ export default function Publish() {
       const item = await api.publishContent({
         kind,
         title,
+        cover_file_id: cover || undefined,
         region_code: region || undefined,
         tagset: { industry, need, offer },
         fields: payload,
@@ -132,6 +135,7 @@ export default function Publish() {
       </View>
 
       <FormField label="标题" required value={title} onChange={setTitle} />
+      <Uploader label="封面" max={1} value={cover ? [cover] : []} onChange={(v) => setCover(v[0] ?? '')} />
       <TagPicker label="区域" dimension="region" multiple={false} value={region ? [region] : []} onChange={(v) => setRegion(v[0] ?? '')} />
       <TagPicker label="行业" dimension="industry" value={industry} onChange={setIndustry} />
       <TagPicker label="合作需求" dimension="cooperation_demand" value={need} onChange={setNeed} />

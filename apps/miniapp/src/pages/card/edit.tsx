@@ -6,10 +6,12 @@ import { api } from '../../services/request'
 import { ensureLogin } from '../../services/auth'
 import FormField from '../../components/FormField'
 import TagPicker from '../../components/TagPicker'
+import Uploader from '../../components/Uploader'
 
 interface FormState {
   subject_type_code: string
   name: string
+  avatar_file_id: string
   region_code: string
   industry_codes: string[]
   need_codes: string[]
@@ -26,6 +28,7 @@ interface FormState {
 const EMPTY: FormState = {
   subject_type_code: 'person',
   name: '',
+  avatar_file_id: '',
   region_code: '',
   industry_codes: [],
   need_codes: [],
@@ -55,6 +58,7 @@ export default function CardEdit() {
           ...EMPTY,
           subject_type_code: c.subject_type_code || (c.identity_type === 2 ? 'organ' : 'person'),
           name: c.name || '',
+          avatar_file_id: c.avatar_file_id || '',
           region_code: c.region_code || '',
           industry_codes: c.industry_codes ?? [],
           need_codes: c.need_codes ?? [],
@@ -83,6 +87,7 @@ export default function CardEdit() {
       await api.updateMyCard({
         subject_type_code: form.subject_type_code,
         name: form.name,
+        avatar_file_id: form.avatar_file_id || undefined,
         region_code: form.region_code || undefined,
         industry_codes: form.industry_codes,
         need_codes: form.need_codes,
@@ -122,6 +127,12 @@ export default function CardEdit() {
       </View>
 
       <FormField label="名称" required value={form.name} onChange={(v) => set('name', v)} />
+      <Uploader
+        label="头像 / Logo"
+        max={1}
+        value={form.avatar_file_id ? [form.avatar_file_id] : []}
+        onChange={(v) => set('avatar_file_id', v[0] ?? '')}
+      />
       <TagPicker label="区域" dimension="region" multiple={false} value={form.region_code ? [form.region_code] : []} onChange={(v) => set('region_code', v[0] ?? '')} />
       <TagPicker label="行业" dimension="industry" value={form.industry_codes} onChange={(v) => set('industry_codes', v)} />
       <TagPicker label="合作需求" dimension="cooperation_demand" value={form.need_codes} onChange={(v) => set('need_codes', v)} />

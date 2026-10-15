@@ -193,6 +193,18 @@ export interface PayParams {
   out_trade_no: string
   prepay_id: string
   amount_fen: number
+  // 微信支付调起参数（生产下发；dev 缺省，仅有 out_trade_no）。
+  timeStamp?: string
+  nonceStr?: string
+  package?: string
+  signType?: string
+  paySign?: string
+}
+
+export interface UploadTicket {
+  file_id: string
+  upload_url: string
+  expires_in: number
 }
 
 export interface DictItem {
@@ -425,6 +437,11 @@ export function createClient(opts: ClientOptions) {
     // ---- 字典 ----
     listDict(dimension: string, parentCode?: string) {
       return call<{ items: DictItem[] }>('GET', `/dict/${dimension}${qs({ parent_code: parentCode })}`)
+    },
+
+    // ---- 媒体 ----
+    createUpload(filename: string, contentType: string, size: number) {
+      return call<UploadTicket>('POST', '/media/uploads', { filename, content_type: contentType, size })
     },
   }
 }

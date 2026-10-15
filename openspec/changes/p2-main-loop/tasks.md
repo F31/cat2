@@ -103,11 +103,11 @@
 - [x] 10.4 完善资料提示条：`ProfilePromptBar`（五项缺一显示、填全消失、不引导实名、无关闭、随页滚动）
 - [x] 10.5 搜索页：关键词 + 六类 Tab 筛选、空态「没有找到相关内容」
 - [x] 10.6 详情页共用壳（详细设计 5.6）：基本信息/认证标识+会员等级/标签/需求供给/核心优势/简介各区块；内容类按 `fields` 渲染并展示 `member_gate` 未解锁字段（引导开通）+ 发布方；底部「关注Ta / 联系Ta（会员）」——游客可看（`aggregate/detail` 登录态可选，following=false/member 省略）、「联系Ta」揭示手机号（`aggregate/contact`，非会员 120007 引导开通，弹层内可「发消息」进单聊）
-- [x] 10.7 四类发布表单 `pages/content/publish`（项目/产品/会议/活动字段独立；标题+区域+行业/需求/供给标签+按类字段；提交复核）；ai-entry 占位待补
+- [x] 10.7 四类发布表单 `pages/content/publish`（项目/产品/会议/活动字段独立；标题+封面+区域+行业/需求/供给标签+按类字段；提交复核）；ai-entry 占位待补（随 ai 模块二期）
 - [x] 10.8 名片编辑页 `pages/card/edit`（第二层五项+增值画像+联系方式，保存）与我的发布 `pages/content/mine` 已实现；我的收藏 `pages/social/favorites`（六类分 Tab+取消收藏）与关注/粉丝 `pages/social/follows` 已实现，mine 页入口已接通
 - [x] 10.9 会员开通页：年限选择、原价与折后价同显、协议勾选、「开通后不支持退款」明示、企业版入口（identity_type=2）
 - [x] 10.10 消息列表（单聊会话+未读）+ 系统通知置顶（占位，通知中心随 notice 模块 p3 接入）+ 单聊会话页 `pages/msg/chat`（cursor 增量同步、发送本地追加、3 秒轮询无新消息指数退避至 30 秒、自动已读上报、滚动定位最新消息）；详情「联系Ta」与消息列表均已接通会话页
-- [ ] 10.11 共享组件：`ContentCard`/`PolicyGate`/`ProfilePromptBar` 已落地；TaxonomyPicker/Uploader/CursorList/EmptyState/SubscribeAsk/PayButton 待补
+- [x] 10.11 共享组件：`ContentCard`/`PolicyGate`/`ProfilePromptBar`/`StateView`(EmptyState) 已落地；新增 `TaxonomyPicker`（多选上限/父级联动/可搜索，`TagPicker` 为其兼容别名）、`Uploader`（预签名上传→回填 file_id，JPG/PNG≤5MB；media 上传接口对齐契约 JSON body）、`CursorList`（游标分页+空/载/错态）、`SubscribeAsk`（关注=订阅提示）、`PayButton`（下单→取参→调起微信支付，dev 无签名仅确认订单）；名片头像、发布封面、会员开通、关注提示、消息列表已接入
 - [x] 10.12 空态/加载/错误态落地（详细设计 5.14）：统一 `StateView` 组件（loading/empty/error 可点击重试），已应用于广场/搜索/消息/我的/详情/我的发布/会话页；骨架屏与更细粒度错误分类后续优化
 
 ## 11. admin 基础管理

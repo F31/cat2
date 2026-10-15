@@ -5,6 +5,7 @@ import { ApiError, type DetailData } from '@catcube/api-client'
 import { api } from '../../services/request'
 import { ensureLogin } from '../../services/auth'
 import StateView from '../../components/StateView'
+import SubscribeAsk from '../../components/SubscribeAsk'
 
 const LEVEL_LABEL: Record<number, string> = { 1: 'VIP 会员', 2: 'SVIP 会员', 3: '企业版' }
 
@@ -18,6 +19,7 @@ export default function ContentDetail() {
   const [error, setError] = useState(false)
   const [contactOpen, setContactOpen] = useState(false)
   const [phone, setPhone] = useState<string | null>(null)
+  const [justFollowed, setJustFollowed] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -41,8 +43,13 @@ export default function ContentDetail() {
     if (!detail) return
     try {
       await ensureLogin()
-      if (detail.following) await api.unfollow(ref)
-      else await api.follow(ref)
+      if (detail.following) {
+        await api.unfollow(ref)
+        setJustFollowed(false)
+      } else {
+        await api.follow(ref)
+        setJustFollowed(true) // 关注=订阅：提示后续动态通知
+      }
       setDetail({ ...detail, following: !detail.following })
     } catch {
       Taro.showToast({ title: '操作失败', icon: 'none' })
@@ -181,6 +188,8 @@ export default function ContentDetail() {
           {detail.owner ? <Block title="发布方">{detail.owner.name}</Block> : null}
         </>
       ) : null}
+
+      <SubscribeAsk visible={justFollowed && detail.following} />
 
       <View className="detail-actions">
         <Button className="btn-secondary" onClick={() => void toggleFollow()}>

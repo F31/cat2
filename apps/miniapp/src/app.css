@@ -187,6 +187,68 @@ page {
   color: #ffffff;
 }
 
+/* 会话列表行（CursorList 内） */
+.session-list__row {
+  background: #ffffff;
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+/* 关注=订阅 提示条 */
+.subscribe-ask {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #eefaf1;
+  border-radius: 12px;
+  padding: 18px 24px;
+  margin-top: 20px;
+}
+.subscribe-ask__text {
+  color: #2a7a4b;
+  font-size: 24px;
+  flex: 1;
+}
+.subscribe-ask__action {
+  color: #2a7a4b;
+  font-size: 24px;
+  margin-left: 16px;
+}
+
+/* 上传器 */
+.uploader {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.uploader__item {
+  width: 140px;
+  height: 140px;
+  border-radius: 12px;
+  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.uploader__hint {
+  color: #666;
+  font-size: 22px;
+}
+.uploader__add {
+  width: 140px;
+  height: 140px;
+  border-radius: 12px;
+  border: 2px dashed #ccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.uploader__plus {
+  color: #999;
+  font-size: 48px;
+  line-height: 1;
+}
+
 /* 登录引导页 */
 .auth-enter {
   padding: 80px 40px;

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import Taro from '@tarojs/taro'
-import { View, Text, Button } from '@tarojs/components'
+import { View, Text } from '@tarojs/components'
 import type { MembershipQuote } from '@catcube/api-client'
 import { fenToYuan } from '@catcube/utils'
 import { api } from '../../services/request'
 import { ensureLogin } from '../../services/auth'
+import PayButton from '../../components/PayButton'
 
 const YEARS = [1, 3, 5]
 const LEVEL_LABEL: Record<number, string> = { 1: 'VIP 会员', 3: '企业版' }
@@ -16,7 +17,6 @@ export default function MemberOpen() {
   const [quote, setQuote] = useState<MembershipQuote | null>(null)
   const [agreed, setAgreed] = useState(false)
   const [isOrg, setIsOrg] = useState(false)
-  const [paying, setPaying] = useState(false)
 
   useEffect(() => {
     void (async () => {
@@ -39,25 +39,6 @@ export default function MemberOpen() {
       }
     })()
   }, [level, years])
-
-  const pay = async () => {
-    if (!agreed) {
-      Taro.showToast({ title: '请先同意会员服务协议', icon: 'none' })
-      return
-    }
-    setPaying(true)
-    try {
-      await ensureLogin()
-      const order = await api.openMembership(level, years)
-      const params = await api.payOrder(order.order_id)
-      // 生产：Taro.requestPayment({ ...params })。dev 仅提示订单已创建。
-      Taro.showToast({ title: `订单 ${params.out_trade_no} 已创建`, icon: 'none' })
-    } catch {
-      Taro.showToast({ title: '开通失败，请重试', icon: 'none' })
-    } finally {
-      setPaying(false)
-    }
-  }
 
   return (
     <View className="page">
@@ -98,9 +79,12 @@ export default function MemberOpen() {
         <Text className="agreement__text">我已阅读并同意《会员服务协议》</Text>
       </View>
 
-      <Button className="btn-primary" loading={paying} onClick={() => void pay()}>
-        立即开通
-      </Button>
+      <PayButton
+        label="立即开通"
+        disabled={!agreed}
+        createOrder={async () => (await api.openMembership(level, years)).order_id}
+      />
+      {!agreed ? <Text className="price__note">请先勾选并同意《会员服务协议》</Text> : null}
     </View>
   )
 }

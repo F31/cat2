@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	neturl "net/url"
 	"os"
 	"testing"
 	"time"
@@ -1222,6 +1223,31 @@ func TestIntegrationBFFGuestAndContact(t *testing.T) {
 	}
 }
 
+// 媒体上传申请：契约 JSON body → 预签名凭证；非法类型/超限拒绝。
+func TestIntegrationMediaUpload(t *testing.T) {
+	h := newTestApp(t)
+	_, tok := loginUser(t, h)
+
+	status, env := h.do(http.MethodPost, "/api/mp/v1/media/uploads", tok, map[string]any{
+		"filename": "avatar.png", "content_type": "image/png", "size": 1024,
+	})
+	var ticket struct {
+		FileID    string `json:"file_id"`
+		UploadURL string `json:"upload_url"`
+	}
+	_ = json.Unmarshal(env.Data, &ticket)
+	if status != http.StatusOK || env.Code != 0 || ticket.FileID == "" || ticket.UploadURL == "" {
+		t.Fatalf("申请上传应成功: %d %+v", status, env)
+	}
+
+	status, env = h.do(http.MethodPost, "/api/mp/v1/media/uploads", tok, map[string]any{
+		"filename": "a.gif", "content_type": "image/gif", "size": 1024,
+	})
+	if status != http.StatusBadRequest {
+		t.Fatalf("非法类型应 400: %d %+v", status, env)
+	}
+}
+
 // 认证锁定字段不可自改（verify 通过后写 locked_fields）。
 func TestIntegrationProfileLocked(t *testing.T) {
 	h := newTestApp(t)
@@ -1450,8 +1476,10 @@ func TestIntegrationDiscoveryFlow(t *testing.T) {
 	_, aTok := loginUser(t, h)
 	bID, bTok := loginUser(t, h)
 
+	// B 用唯一名称，避免测试库累积的历史同名数据干扰关键词搜索断言。
+	bName := fmt.Sprintf("李四%s", randPhone()[7:])
 	setCard(t, h, aTok, "张三", "310000", []string{"A01"}, []string{"N1"}, []string{"O1"})
-	setCard(t, h, bTok, "李四", "310000", []string{"A01"}, []string{"O1"}, []string{"N1"})
+	setCard(t, h, bTok, bName, "310000", []string{"A01"}, []string{"O1"}, []string{"N1"})
 	relayAll(t, h)
 	refreshCandidates(t, h)
 
@@ -1477,12 +1505,12 @@ func TestIntegrationDiscoveryFlow(t *testing.T) {
 			hit = &feed.Items[i]
 		}
 	}
-	if hit == nil || hit.Score != 92.5 || len(hit.Reason) == 0 || hit.Title != "李四" {
+	if hit == nil || hit.Score != 92.5 || len(hit.Reason) == 0 || hit.Title != bName {
 		t.Fatalf("A feed 应命中 B（供需/行业/区域满分+身份互补 0.5）: %+v", feed.Items)
 	}
 
-	// 关键词搜索（人物）
-	_, env = h.do(http.MethodGet, "/api/mp/v1/search?q=%E6%9D%8E%E5%9B%9B", "", nil)
+	// 关键词搜索（人物，用唯一名称）
+	_, env = h.do(http.MethodGet, "/api/mp/v1/search?q="+neturl.QueryEscape(bName), "", nil)
 	var sr struct {
 		Items []card `json:"items"`
 	}

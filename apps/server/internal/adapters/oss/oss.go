@@ -27,7 +27,8 @@ func NewClient(endpoint, bucket, cdnHost, ak, sk string) *Client {
 
 func (c *Client) PresignUpload(_ context.Context, bucket, objectKey, mime string, ttl time.Duration) (string, error) {
 	if c.Endpoint == "" {
-		return "", fmt.Errorf("oss: 未配置 endpoint")
+		// 未配置对象存储（开发/联调）：返回占位直传地址，接口契约可用（真实上传走云厂商）。
+		return fmt.Sprintf("http://127.0.0.1:9000/%s/%s?dev=1", bucket, objectKey), nil
 	}
 	// TODO(供应商接入): 按云厂商签名 V4 生成预签名 PUT URL
 	return fmt.Sprintf("%s/%s/%s?expires=%d&mime=%s", c.Endpoint, bucket, objectKey, int64(ttl.Seconds()), mime), nil
