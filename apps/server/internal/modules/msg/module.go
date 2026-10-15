@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
@@ -32,6 +34,7 @@ type Deps struct {
 	Policy   *policy.Engine
 	Resolver *entityref.Registry
 	Realtime ports.Realtime // 一期 Noop（纯异步，无 WebSocket）
+	Audit    *audit.Recorder
 }
 
 // Module msg 模块。
@@ -169,6 +172,9 @@ func (m *Module) handleSend(w http.ResponseWriter, req *http.Request) {
 	}
 	msg, err := m.svc.Send(req.Context(), userIDFrom(req.Context()), sid, body.MsgType, body.Content)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotParticipant) {
+			m.auditDenied(req, "msg:message:send", sid, userIDFrom(req.Context()))
+		}
 		writeMsgErr(w, err)
 		return
 	}
@@ -185,6 +191,9 @@ func (m *Module) handleSync(w http.ResponseWriter, req *http.Request) {
 	limit, _ := strconv.Atoi(req.URL.Query().Get("limit"))
 	res, err := m.svc.Sync(req.Context(), userIDFrom(req.Context()), sid, cursor, limit)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotParticipant) {
+			m.auditDenied(req, "msg:message:sync", sid, userIDFrom(req.Context()))
+		}
 		writeMsgErr(w, err)
 		return
 	}
@@ -205,6 +214,9 @@ func (m *Module) handleMarkRead(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if err := m.svc.MarkRead(req.Context(), userIDFrom(req.Context()), sid, body.ReadSeq); err != nil {
+		if errors.Is(err, domain.ErrNotParticipant) {
+			m.auditDenied(req, "msg:message:markread", sid, userIDFrom(req.Context()))
+		}
 		writeMsgErr(w, err)
 		return
 	}
@@ -246,6 +258,22 @@ func bearer(req *http.Request) string {
 		return strings.TrimPrefix(h, "Bearer ")
 	}
 	return ""
+}
+
+// auditDenied 记录权限拒绝审计（非会话成员拉取/发送），安全审计最有价值的部分。
+func (m *Module) auditDenied(req *http.Request, action string, sessionID, userID int64) {
+	if m.deps.Audit == nil {
+		return
+	}
+	ip := req.RemoteAddr
+	if i := strings.LastIndex(ip, ":"); i > 0 {
+		ip = ip[:i]
+	}
+	_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+		ActorID: userID, ActorType: audit.ActorUser, Channel: "mp", Action: action,
+		TargetRef: fmt.Sprintf(`{"type":"msg.session","id":"%d"}`, sessionID),
+		Result:    audit.ResultDenied, IP: ip, UserAgent: req.UserAgent(),
+	})
 }
 
 func writeMsgErr(w http.ResponseWriter, err error) {

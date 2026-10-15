@@ -18,6 +18,7 @@ import (
 	"catcube/internal/adapters/realname"
 	"catcube/internal/adapters/wechat"
 	"catcube/internal/bff"
+	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/config"
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
@@ -94,6 +95,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	outbox := pg.NewOutbox(pool)
 	bus := eventbus.NewBus(outbox, pg.NewProcessed(pool))
 	policyEngine := policy.NewEngine()
+	auditRec := audit.NewRecorder(pg.NewAudit(pool))
 
 	// 微信：配了 appid/secret 走真实接口，否则开发态假实现（登录链路可端到端跑通）
 	identityDeps := identity.Deps{
@@ -146,7 +148,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	})
 	msgMod := msg.New(msg.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine,
-		Resolver: entityReg, Realtime: local.RealtimeNoop{},
+		Resolver: entityReg, Realtime: local.RealtimeNoop{}, Audit: auditRec,
 	})
 	settingsReg := settings.NewRegistry(nil)
 	discoveryMod := discovery.New(discovery.Deps{

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 )
 
 // ActorType 操作者类型。
@@ -114,6 +115,9 @@ func NewRecorder(store Store) *Recorder { return &Recorder{store: store} }
 
 // Record 追加一条审计（自动补哈希链）。写失败不阻断业务由调用方决定。
 func (r *Recorder) Record(ctx context.Context, tx any, e Entry) error {
+	if e.CreatedAt == 0 {
+		e.CreatedAt = time.Now().Unix() // 参与哈希，必须与落库时间一致
+	}
 	prev, err := r.store.LastHash(ctx)
 	if err != nil {
 		return err

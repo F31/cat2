@@ -1280,6 +1280,37 @@ func TestIntegrationMediaUpload(t *testing.T) {
 	}
 }
 
+// 非会话成员拉取被拒（070002）并落审计（sys_audit，result=拒绝）。
+func TestIntegrationDeniedPullAudited(t *testing.T) {
+	h := newTestApp(t)
+	_, aTok := loginUser(t, h)
+	bID, _ := loginUser(t, h)
+	makeMember(t, h, aTok)
+
+	_, env := h.do(http.MethodPost, "/api/mp/v1/sessions", aTok, map[string]any{"target_ref": fmt.Sprintf("user:%d", bID)})
+	var ensured struct {
+		Session struct {
+			ID int64 `json:"id,string"`
+		} `json:"session"`
+	}
+	_ = json.Unmarshal(env.Data, &ensured)
+
+	_, cTok := loginUser(t, h) // 非成员
+	status, env := h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/sessions/%d/messages", ensured.Session.ID), cTok, nil)
+	if status != http.StatusForbidden || env.Code != 70002 {
+		t.Fatalf("非成员拉取应 070002/403: %d %+v", status, env)
+	}
+
+	var cnt int
+	if err := h.app.Pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM sys_audit WHERE action='msg:message:sync' AND result=1`).Scan(&cnt); err != nil {
+		t.Fatal(err)
+	}
+	if cnt == 0 {
+		t.Fatal("拒绝访问应落审计")
+	}
+}
+
 // 聊天消息机检：MessageSent → trust 订阅 → 敏感词命中入审核队列（msg.message）。
 func TestIntegrationMessageModeration(t *testing.T) {
 	h := newTestApp(t)
