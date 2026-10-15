@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"catcube/internal/adapters/local"
+	"catcube/internal/adapters/moderation"
 	"catcube/internal/adapters/oss"
 	"catcube/internal/adapters/pay"
 	"catcube/internal/adapters/pg"
@@ -147,7 +148,12 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		}
 		return uid, nil
 	}
-	trustMod := trust.New(trust.Deps{Pool: pool, Moderation: nil, Bus: bus, Auth: authFunc, Audit: auditRec})
+	var moderationClient ports.Moderation
+	if cfg.Moderation != "" {
+		moderationClient = moderation.NewDevClient() // dev/演练实现（生产接微信内容安全适配器）
+		slog.Info("内容安全启用开发实现", "mode", cfg.Moderation)
+	}
+	trustMod := trust.New(trust.Deps{Pool: pool, Moderation: moderationClient, Bus: bus, Auth: authFunc, Audit: auditRec})
 	dictMod := dict.New(pool)
 	mediaMod := media.New(pool, storage)
 	entityReg := entityref.NewRegistry()

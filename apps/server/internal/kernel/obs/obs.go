@@ -6,6 +6,8 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	"catcube/pkg/mask"
@@ -37,6 +39,9 @@ func Log(ctx context.Context) *slog.Logger {
 	}
 	if v, ok := ctx.Value(CtxModule).(string); ok {
 		l = l.With("module", v)
+	}
+	if v, ok := ctx.Value(CtxUserID).(int64); ok {
+		l = l.With("user_id", v)
 	}
 	return l
 }
@@ -72,4 +77,155 @@ func itoa(n int64) string {
 		n /= 10
 	}
 	return string(b[i:])
+}
+
+const (
+	CtxSessionKey ctxKey = "session_key"
+)
+
+// WithUserID 注入当前用户（日志关联；session_key/手机号等不入日志）。
+func WithUserID(ctx context.Context, uid int64) context.Context {
+	return context.WithValue(ctx, CtxUserID, uid)
+}
+
+// secretKeys 值必须整体屏蔽的字段名（小写比较）。
+var secretKeys = map[string]bool{
+	"session_key": true, "sessionkey": true, "access_token": true, "refresh_token": true,
+	"token": true, "password": true, "secret": true, "appsecret": true,
+	"encrypted_data": true, "iv": true, "enc_key": true, "private_key": true,
+	"id_card_no": true, "id_no": true, "real_name": true, "phone": true, "contact_phone": true,
+}
+
+// redactValue 值级脱敏：屏蔽密钥类；手机号/证件号形态做掩码。
+func redactValue(key, val string) string {
+	if secretKeys[strings.ToLower(key)] {
+		if key == "phone" || key == "contact_phone" {
+			return mask.Phone(val)
+		}
+		if key == "id_card_no" || key == "id_no" {
+			return mask.IDCard(val)
+		}
+		if key == "real_name" {
+			return mask.Name(val)
+		}
+		return "[redacted]"
+	}
+	// 值本身像手机号/证件号 → 掩码；字符串内嵌的手机号/证件号一并抹除
+	if isPhoneLike(val) {
+		return mask.Phone(val)
+	}
+	if isIDLike(val) {
+		return mask.IDCard(val)
+	}
+	return scrubEmbedded(val)
+}
+
+var (
+	phoneRe = regexp.MustCompile(`(?:^|\D)(1[3-9]\d{9})(?:\D|$)`)
+	idRe    = regexp.MustCompile(`(?:^|\D)(\d{17}[\dXx])(?:\D|$)`)
+)
+
+// scrubEmbedded 抹除字符串中内嵌的手机号/证件号。
+func scrubEmbedded(s string) string {
+	for i := 0; i < 3; i++ { // 迭代至稳定（相邻匹配）
+		before := s
+		s = phoneRe.ReplaceAllStringFunc(s, func(m string) string {
+			return replaceDigits(m, mask.Phone)
+		})
+		s = idRe.ReplaceAllStringFunc(s, func(m string) string {
+			return replaceDigits(m, mask.IDCard)
+		})
+		if s == before {
+			break
+		}
+	}
+	return s
+}
+
+// replaceDigits 对匹配中的数字片段做掩码，保留非数字包裹字符。
+func replaceDigits(m string, f func(string) string) string {
+	start, end := 0, len(m)
+	for start < end && (m[start] < '0' || m[start] > '9') {
+		start++
+	}
+	for end > start && (m[end-1] < '0' || m[end-1] > '9') {
+		end--
+	}
+	if start >= end {
+		return m
+	}
+	return m[:start] + f(m[start:end]) + m[end:]
+}
+
+func isPhoneLike(s string) bool {
+	if len(s) != 11 || s[0] != '1' {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isIDLike(s string) bool {
+	if len(s) < 15 || len(s) > 18 {
+		return false
+	}
+	digits := 0
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			digits++
+		} else if r != 'X' && r != 'x' {
+			return false
+		}
+	}
+	return digits >= 15
+}
+
+// RedactingHandler 包裹底层 Handler：出日志前统一脱敏（防误记敏感信息）。
+type RedactingHandler struct{ Inner slog.Handler }
+
+// NewRedactingHandler 包装。
+func NewRedactingHandler(inner slog.Handler) slog.Handler { return RedactingHandler{Inner: inner} }
+
+func (h RedactingHandler) Enabled(ctx context.Context, l slog.Level) bool {
+	return h.Inner.Enabled(ctx, l)
+}
+
+func (h RedactingHandler) Handle(ctx context.Context, r slog.Record) error {
+	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
+	r.Attrs(func(a slog.Attr) bool {
+		nr.AddAttrs(redactAttr(a))
+		return true
+	})
+	return h.Inner.Handle(ctx, nr)
+}
+
+func (h RedactingHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	out := make([]slog.Attr, len(attrs))
+	for i, a := range attrs {
+		out[i] = redactAttr(a)
+	}
+	return RedactingHandler{Inner: h.Inner.WithAttrs(out)}
+}
+
+func (h RedactingHandler) WithGroup(name string) slog.Handler {
+	return RedactingHandler{Inner: h.Inner.WithGroup(name)}
+}
+
+func redactAttr(a slog.Attr) slog.Attr {
+	switch a.Value.Kind() {
+	case slog.KindGroup:
+		g := a.Value.Group()
+		out := make([]slog.Attr, len(g))
+		for i, x := range g {
+			out[i] = redactAttr(x)
+		}
+		a.Value = slog.GroupValue(out...)
+	case slog.KindString:
+		a.Value = slog.StringValue(redactValue(a.Key, a.Value.String()))
+	}
+	return a
 }

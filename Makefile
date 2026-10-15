@@ -1,4 +1,4 @@
-.PHONY: gen lint test test-integration up down archcheck install build-web typecheck dev-admin dev-miniapp
+.PHONY: gen lint test test-integration up down archcheck logscan install build-web typecheck dev-admin dev-miniapp
 
 SERVER_DIR := apps/server
 
@@ -13,8 +13,11 @@ gen: ## 契约生成（OpenAPI → Go stub + TS 类型；事件 Schema → TS �
 		pnpm exec json2ts "$$f" -o "packages/domain-types/src/events/$$n.ts"; \
 	done
 
-lint: archcheck ## 全量静态检查
+lint: archcheck logscan ## 全量静态检查
 	cd $(SERVER_DIR) && go vet ./...
+
+logscan: ## 日志敏感信息扫描（session_key/手机号/证件号不入日志）
+	cd tools/logscan && go run . -root ../../$(SERVER_DIR)
 
 archcheck: ## 边界检查（依赖阶梯/表前缀/infra禁令/bff只读）
 	cd tools/archcheck && go run . -root ../../$(SERVER_DIR)

@@ -5,6 +5,7 @@ package pg
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
@@ -45,10 +46,16 @@ func (q *Queue) Dequeue(ctx context.Context, topic string, limit int) ([][]byte,
 
 var _ ports.Queue = (*Queue)(nil)
 
-// Search PG 检索（pg_trgm 相似度）。
-type Search struct{ pool *db.Pool }
+// Search PG 检索（pg_trgm 相似度；扩展缺失/查询失败时降级为 ILIKE 简单检索，p6 §4.2）。
+type Search struct {
+	pool   *db.Pool
+	simple bool // 强制走简单检索（扩展未装/降级演练）
+}
 
 func NewSearch(pool *db.Pool) *Search { return &Search{pool: pool} }
+
+// NewSearchSimple 仅简单检索（无 pg_trgm 环境或降级态）。
+func NewSearchSimple(pool *db.Pool) *Search { return &Search{pool: pool, simple: true} }
 
 func (s *Search) Index(ctx context.Context, docType string, id string, doc map[string]any) error {
 	raw, err := json.Marshal(doc)
@@ -69,9 +76,33 @@ func (s *Search) Delete(ctx context.Context, docType string, id string) error {
 }
 
 func (s *Search) Query(ctx context.Context, docType string, q string, limit int) ([]string, error) {
-	rows, err := s.pool.Query(ctx,
+	if s.simple {
+		return s.querySimple(ctx, docType, q, limit)
+	}
+	out, err := s.queryTrigram(ctx, docType, q, limit)
+	if err == nil {
+		return out, nil
+	}
+	// 降级：pg_trgm 不可用（扩展缺失/超时）→ ILIKE 简单检索，业务可用性优先
+	slog.Warn("检索降级为简单匹配", "err", err, "doc_type", docType)
+	return s.querySimple(ctx, docType, q, limit)
+}
+
+func (s *Search) queryTrigram(ctx context.Context, docType, q string, limit int) ([]string, error) {
+	return s.scanIDs(ctx,
 		`SELECT doc_id FROM sys_search_doc WHERE doc_type=$1 AND title % $2
 		 ORDER BY similarity(title, $2) DESC LIMIT $3`, docType, q, limit)
+}
+
+func (s *Search) querySimple(ctx context.Context, docType, q string, limit int) ([]string, error) {
+	return s.scanIDs(ctx,
+		`SELECT doc_id FROM sys_search_doc
+		 WHERE doc_type=$1 AND (title ILIKE '%' || $2 || '%' OR doc::text ILIKE '%' || $2 || '%')
+		 ORDER BY updated_at DESC LIMIT $3`, docType, q, limit)
+}
+
+func (s *Search) scanIDs(ctx context.Context, sql string, args ...any) ([]string, error) {
+	rows, err := s.pool.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}

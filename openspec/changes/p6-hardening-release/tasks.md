@@ -26,8 +26,8 @@
 ## 4. 降级与可靠性演练（逐项自动化/半自动化）
 
 - [ ] 4.1 AI 不可用 → 入驻/发布/搜索走原表单（关闭开关回归）
-- [ ] 4.2 搜索适配器故障 → 回退 PG 简单检索
-- [ ] 4.3 内容安全接口超时 → 文本发布进「审核中」队列重试，不放行
+- [x] 4.2 搜索降级：`adapters/pg.Search.Query` 先 pg_trgm，失败（扩展缺失/超时）自动回退 ILIKE 简单检索并告警；`NewSearchSimple` 强制降级态；集成测试 `TestSearchSimpleFallback`
+- [x] 4.3 内容安全超时：`trust.Review` 返回 `OutcomePending`（机检不可用→建机检重试任务，内容保持「审核中」不放行）；content 提交按结论三态处理；`moderation.DevClient`（`[FAULT]` 模拟超时）+ 集成测试 `TestIntegrationModerationTimeoutGate`
 - [x] 4.4 Redis 不可用回退：`adapters/redis`（标准库 RESP 客户端）+ `Fallback` 主备缓存（Redis 失败读写回退进程内 + 降级回调告警），`CATCUBE_REDIS_ADDR` 装配；单测（正常/降级往返）+ 集成测试（cube-home 聚合缓存）
 - [ ] 4.5 notice 故障 → 业务不受影响，事件积压后重放无丢失
 - [ ] 4.6 Outbox 积压与最老消息年龄监控告警触发；死信后台重放演练
@@ -36,7 +36,7 @@
 ## 5. 可观测完善
 
 - [ ] 5.1 OTel 全链路核查：trace/metric/log 统一入口，指标带 module 标签
-- [ ] 5.2 日志结构化核查：request_id/module/user_id（脱敏）齐全；session_key/手机号/证件号不出现在日志（扫描脚本）
+- [x] 5.2 日志结构化与脱敏：`obs` 统一 `WithRequestID/WithModule/WithUserID` + `RedactingHandler`（密钥字段屏蔽、手机号/证件号/姓名掩码、值内嵌手机号抹除）；入口 `slog.SetDefault(RedactingHandler)`；扫描脚本 `tools/logscan`（接入 `make lint`）；单测（脱敏）+ 扫描器测试；`make lint` 通过
 - [ ] 5.3 业务看板上线：注册、画像完成度、匹配点击、联系发起、会员转化、支付成功率、猫立方开通、审核积压
 - [ ] 5.4 告警上线（初始值可配）：P99>3s、错误率>1%、支付回调失败>0、履约重试超阈、审核 SLA 将超时
 

@@ -150,13 +150,18 @@ func (s *Service) Submit(ctx context.Context, userID, itemID int64) (contentcont
 	}
 	k, _ := s.kinds.Get(it.Kind)
 	fields, _ := s.repo.GetSub(ctx, it.Kind, itemID)
-	pass := true
+	outcome := trustcontract.OutcomePassed
 	if s.trust != nil {
-		pass, err = s.trust.SubmitReview(ctx, "content."+it.Kind, itemID, k.ReviewText(it.Title, fields), k.ReviewImages(it.CoverFileID, fields))
+		outcome, err = s.trust.Review(ctx, "content."+it.Kind, itemID, k.ReviewText(it.Title, fields), k.ReviewImages(it.CoverFileID, fields))
 		if err != nil {
 			return contentcontract.Item{}, err
 		}
 	}
+	if outcome == trustcontract.OutcomePending {
+		// 机检不可用：保持「审核中」（已入机检重试队列），不放行（p6 §4.3）
+		return s.toItem(ctx, it, true), nil
+	}
+	pass := outcome == trustcontract.OutcomePassed
 	now := time.Now().UTC()
 	newStatus := contentcontract.StatusPublished
 	reason := ""

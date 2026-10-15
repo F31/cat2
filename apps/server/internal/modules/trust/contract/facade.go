@@ -42,10 +42,22 @@ type SLAMetric struct {
 	AvgReviewSeconds int `json:"avg_review_seconds"`
 }
 
+// Outcome 审核结论（Pending=机检不可用，保持「审核中」等重试，不放行）。
+type Outcome int
+
+const (
+	OutcomeRejected Outcome = 0
+	OutcomePassed   Outcome = 1
+	OutcomePending  Outcome = 2
+)
+
 // Facade trust 对外接口。
 type Facade interface {
 	// SubmitReview 提交审核（敏感词前置 + 文本同步机检）；结论经事件对外。
+	// 返回 pass=false 含「驳回」与「机检不可用待重试」两种；需区分时用 Review。
 	SubmitReview(ctx context.Context, subjectType string, subjectID int64, text string, imageIDs []string) (pass bool, err error)
+	// Review 同 SubmitReview，但返回明确结论（Pending=机检不可用，调用方应保持「审核中」）。
+	Review(ctx context.Context, subjectType string, subjectID int64, text string, imageIDs []string) (Outcome, error)
 	// Report 用户举报（入人工复核队列，24h SLA）。
 	Report(ctx context.Context, reporterID int64, targetRef, reasonCode, detail string) error
 	// Restrict 限制/封禁。

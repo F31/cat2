@@ -142,12 +142,19 @@ func (m *Module) FilterSensitive(text string) (string, bool) {
 	return "", false
 }
 
-// SubmitReview 提交审核：敏感词前置 → 文本同步机检；结论经事件对外；高风险类目入抽检。
+// SubmitReview 兼容接口：Pending（机检不可用）与驳回同样返回 false。
 func (m *Module) SubmitReview(ctx context.Context, subjectType string, subjectID int64, text string, imageIDs []string) (bool, error) {
+	o, err := m.Review(ctx, subjectType, subjectID, text, imageIDs)
+	return o == contract.OutcomePassed, err
+}
+
+// Review 提交审核：敏感词前置 → 文本同步机检；结论经事件对外；高风险类目入抽检。
+// 机检不可用返回 OutcomePending（内容保持「审核中」并进重试队列，不放行，p6 §4.3）。
+func (m *Module) Review(ctx context.Context, subjectType string, subjectID int64, text string, imageIDs []string) (contract.Outcome, error) {
 	if word, hit := m.FilterSensitive(text); hit {
 		_ = m.createTask(ctx, contract.SourceMachine, subjectType, subjectID, 0, 2, "敏感词命中:"+word)
 		_ = m.emit(ctx, contract.NewModerationRejected(ids.New().String(), contract.ModerationPayload{SubjectType: subjectType, SubjectID: subjectID, ReasonCode: "sensitive_word"}))
-		return false, nil
+		return contract.OutcomeRejected, nil
 	}
 	pass := true
 	if m.deps.Moderation != nil {
@@ -155,21 +162,21 @@ func (m *Module) SubmitReview(ctx context.Context, subjectType string, subjectID
 		if err != nil {
 			// 机检超时：进「审核中」队列重试，不放行
 			_ = m.createTask(ctx, contract.SourceMachine, subjectType, subjectID, 0, 3, "机检超时待重试")
-			return false, nil
+			return contract.OutcomePending, nil
 		}
 		pass = res.Pass
 	}
 	if !pass {
 		_ = m.createTask(ctx, contract.SourceMachine, subjectType, subjectID, 0, 2, "文本机检命中")
 		_ = m.emit(ctx, contract.NewModerationRejected(ids.New().String(), contract.ModerationPayload{SubjectType: subjectType, SubjectID: subjectID, ReasonCode: "machine_reject"}))
-		return false, nil
+		return contract.OutcomeRejected, nil
 	}
 	// 高风险类目人工抽检（不阻塞展示）
 	if cat := highRiskCategory(text); cat != "" {
 		_ = m.createTask(ctx, contract.SourceHighRisk, subjectType, subjectID, 0, 3, "高风险类目抽检:"+cat)
 	}
 	_ = m.emit(ctx, contract.NewModerationPassed(ids.New().String(), contract.ModerationPayload{SubjectType: subjectType, SubjectID: subjectID}))
-	return true, nil
+	return contract.OutcomePassed, nil
 }
 
 // Report 用户举报：写举报记录 + 入人工复核队列（24h SLA）。

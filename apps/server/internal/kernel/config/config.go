@@ -21,6 +21,9 @@ type Config struct {
 	IdentityEncKey string // 字段加密（手机号/证件号）
 	BlindKey       string // 盲索引（phone_hmac）独立密钥
 
+	// Moderation 内容安全实现：空=禁用（不机检）/dev=开发演练实现（含降级开关）
+	Moderation string
+
 	// Redis（S1：缓存；未配置则用进程内缓存）
 	RedisAddr     string
 	RedisPassword string
@@ -41,6 +44,7 @@ func FromEnv() Config {
 		IdentityEncKey:  getenv("CATCUBE_IDENTITY_ENC_KEY", ""),
 		BlindKey:        getenv("CATCUBE_BLIND_KEY", ""),
 		DevSMSCode:      getenv("CATCUBE_SMS_DEV_CODE", ""),
+		Moderation:      getenv("CATCUBE_MODERATION", ""),
 		RedisAddr:       getenv("CATCUBE_REDIS_ADDR", ""),
 		RedisPassword:   getenv("CATCUBE_REDIS_PASSWORD", ""),
 	}

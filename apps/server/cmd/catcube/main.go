@@ -4,13 +4,17 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"catcube/internal/app"
 	"catcube/internal/kernel/config"
+	"catcube/internal/kernel/obs"
 )
 
 func main() {
@@ -18,6 +22,8 @@ func main() {
 		fmt.Println("用法: catcube <serve|migrate|jobs|seed> [flags]")
 		os.Exit(1)
 	}
+	// 全局日志：JSON 结构化 + 统一脱敏（session_key/手机号/证件号不入日志，p6 §5.2）
+	slog.SetDefault(slog.New(obs.NewRedactingHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))))
 	cfg := config.FromEnv()
 	// 命令行覆盖：--modules=a,b,c（未指定则用 CATCUBE_MODULES / 全部）
 	for _, arg := range os.Args[2:] {
@@ -57,6 +63,23 @@ func main() {
 			fatal(err)
 		}
 		fmt.Println("迁移完成")
+	case "probe":
+		// 容器健康检查（distroless 无 shell）：探测 /readyz
+		addr := cfg.HTTPAddr
+		if strings.HasPrefix(addr, ":") {
+			addr = "127.0.0.1" + addr
+		}
+		client := &http.Client{Timeout: 2 * time.Second}
+		resp, err := client.Get("http://" + addr + "/readyz")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "not ready:", err)
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			fmt.Fprintln(os.Stderr, "not ready:", resp.StatusCode)
+			os.Exit(1)
+		}
 	case "jobs":
 		fmt.Println("jobs：单跑一次定时任务（待实现）")
 	case "seed":

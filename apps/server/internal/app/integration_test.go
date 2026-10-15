@@ -54,7 +54,7 @@ func newTestApp(t *testing.T) *testApp {
 		t.Skip("未设置 CATCUBE_TEST_DATABASE_URL，跳过集成测试")
 	}
 	ctx := context.Background()
-	a, err := Wire(ctx, config.Config{DatabaseURL: url, HTTPAddr: ":0", Roles: []string{"api"}, DevSMSCode: "123456"})
+	a, err := Wire(ctx, config.Config{DatabaseURL: url, HTTPAddr: ":0", Roles: []string{"api"}, DevSMSCode: "123456", Moderation: "dev"})
 	if err != nil {
 		t.Fatalf("装配失败: %v", err)
 	}
@@ -3563,5 +3563,72 @@ func TestIntegrationCubeHomeCache(t *testing.T) {
 	_ = json.Unmarshal(env.Data, &second)
 	if second.TodoCount != first.TodoCount || len(second.Cubes) != len(first.Cubes) {
 		t.Fatalf("缓存返回应一致: %+v vs %+v", first, second)
+	}
+}
+
+// 内容安全降级（p6 §4.3）：机检超时 → 内容保持「审核中」并进机检重试队列，不放行。
+func TestIntegrationModerationTimeoutGate(t *testing.T) {
+	h := newTestApp(t)
+	uid, tok := loginUser(t, h)
+	_ = uid
+	if _, certEnv := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+		"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+	}); certEnv.Code != 0 {
+		t.Fatalf("实名失败: %+v", certEnv)
+	}
+	mk := func(title, intro string) int64 {
+		_, env := h.do(http.MethodPost, "/api/mp/v1/contents", tok, map[string]any{
+			"kind": "project", "title": title,
+			"tagset": map[string]any{"region": "310000", "industry": []string{"A01"}},
+			"fields": map[string]any{"amount_wan": 100, "intro": intro, "contact_phone": "13800000000"},
+		})
+		var item struct {
+			ID int64 `json:"id,string"`
+		}
+		_ = json.Unmarshal(env.Data, &item)
+		if item.ID == 0 {
+			t.Fatalf("建草稿失败: %+v", env)
+		}
+		return item.ID
+	}
+	// 机检不可用：提交后仍审核中（status=0），不进展示
+	faultID := mk("降级项目", "介绍 [FAULT] 模拟超时")
+	if _, env := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/contents/%d/submit", faultID), tok, nil); env.Code != 0 {
+		t.Fatalf("提交应可受理: %+v", env)
+	}
+	var status int16
+	if err := h.app.Pool.QueryRow(context.Background(), `SELECT status FROM cnt_item WHERE id=$1`, faultID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != 0 {
+		t.Fatalf("机检超时内容应保持审核中(0)，实际 %d", status)
+	}
+	// 机检重试任务（source=machine, reason 含「机检超时」）
+	var taskN int
+	_ = h.app.Pool.QueryRow(context.Background(),
+		`SELECT count(1) FROM trs_review_task WHERE subject_id=$1`, faultID).Scan(&taskN)
+	if taskN == 0 {
+		var reasons []string
+		rows, _ := h.app.Pool.Query(context.Background(), `SELECT reason FROM trs_review_task WHERE subject_id=$1`, faultID)
+		if rows != nil {
+			for rows.Next() {
+				var r string
+				_ = rows.Scan(&r)
+				reasons = append(reasons, r)
+			}
+			rows.Close()
+		}
+		t.Fatalf("应生成机检超时重试任务（reasons=%v）", reasons)
+	}
+	// 正常文本：提交即展示（status=1）
+	okID := mk("正常项目", "正常介绍")
+	if _, env := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/contents/%d/submit", okID), tok, nil); env.Code != 0 {
+		t.Fatalf("提交失败: %+v", env)
+	}
+	if err := h.app.Pool.QueryRow(context.Background(), `SELECT status FROM cnt_item WHERE id=$1`, okID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != 1 {
+		t.Fatalf("机检通过内容应展示中(1)，实际 %d", status)
 	}
 }
