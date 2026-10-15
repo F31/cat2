@@ -946,6 +946,214 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cubes/{id}/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 立方内项目列表（type=1研究/2承接，缺省全部） */
+        get: operations["listCubeProjects"];
+        put?: never;
+        /** 新建立方内项目（猫王/猫蜜） */
+        post: operations["createCubeProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/projects/{pid}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 关闭项目（灰字保留，可重开） */
+        post: operations["closeCubeProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/projects/{pid}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 重开项目 */
+        post: operations["reopenCubeProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/projects/{pid}/research": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 研究记录列表 */
+        get: operations["listCubeResearch"];
+        put?: never;
+        /** 新增研究记录（可带决策结论） */
+        post: operations["addCubeResearch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 任务列表（project_id 缺省=立方全部，含内部工作安排） */
+        get: operations["listCubeTasks"];
+        put?: never;
+        /** 新建任务（project_id 空=内部工作安排） */
+        post: operations["createCubeTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/tasks/{tid}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 开始任务（待办→进行中） */
+        post: operations["startCubeTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/tasks/{tid}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交进度（进行中→待确认，负责人） */
+        post: operations["submitCubeTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/tasks/{tid}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 确认任务（通过→已完成；驳回须填原因→退回进行中） */
+        post: operations["confirmCubeTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/tasks/{tid}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 重开已完成任务（记操作人与时间） */
+        post: operations["reopenCubeTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 重点客户报备列表（按状态分组由前端处理） */
+        get: operations["listCubeReports"];
+        put?: never;
+        /** 提交报备（重复仅提示不拦截） */
+        post: operations["submitCubeReport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/reports/{rid}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 确认报备 */
+        post: operations["confirmCubeReport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/reports/{rid}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 驳回报备（须填原因，可重提） */
+        post: operations["rejectCubeReport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1005,6 +1213,103 @@ export interface components {
             cooperation?: string;
             /** @description 必配猫蜜（不可为自己） */
             honey_user_id: string;
+        };
+        CubeProject: {
+            id: string;
+            cube_id: string;
+            /** @description 1 研究 / 2 承接 */
+            type: number;
+            /** @description 引用平台项目（可空） */
+            content_project_id?: string;
+            name: string;
+            related_ref?: string;
+            related_customer?: string;
+            leader_id: string;
+            participants?: string[];
+            progress?: number;
+            todo_count?: number;
+            /** @description 0 进行中 / 1 已关闭 */
+            status: number;
+            source_ref?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        CubeProjectInput: {
+            /** @description 1 研究 / 2 承接 */
+            type?: number;
+            name: string;
+            related_ref?: string;
+            related_customer?: string;
+            participants?: string[];
+            content_project_id?: string;
+            source_ref?: string;
+        };
+        CubeResearch: {
+            id: string;
+            project_id: string;
+            content: string;
+            decision?: string;
+            operator_id: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        CubeTask: {
+            id: string;
+            cube_id: string;
+            /** @description 空=内部工作安排 */
+            project_id?: string | null;
+            title: string;
+            assignee_id: string;
+            progress?: number;
+            confirm_user_id?: string;
+            /** Format: date-time */
+            due_at?: string | null;
+            /** @description 0 待办 / 1 进行中 / 2 待确认 / 3 已完成 */
+            status: number;
+            reject_reason?: string;
+            reopened_count?: number;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        CubeTaskInput: {
+            project_id?: string;
+            title: string;
+            assignee_id: string;
+            /** @description 缺省猫王+猫蜜确认 */
+            confirm_user_id?: string;
+            /** Format: date-time */
+            due_at?: string;
+        };
+        CubeReport: {
+            id: string;
+            cube_id: string;
+            project_id?: string | null;
+            reporter_id: string;
+            customer_name: string;
+            customer_type?: string;
+            region_code?: string;
+            related_item_ref?: string;
+            amount_wan?: number;
+            note?: string;
+            /** @description 0 待确认 / 1 已确认 / 2 已驳回 */
+            status: number;
+            reject_reason?: string;
+            /** Format: date-time */
+            confirmed_at?: string | null;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        CubeReportInput: {
+            project_id?: string;
+            customer_name: string;
+            /** @description 联系人手机号（加密存储） */
+            contact_phone?: string;
+            customer_type?: string;
+            region_code?: string;
+            related_item_ref?: string;
+            amount_wan?: number;
+            /** @description ≤200字 */
+            note?: string;
         };
         Envelope: {
             /** @description 0=成功；否则 MMNNNN 错误码 */
@@ -3159,6 +3464,475 @@ export interface operations {
                 };
             };
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listCubeProjects: {
+        parameters: {
+            query?: {
+                type?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 项目列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["CubeProject"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    createCubeProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CubeProjectInput"];
+            };
+        };
+        responses: {
+            /** @description 项目 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["CubeProject"];
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    closeCubeProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            closed?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    reopenCubeProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            reopened?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    listCubeResearch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 研究记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["CubeResearch"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    addCubeResearch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    content: string;
+                    decision?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 研究记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["CubeResearch"];
+                    };
+                };
+            };
+        };
+    };
+    listCubeTasks: {
+        parameters: {
+            query?: {
+                project_id?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 任务列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["CubeTask"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    createCubeTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CubeTaskInput"];
+            };
+        };
+        responses: {
+            /** @description 任务 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["CubeTask"];
+                    };
+                };
+            };
+        };
+    };
+    startCubeTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                tid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            status?: number;
+                        };
+                    };
+                };
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    submitCubeTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                tid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    progress?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            status?: number;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    confirmCubeTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                tid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    approve: boolean;
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            confirmed?: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    reopenCubeTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                tid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            reopened?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    listCubeReports: {
+        parameters: {
+            query?: {
+                project_id?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 报备列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["CubeReport"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    submitCubeReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CubeReportInput"];
+            };
+        };
+        responses: {
+            /** @description 报备（duplicate=true 表示重复提示） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            report?: components["schemas"]["CubeReport"];
+                            duplicate?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    confirmCubeReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            confirmed?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    rejectCubeReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            rejected?: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
 }

@@ -54,6 +54,73 @@ var MachineMember = statemachine.Def{
 	},
 }
 
+// 项目（#7）状态。
+const (
+	ProjectActive  = "active"
+	ProjectClosed  = "closed"
+
+	EventClose  = "close"
+	EventReopen = "reopen"
+)
+
+// 任务（#8）四态。
+const (
+	TaskTodo       = "todo"
+	TaskDoing      = "doing"
+	TaskReviewing  = "reviewing"
+	TaskDone       = "done"
+
+	EventStart   = "start"
+	EventSubmit  = "submit"
+	EventApprove = "approve"
+	EventReject  = "reject"
+	EventReopenTask = "reopen"
+)
+
+// 报备（#9）状态。
+const (
+	ReportPending  = "pending"
+	ReportConfirmed = "confirmed"
+	ReportRejected = "rejected"
+
+	EventConfirmReport = "confirm"
+	EventRejectReport  = "reject"
+)
+
+// MachineProject 状态机 #7：立方内项目（进行中→已关闭，可重开）。
+var MachineProject = statemachine.Def{
+	Name:   "cube.project",
+	States: []string{ProjectActive, ProjectClosed},
+	Transitions: []statemachine.Transition{
+		{From: ProjectActive, Event: EventClose, To: ProjectClosed, Actor: "leader"},
+		{From: ProjectClosed, Event: EventReopen, To: ProjectActive, Actor: "leader"},
+	},
+}
+
+// MachineTask 状态机 #8：任务四态（驳回退回进行中，已完成可重开）。
+var MachineTask = statemachine.Def{
+	Name:   "cube.task",
+	States: []string{TaskTodo, TaskDoing, TaskReviewing, TaskDone},
+	Transitions: []statemachine.Transition{
+		{From: TaskTodo, Event: EventStart, To: TaskDoing, Actor: "*"},
+		{From: TaskDoing, Event: EventSubmit, To: TaskReviewing, Actor: "assignee"},
+		{From: TaskReviewing, Event: EventApprove, To: TaskDone, Actor: "confirmer"},
+		{From: TaskReviewing, Event: EventReject, To: TaskDoing, Actor: "confirmer"},
+		{From: TaskDone, Event: EventReopenTask, To: TaskDoing, Actor: "leader"},
+	},
+}
+
+// MachineReport 状态机 #9：重点客户报备（待确认→已确认/已驳回，驳回可重提）。
+var MachineReport = statemachine.Def{
+	Name:   "cube.report",
+	States: []string{ReportPending, ReportConfirmed, ReportRejected},
+	Transitions: []statemachine.Transition{
+		{From: ReportPending, Event: EventConfirmReport, To: ReportConfirmed, Actor: "confirm_org"},
+		{From: ReportPending, Event: EventRejectReport, To: ReportRejected, Actor: "confirm_org"},
+		{From: ReportRejected, Event: EventConfirmReport, To: ReportConfirmed, Actor: "confirm_org"},
+	},
+}
+
 // 档位定义（默认值，实际以 settings 为准，后台可配）。
 type PlanTier struct {
 	Level       int16
@@ -96,7 +163,27 @@ var (
 	ErrNoPermission  = errors.New("cube: 无权操作该猫立方")
 	ErrNotFound      = errors.New("cube: 猫立方不存在")
 	ErrBadTier       = errors.New("cube: 订阅档位非法")
+	ErrTaskTransition = errors.New("cube: 任务非法转移（状态机拒绝）")
+	ErrRejectReason   = errors.New("cube: 驳回须填写原因")
+	ErrReportConflict = errors.New("cube: 报备重复（提示不拦截）")
+	ErrProjectClosed  = errors.New("cube: 项目已关闭")
 )
+
+// ValidateTaskTitle 任务标题校验。
+func ValidateTaskTitle(title string) error {
+	if strings.TrimSpace(title) == "" || len([]rune(title)) > 128 {
+		return ErrInvalidInput
+	}
+	return nil
+}
+
+// ValidateNote 报备说明 ≤200 字。
+func ValidateNote(note string) error {
+	if len([]rune(note)) > 200 {
+		return ErrInvalidInput
+	}
+	return nil
+}
 
 const nameMaxLen = 64
 

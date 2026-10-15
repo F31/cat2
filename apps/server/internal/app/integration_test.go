@@ -1458,6 +1458,120 @@ func loginPhone(t *testing.T, h *testApp, phone string) (int64, string) {
 	return l.UserID, l.Tokens.AccessToken
 }
 
+// 猫立方协作实体（p3 §2）：项目/任务四态（驳回须原因、重开）/报备。
+func TestIntegrationCubeCollab(t *testing.T) {
+	h := newTestApp(t)
+	aPhone, bPhone := randPhone(), randPhone()
+	_, aTok := loginPhone(t, h, aPhone)
+	bID, bTok := loginPhone(t, h, bPhone)
+	for _, tok := range []string{aTok, bTok} {
+		if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+			"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+		}); s != http.StatusOK || env.Code != 0 {
+			t.Fatalf("实名失败: %d %+v", s, env)
+		}
+	}
+	_, env := h.do(http.MethodPost, "/api/mp/v1/cubes", aTok, map[string]any{
+		"name": "协作一号", "honey_user_id": fmt.Sprintf("%d", bID),
+	})
+	var cube struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cube)
+
+	// 研究项目
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/projects", cube.ID), aTok, map[string]any{
+		"type": 1, "name": "市场调研A",
+	})
+	var proj struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &proj)
+	if proj.ID == 0 {
+		t.Fatalf("建项目失败: %+v", env)
+	}
+	// 研究记录 → 决策结论
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/projects/%d/research", cube.ID, proj.ID), aTok,
+		map[string]any{"content": "访谈 3 家客户", "decision": "缩小范围到华东"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("研究记录失败: %d %+v", s, e)
+	}
+
+	// 任务：B 负责人，默认猫王/猫蜜确认
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/tasks", cube.ID), aTok, map[string]any{
+		"project_id": fmt.Sprintf("%d", proj.ID), "title": "整理调研报告", "assignee_id": fmt.Sprintf("%d", bID),
+	})
+	var task struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &task)
+	if task.ID == 0 {
+		t.Fatalf("建任务失败: %+v", env)
+	}
+
+	taskURL := func(action string) string {
+		return fmt.Sprintf("/api/mp/v1/cubes/%d/tasks/%d/%s", cube.ID, task.ID, action)
+	}
+	// 待办→进行中（负责人 B）
+	if s, e := h.do(http.MethodPost, taskURL("start"), bTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("开始任务失败: %d %+v", s, e)
+	}
+	// 提交进度 → 待确认
+	if s, e := h.do(http.MethodPost, taskURL("submit"), bTok, map[string]any{"progress": 60}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("提交任务失败: %d %+v", s, e)
+	}
+	// 驳回未填原因 → 130011/400
+	if s, e := h.do(http.MethodPost, taskURL("confirm"), aTok, map[string]any{"approve": false}); s != http.StatusBadRequest || e.Code != 130011 {
+		t.Fatalf("驳回未填原因应 130011/400: %d %+v", s, e)
+	}
+	// 确认通过 → 已完成
+	if s, e := h.do(http.MethodPost, taskURL("confirm"), aTok, map[string]any{"approve": true}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("确认任务失败: %d %+v", s, e)
+	}
+	// 重开已完成（猫王）
+	if s, e := h.do(http.MethodPost, taskURL("reopen"), aTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("重开失败: %d %+v", s, e)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/cubes/%d/tasks", cube.ID), aTok, nil)
+	var tasks struct {
+		Items []struct {
+			Status        int16 `json:"status"`
+			ReopenedCount int   `json:"reopened_count"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &tasks)
+	if len(tasks.Items) != 1 || tasks.Items[0].Status != 1 || tasks.Items[0].ReopenedCount != 1 {
+		t.Fatalf("重开后应为进行中且重开次数 1: %+v", tasks.Items)
+	}
+
+	// 报备：B 提交 → A 驳回（占位 reason 必填）
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/reports", cube.ID), bTok, map[string]any{
+		"project_id": fmt.Sprintf("%d", proj.ID), "customer_name": "华东重工", "contact_phone": "13900000000",
+		"amount_wan": 300, "note": "有意向",
+	})
+	var rep struct {
+		Report struct {
+			ID int64 `json:"id,string"`
+		} `json:"report"`
+		Duplicate bool `json:"duplicate"`
+	}
+	_ = json.Unmarshal(env.Data, &rep)
+	if rep.Report.ID == 0 {
+		t.Fatalf("报备失败: %+v", env)
+	}
+	// 重复报备仅提示不拦截
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/reports", cube.ID), bTok, map[string]any{
+		"customer_name": "华东重工", "amount_wan": 100,
+	})
+	_ = json.Unmarshal(env.Data, &rep)
+	if !rep.Duplicate {
+		t.Fatal("重复报备应提示 duplicate=true")
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/reports/%d/reject", cube.ID, rep.Report.ID), aTok,
+		map[string]any{"reason": "信息不全"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("驳回报备失败: %d %+v", s, e)
+	}
+}
+
 // 后台封禁/解封落审计（sys_audit）。
 func TestIntegrationAdminBanAudited(t *testing.T) {
 	h := newTestApp(t)

@@ -1580,6 +1580,348 @@ paths:
                   - type: object
                     properties: { data: { type: object, properties: { dissolved: { type: boolean } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /cubes/{id}/projects:
+    get:
+      tags: [cube]
+      summary: 立方内项目列表（type=1研究/2承接，缺省全部）
+      operationId: listCubeProjects
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: type, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: 项目列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { $ref: '#/components/schemas/CubeProject' } }
+    post:
+      tags: [cube]
+      summary: 新建立方内项目（猫王/猫蜜）
+      operationId: createCubeProject
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CubeProjectInput' }
+      responses:
+        '200':
+          description: 项目
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { $ref: '#/components/schemas/CubeProject' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /cubes/{id}/projects/{pid}/close:
+    post:
+      tags: [cube]
+      summary: 关闭项目（灰字保留，可重开）
+      operationId: closeCubeProject
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: pid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { type: object, properties: { closed: { type: boolean } } } }
+  /cubes/{id}/projects/{pid}/reopen:
+    post:
+      tags: [cube]
+      summary: 重开项目
+      operationId: reopenCubeProject
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: pid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { type: object, properties: { reopened: { type: boolean } } } }
+  /cubes/{id}/projects/{pid}/research:
+    get:
+      tags: [cube]
+      summary: 研究记录列表
+      operationId: listCubeResearch
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: pid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 研究记录
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { $ref: '#/components/schemas/CubeResearch' } }
+    post:
+      tags: [cube]
+      summary: 新增研究记录（可带决策结论）
+      operationId: addCubeResearch
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: pid, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties: { content: { type: string }, decision: { type: string } }
+      responses:
+        '200':
+          description: 研究记录
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { $ref: '#/components/schemas/CubeResearch' } }
+  /cubes/{id}/tasks:
+    get:
+      tags: [cube]
+      summary: 任务列表（project_id 缺省=立方全部，含内部工作安排）
+      operationId: listCubeTasks
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: project_id, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: 任务列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { $ref: '#/components/schemas/CubeTask' } }
+    post:
+      tags: [cube]
+      summary: 新建任务（project_id 空=内部工作安排）
+      operationId: createCubeTask
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CubeTaskInput' }
+      responses:
+        '200':
+          description: 任务
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { $ref: '#/components/schemas/CubeTask' } }
+  /cubes/{id}/tasks/{tid}/start:
+    post:
+      tags: [cube]
+      summary: 开始任务（待办→进行中）
+      operationId: startCubeTask
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: tid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { status: { type: integer } } } } } ] } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cubes/{id}/tasks/{tid}/submit:
+    post:
+      tags: [cube]
+      summary: 提交进度（进行中→待确认，负责人）
+      operationId: submitCubeTask
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: tid, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, properties: { progress: { type: integer } } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { status: { type: integer } } } } } ] } } } }
+  /cubes/{id}/tasks/{tid}/confirm:
+    post:
+      tags: [cube]
+      summary: 确认任务（通过→已完成；驳回须填原因→退回进行中）
+      operationId: confirmCubeTask
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: tid, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approve]
+              properties: { approve: { type: boolean }, reason: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { confirmed: { type: boolean } } } } } ] } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /cubes/{id}/tasks/{tid}/reopen:
+    post:
+      tags: [cube]
+      summary: 重开已完成任务（记操作人与时间）
+      operationId: reopenCubeTask
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: tid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { type: object, properties: { reopened: { type: boolean } } } }
+  /cubes/{id}/reports:
+    get:
+      tags: [cube]
+      summary: 重点客户报备列表（按状态分组由前端处理）
+      operationId: listCubeReports
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: project_id, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: 报备列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { $ref: '#/components/schemas/CubeReport' } }
+    post:
+      tags: [cube]
+      summary: 提交报备（重复仅提示不拦截）
+      operationId: submitCubeReport
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CubeReportInput' }
+      responses:
+        '200':
+          description: 报备（duplicate=true 表示重复提示）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          report: { $ref: '#/components/schemas/CubeReport' }
+                          duplicate: { type: boolean }
+  /cubes/{id}/reports/{rid}/confirm:
+    post:
+      tags: [cube]
+      summary: 确认报备
+      operationId: confirmCubeReport
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: rid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { type: object, properties: { confirmed: { type: boolean } } } }
+  /cubes/{id}/reports/{rid}/reject:
+    post:
+      tags: [cube]
+      summary: 驳回报备（须填原因，可重提）
+      operationId: rejectCubeReport
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: rid, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties: { reason: { type: string } }
+      responses:
+        '200':
+          description: 结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { type: object, properties: { rejected: { type: boolean } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
 components:
   securitySchemes:
     bearerAuth:
@@ -1656,6 +1998,100 @@ components:
         strength: { type: string, description: 优势 }
         cooperation: { type: string, description: 合作 }
         honey_user_id: { type: string, description: 必配猫蜜（不可为自己） }
+    CubeProject:
+      type: object
+      required: [id, cube_id, type, name, leader_id, status]
+      properties:
+        id: { type: string }
+        cube_id: { type: string }
+        type: { type: integer, description: '1 研究 / 2 承接' }
+        content_project_id: { type: string, description: 引用平台项目（可空） }
+        name: { type: string }
+        related_ref: { type: string }
+        related_customer: { type: string }
+        leader_id: { type: string }
+        participants: { type: array, items: { type: string } }
+        progress: { type: integer }
+        todo_count: { type: integer }
+        status: { type: integer, description: '0 进行中 / 1 已关闭' }
+        source_ref: { type: string }
+        created_at: { type: string, format: date-time }
+    CubeProjectInput:
+      type: object
+      required: [name]
+      properties:
+        type: { type: integer, description: '1 研究 / 2 承接' }
+        name: { type: string }
+        related_ref: { type: string }
+        related_customer: { type: string }
+        participants: { type: array, items: { type: string } }
+        content_project_id: { type: string }
+        source_ref: { type: string }
+    CubeResearch:
+      type: object
+      required: [id, project_id, content, operator_id]
+      properties:
+        id: { type: string }
+        project_id: { type: string }
+        content: { type: string }
+        decision: { type: string }
+        operator_id: { type: string }
+        created_at: { type: string, format: date-time }
+    CubeTask:
+      type: object
+      required: [id, cube_id, title, assignee_id, status]
+      properties:
+        id: { type: string }
+        cube_id: { type: string }
+        project_id: { type: string, nullable: true, description: 空=内部工作安排 }
+        title: { type: string }
+        assignee_id: { type: string }
+        progress: { type: integer }
+        confirm_user_id: { type: string }
+        due_at: { type: string, format: date-time, nullable: true }
+        status: { type: integer, description: '0 待办 / 1 进行中 / 2 待确认 / 3 已完成' }
+        reject_reason: { type: string }
+        reopened_count: { type: integer }
+        created_at: { type: string, format: date-time }
+    CubeTaskInput:
+      type: object
+      required: [title, assignee_id]
+      properties:
+        project_id: { type: string }
+        title: { type: string }
+        assignee_id: { type: string }
+        confirm_user_id: { type: string, description: 缺省猫王+猫蜜确认 }
+        due_at: { type: string, format: date-time }
+    CubeReport:
+      type: object
+      required: [id, cube_id, reporter_id, customer_name, status]
+      properties:
+        id: { type: string }
+        cube_id: { type: string }
+        project_id: { type: string, nullable: true }
+        reporter_id: { type: string }
+        customer_name: { type: string }
+        customer_type: { type: string }
+        region_code: { type: string }
+        related_item_ref: { type: string }
+        amount_wan: { type: integer }
+        note: { type: string }
+        status: { type: integer, description: '0 待确认 / 1 已确认 / 2 已驳回' }
+        reject_reason: { type: string }
+        confirmed_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+    CubeReportInput:
+      type: object
+      required: [customer_name]
+      properties:
+        project_id: { type: string }
+        customer_name: { type: string }
+        contact_phone: { type: string, description: 联系人手机号（加密存储） }
+        customer_type: { type: string }
+        region_code: { type: string }
+        related_item_ref: { type: string }
+        amount_wan: { type: integer }
+        note: { type: string, description: ≤200字 }
     Envelope:
       type: object
       required: [code, message, request_id]

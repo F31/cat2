@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"hash/crc32"
 	"log/slog"
 	"net/http"
 	"time"
@@ -166,7 +167,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	})
 	cubeMod := cube.New(cube.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine, Entities: entityReg,
-		Audit: auditRec,
+		Audit: auditRec, Encryptor: encryptor,
 	})
 	mods := []module.Module{
 		dictMod,
@@ -289,13 +290,17 @@ func RunMigrations(ctx context.Context, pool *db.Pool, mods []module.Module) err
 	if _, err := pool.Exec(ctx, pg.KernelTables()); err != nil {
 		return fmt.Errorf("migrate: 内核表失败: %w", err)
 	}
+	// 每模块迁移以 SQL 内容哈希为版本：脚本为幂等 DDL（IF NOT EXISTS），
+	// 内容变更即重新应用，避免"新增表被 version=1 已应用而跳过"。
 	type migrator interface{ Migrations() string }
 	var sources []migrate.Source
 	for _, m := range mods {
 		if mm, ok := m.(migrator); ok {
+			sql := mm.Migrations()
+			version := int(crc32.ChecksumIEEE([]byte(sql)) & 0x7fffffff) // 收敛到 int4 正区间
 			sources = append(sources, migrate.Source{
 				Module:     m.Name(),
-				Migrations: []migrate.Migration{{Version: 1, Name: "init", SQL: mm.Migrations()}},
+				Migrations: []migrate.Migration{{Version: version, Name: "init", SQL: sql}},
 			})
 		}
 	}

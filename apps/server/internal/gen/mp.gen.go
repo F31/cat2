@@ -557,6 +557,119 @@ type CubeMember struct {
 	UserId   string     `json:"user_id"`
 }
 
+// CubeProject defines model for CubeProject.
+type CubeProject struct {
+	// ContentProjectId 引用平台项目（可空）
+	ContentProjectId *string    `json:"content_project_id,omitempty"`
+	CreatedAt        *time.Time `json:"created_at,omitempty"`
+	CubeId           string     `json:"cube_id"`
+	Id               string     `json:"id"`
+	LeaderId         string     `json:"leader_id"`
+	Name             string     `json:"name"`
+	Participants     *[]string  `json:"participants,omitempty"`
+	Progress         *int       `json:"progress,omitempty"`
+	RelatedCustomer  *string    `json:"related_customer,omitempty"`
+	RelatedRef       *string    `json:"related_ref,omitempty"`
+	SourceRef        *string    `json:"source_ref,omitempty"`
+
+	// Status 0 进行中 / 1 已关闭
+	Status    int  `json:"status"`
+	TodoCount *int `json:"todo_count,omitempty"`
+
+	// Type 1 研究 / 2 承接
+	Type int `json:"type"`
+}
+
+// CubeProjectInput defines model for CubeProjectInput.
+type CubeProjectInput struct {
+	ContentProjectId *string   `json:"content_project_id,omitempty"`
+	Name             string    `json:"name"`
+	Participants     *[]string `json:"participants,omitempty"`
+	RelatedCustomer  *string   `json:"related_customer,omitempty"`
+	RelatedRef       *string   `json:"related_ref,omitempty"`
+	SourceRef        *string   `json:"source_ref,omitempty"`
+
+	// Type 1 研究 / 2 承接
+	Type *int `json:"type,omitempty"`
+}
+
+// CubeReport defines model for CubeReport.
+type CubeReport struct {
+	AmountWan      *int       `json:"amount_wan,omitempty"`
+	ConfirmedAt    *time.Time `json:"confirmed_at,omitempty"`
+	CreatedAt      *time.Time `json:"created_at,omitempty"`
+	CubeId         string     `json:"cube_id"`
+	CustomerName   string     `json:"customer_name"`
+	CustomerType   *string    `json:"customer_type,omitempty"`
+	Id             string     `json:"id"`
+	Note           *string    `json:"note,omitempty"`
+	ProjectId      *string    `json:"project_id,omitempty"`
+	RegionCode     *string    `json:"region_code,omitempty"`
+	RejectReason   *string    `json:"reject_reason,omitempty"`
+	RelatedItemRef *string    `json:"related_item_ref,omitempty"`
+	ReporterId     string     `json:"reporter_id"`
+
+	// Status 0 待确认 / 1 已确认 / 2 已驳回
+	Status int `json:"status"`
+}
+
+// CubeReportInput defines model for CubeReportInput.
+type CubeReportInput struct {
+	AmountWan *int `json:"amount_wan,omitempty"`
+
+	// ContactPhone 联系人手机号（加密存储）
+	ContactPhone *string `json:"contact_phone,omitempty"`
+	CustomerName string  `json:"customer_name"`
+	CustomerType *string `json:"customer_type,omitempty"`
+
+	// Note ≤200字
+	Note           *string `json:"note,omitempty"`
+	ProjectId      *string `json:"project_id,omitempty"`
+	RegionCode     *string `json:"region_code,omitempty"`
+	RelatedItemRef *string `json:"related_item_ref,omitempty"`
+}
+
+// CubeResearch defines model for CubeResearch.
+type CubeResearch struct {
+	Content    string     `json:"content"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	Decision   *string    `json:"decision,omitempty"`
+	Id         string     `json:"id"`
+	OperatorId string     `json:"operator_id"`
+	ProjectId  string     `json:"project_id"`
+}
+
+// CubeTask defines model for CubeTask.
+type CubeTask struct {
+	AssigneeId    string     `json:"assignee_id"`
+	ConfirmUserId *string    `json:"confirm_user_id,omitempty"`
+	CreatedAt     *time.Time `json:"created_at,omitempty"`
+	CubeId        string     `json:"cube_id"`
+	DueAt         *time.Time `json:"due_at,omitempty"`
+	Id            string     `json:"id"`
+	Progress      *int       `json:"progress,omitempty"`
+
+	// ProjectId 空=内部工作安排
+	ProjectId     *string `json:"project_id,omitempty"`
+	RejectReason  *string `json:"reject_reason,omitempty"`
+	ReopenedCount *int    `json:"reopened_count,omitempty"`
+
+	// Status 0 待办 / 1 进行中 / 2 待确认 / 3 已完成
+	Status int    `json:"status"`
+	Title  string `json:"title"`
+}
+
+// CubeTaskInput defines model for CubeTaskInput.
+type CubeTaskInput struct {
+	AssigneeId string `json:"assignee_id"`
+
+	// ConfirmUserId 缺省猫王+猫蜜确认
+	ConfirmUserId *string    `json:"confirm_user_id,omitempty"`
+	DueAt         *time.Time `json:"due_at,omitempty"`
+	ProjectId     *string    `json:"project_id,omitempty"`
+	Title         string     `json:"title"`
+}
+
 // DetailData defines model for DetailData.
 type DetailData struct {
 	Badges    *[]Badge          `json:"badges,omitempty"`
@@ -976,6 +1089,43 @@ type RemoveCubeMemberJSONBody struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
+// ListCubeProjectsParams defines parameters for ListCubeProjects.
+type ListCubeProjectsParams struct {
+	Type *int `form:"type,omitempty" json:"type,omitempty"`
+}
+
+// AddCubeResearchJSONBody defines parameters for AddCubeResearch.
+type AddCubeResearchJSONBody struct {
+	Content  string  `json:"content"`
+	Decision *string `json:"decision,omitempty"`
+}
+
+// ListCubeReportsParams defines parameters for ListCubeReports.
+type ListCubeReportsParams struct {
+	ProjectId *string `form:"project_id,omitempty" json:"project_id,omitempty"`
+}
+
+// RejectCubeReportJSONBody defines parameters for RejectCubeReport.
+type RejectCubeReportJSONBody struct {
+	Reason string `json:"reason"`
+}
+
+// ListCubeTasksParams defines parameters for ListCubeTasks.
+type ListCubeTasksParams struct {
+	ProjectId *string `form:"project_id,omitempty" json:"project_id,omitempty"`
+}
+
+// ConfirmCubeTaskJSONBody defines parameters for ConfirmCubeTask.
+type ConfirmCubeTaskJSONBody struct {
+	Approve bool    `json:"approve"`
+	Reason  *string `json:"reason,omitempty"`
+}
+
+// SubmitCubeTaskJSONBody defines parameters for SubmitCubeTask.
+type SubmitCubeTaskJSONBody struct {
+	Progress *int `json:"progress,omitempty"`
+}
+
 // TransferCubeJSONBody defines parameters for TransferCube.
 type TransferCubeJSONBody struct {
 	ToUserId string `json:"to_user_id"`
@@ -1137,6 +1287,27 @@ type JoinCubeJSONRequestBody JoinCubeJSONBody
 // RemoveCubeMemberJSONRequestBody defines body for RemoveCubeMember for application/json ContentType.
 type RemoveCubeMemberJSONRequestBody RemoveCubeMemberJSONBody
 
+// CreateCubeProjectJSONRequestBody defines body for CreateCubeProject for application/json ContentType.
+type CreateCubeProjectJSONRequestBody = CubeProjectInput
+
+// AddCubeResearchJSONRequestBody defines body for AddCubeResearch for application/json ContentType.
+type AddCubeResearchJSONRequestBody AddCubeResearchJSONBody
+
+// SubmitCubeReportJSONRequestBody defines body for SubmitCubeReport for application/json ContentType.
+type SubmitCubeReportJSONRequestBody = CubeReportInput
+
+// RejectCubeReportJSONRequestBody defines body for RejectCubeReport for application/json ContentType.
+type RejectCubeReportJSONRequestBody RejectCubeReportJSONBody
+
+// CreateCubeTaskJSONRequestBody defines body for CreateCubeTask for application/json ContentType.
+type CreateCubeTaskJSONRequestBody = CubeTaskInput
+
+// ConfirmCubeTaskJSONRequestBody defines body for ConfirmCubeTask for application/json ContentType.
+type ConfirmCubeTaskJSONRequestBody ConfirmCubeTaskJSONBody
+
+// SubmitCubeTaskJSONRequestBody defines body for SubmitCubeTask for application/json ContentType.
+type SubmitCubeTaskJSONRequestBody SubmitCubeTaskJSONBody
+
 // TransferCubeJSONRequestBody defines body for TransferCube for application/json ContentType.
 type TransferCubeJSONRequestBody TransferCubeJSONBody
 
@@ -1256,6 +1427,54 @@ type ServerInterface interface {
 	// RemoveCubeMember 移除成员（猫王/猫蜜；被移除者不可自行重进）
 	// (POST /cubes/{id}/members/{uid}/remove)
 	RemoveCubeMember(w http.ResponseWriter, r *http.Request, id string, uid string)
+	// ListCubeProjects 立方内项目列表（type=1研究/2承接，缺省全部）
+	// (GET /cubes/{id}/projects)
+	ListCubeProjects(w http.ResponseWriter, r *http.Request, id string, params ListCubeProjectsParams)
+	// CreateCubeProject 新建立方内项目（猫王/猫蜜）
+	// (POST /cubes/{id}/projects)
+	CreateCubeProject(w http.ResponseWriter, r *http.Request, id string)
+	// CloseCubeProject 关闭项目（灰字保留，可重开）
+	// (POST /cubes/{id}/projects/{pid}/close)
+	CloseCubeProject(w http.ResponseWriter, r *http.Request, id string, pid string)
+	// ReopenCubeProject 重开项目
+	// (POST /cubes/{id}/projects/{pid}/reopen)
+	ReopenCubeProject(w http.ResponseWriter, r *http.Request, id string, pid string)
+	// ListCubeResearch 研究记录列表
+	// (GET /cubes/{id}/projects/{pid}/research)
+	ListCubeResearch(w http.ResponseWriter, r *http.Request, id string, pid string)
+	// AddCubeResearch 新增研究记录（可带决策结论）
+	// (POST /cubes/{id}/projects/{pid}/research)
+	AddCubeResearch(w http.ResponseWriter, r *http.Request, id string, pid string)
+	// ListCubeReports 重点客户报备列表（按状态分组由前端处理）
+	// (GET /cubes/{id}/reports)
+	ListCubeReports(w http.ResponseWriter, r *http.Request, id string, params ListCubeReportsParams)
+	// SubmitCubeReport 提交报备（重复仅提示不拦截）
+	// (POST /cubes/{id}/reports)
+	SubmitCubeReport(w http.ResponseWriter, r *http.Request, id string)
+	// ConfirmCubeReport 确认报备
+	// (POST /cubes/{id}/reports/{rid}/confirm)
+	ConfirmCubeReport(w http.ResponseWriter, r *http.Request, id string, rid string)
+	// RejectCubeReport 驳回报备（须填原因，可重提）
+	// (POST /cubes/{id}/reports/{rid}/reject)
+	RejectCubeReport(w http.ResponseWriter, r *http.Request, id string, rid string)
+	// ListCubeTasks 任务列表（project_id 缺省=立方全部，含内部工作安排）
+	// (GET /cubes/{id}/tasks)
+	ListCubeTasks(w http.ResponseWriter, r *http.Request, id string, params ListCubeTasksParams)
+	// CreateCubeTask 新建任务（project_id 空=内部工作安排）
+	// (POST /cubes/{id}/tasks)
+	CreateCubeTask(w http.ResponseWriter, r *http.Request, id string)
+	// ConfirmCubeTask 确认任务（通过→已完成；驳回须填原因→退回进行中）
+	// (POST /cubes/{id}/tasks/{tid}/confirm)
+	ConfirmCubeTask(w http.ResponseWriter, r *http.Request, id string, tid string)
+	// ReopenCubeTask 重开已完成任务（记操作人与时间）
+	// (POST /cubes/{id}/tasks/{tid}/reopen)
+	ReopenCubeTask(w http.ResponseWriter, r *http.Request, id string, tid string)
+	// StartCubeTask 开始任务（待办→进行中）
+	// (POST /cubes/{id}/tasks/{tid}/start)
+	StartCubeTask(w http.ResponseWriter, r *http.Request, id string, tid string)
+	// SubmitCubeTask 提交进度（进行中→待确认，负责人）
+	// (POST /cubes/{id}/tasks/{tid}/submit)
+	SubmitCubeTask(w http.ResponseWriter, r *http.Request, id string, tid string)
 	// TransferCube 转让猫王（仅猫王；目标须为成员）
 	// (POST /cubes/{id}/transfer)
 	TransferCube(w http.ResponseWriter, r *http.Request, id string)
@@ -2144,6 +2363,560 @@ func (siw *ServerInterfaceWrapper) RemoveCubeMember(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RemoveCubeMember(w, r, id, uid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCubeProjects operation middleware
+func (siw *ServerInterfaceWrapper) ListCubeProjects(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCubeProjectsParams
+
+	// ------------- Optional query parameter "type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "type", r.URL.Query(), &params.Type, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCubeProjects(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCubeProject operation middleware
+func (siw *ServerInterfaceWrapper) CreateCubeProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCubeProject(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CloseCubeProject operation middleware
+func (siw *ServerInterfaceWrapper) CloseCubeProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "pid" -------------
+	var pid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "pid", r.PathValue("pid"), &pid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CloseCubeProject(w, r, id, pid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReopenCubeProject operation middleware
+func (siw *ServerInterfaceWrapper) ReopenCubeProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "pid" -------------
+	var pid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "pid", r.PathValue("pid"), &pid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReopenCubeProject(w, r, id, pid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCubeResearch operation middleware
+func (siw *ServerInterfaceWrapper) ListCubeResearch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "pid" -------------
+	var pid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "pid", r.PathValue("pid"), &pid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCubeResearch(w, r, id, pid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddCubeResearch operation middleware
+func (siw *ServerInterfaceWrapper) AddCubeResearch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "pid" -------------
+	var pid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "pid", r.PathValue("pid"), &pid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddCubeResearch(w, r, id, pid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCubeReports operation middleware
+func (siw *ServerInterfaceWrapper) ListCubeReports(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCubeReportsParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project_id", r.URL.Query(), &params.ProjectId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCubeReports(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SubmitCubeReport operation middleware
+func (siw *ServerInterfaceWrapper) SubmitCubeReport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SubmitCubeReport(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfirmCubeReport operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmCubeReport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rid" -------------
+	var rid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rid", r.PathValue("rid"), &rid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmCubeReport(w, r, id, rid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RejectCubeReport operation middleware
+func (siw *ServerInterfaceWrapper) RejectCubeReport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rid" -------------
+	var rid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rid", r.PathValue("rid"), &rid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RejectCubeReport(w, r, id, rid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCubeTasks operation middleware
+func (siw *ServerInterfaceWrapper) ListCubeTasks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCubeTasksParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project_id", r.URL.Query(), &params.ProjectId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCubeTasks(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCubeTask operation middleware
+func (siw *ServerInterfaceWrapper) CreateCubeTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCubeTask(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfirmCubeTask operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmCubeTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "tid" -------------
+	var tid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tid", r.PathValue("tid"), &tid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmCubeTask(w, r, id, tid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReopenCubeTask operation middleware
+func (siw *ServerInterfaceWrapper) ReopenCubeTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "tid" -------------
+	var tid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tid", r.PathValue("tid"), &tid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReopenCubeTask(w, r, id, tid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartCubeTask operation middleware
+func (siw *ServerInterfaceWrapper) StartCubeTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "tid" -------------
+	var tid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tid", r.PathValue("tid"), &tid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartCubeTask(w, r, id, tid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SubmitCubeTask operation middleware
+func (siw *ServerInterfaceWrapper) SubmitCubeTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "tid" -------------
+	var tid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tid", r.PathValue("tid"), &tid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SubmitCubeTask(w, r, id, tid)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3419,6 +4192,22 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/leave", wrapper.LeaveCube)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/transfer", wrapper.TransferCube)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/dissolve", wrapper.DissolveCube)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes/{id}/projects", wrapper.ListCubeProjects)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/projects", wrapper.CreateCubeProject)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/projects/{pid}/close", wrapper.CloseCubeProject)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/projects/{pid}/reopen", wrapper.ReopenCubeProject)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes/{id}/projects/{pid}/research", wrapper.ListCubeResearch)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/projects/{pid}/research", wrapper.AddCubeResearch)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes/{id}/tasks", wrapper.ListCubeTasks)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/tasks", wrapper.CreateCubeTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/tasks/{tid}/start", wrapper.StartCubeTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/tasks/{tid}/submit", wrapper.SubmitCubeTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/tasks/{tid}/confirm", wrapper.ConfirmCubeTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/tasks/{tid}/reopen", wrapper.ReopenCubeTask)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes/{id}/reports", wrapper.ListCubeReports)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/reports", wrapper.SubmitCubeReport)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/reports/{rid}/confirm", wrapper.ConfirmCubeReport)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/reports/{rid}/reject", wrapper.RejectCubeReport)
 
 	return m
 }

@@ -17,6 +17,7 @@ import (
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
 	"catcube/internal/kernel/policy"
+	"catcube/internal/kernel/sensitive"
 	"catcube/internal/modules/cube/contract"
 	"catcube/internal/modules/cube/internal/app"
 	"catcube/internal/modules/cube/internal/domain"
@@ -27,12 +28,13 @@ import (
 
 // Deps 装配依赖。
 type Deps struct {
-	Pool     *db.Pool
-	Bus      *eventbus.Bus
-	Identity idcontract.Facade
-	Policy   *policy.Engine
-	Entities *entityref.Registry
-	Audit    *audit.Recorder
+	Pool      *db.Pool
+	Bus       *eventbus.Bus
+	Identity  idcontract.Facade
+	Policy    *policy.Engine
+	Entities  *entityref.Registry
+	Audit     *audit.Recorder
+	Encryptor *sensitive.Encryptor
 }
 
 // Module cube 模块。
@@ -49,9 +51,9 @@ func (m *Module) DependsOn() []string { return []string{"identity"} }
 
 // cube 错误码（contracts/errors/README.md 13 段）。
 const (
-	codeParamInvalid = 1     // 000001
-	codeUnauthorized = 2     // 000002
-	codeInternal     = 9     // 000009
+	codeParamInvalid = 1 // 000001
+	codeUnauthorized = 2 // 000002
+	codeInternal     = 9 // 000009
 	codeNotFound     = 130001
 	codeNoPermission = 130002
 	codeNotRealname  = 130003
@@ -61,13 +63,15 @@ const (
 	codeCubeLimit    = 130007
 	codeMemberLimit  = 130008
 	codeInvalidInput = 130009
+	codeTaskTrans    = 130010
+	codeRejectReason = 130011
 	codeBadTier      = 130013
 )
 
 func (m *Module) Register(r *module.Registry) error {
 	m.svc = app.New(app.Options{
 		Repo: infra.NewStore(m.deps.Pool), Pool: m.deps.Pool, Bus: m.deps.Bus,
-		Policy: m.deps.Policy, Identity: m.deps.Identity,
+		Policy: m.deps.Policy, Identity: m.deps.Identity, Encryptor: m.deps.Encryptor,
 	})
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes", Handler: m.auth(m.handleCreate)},
@@ -80,9 +84,27 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/leave", Handler: m.auth(m.handleLeave)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/transfer", Handler: m.auth(m.handleTransfer)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/dissolve", Handler: m.auth(m.handleDissolve)},
+		// 协作实体（§2）
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/projects", Handler: m.auth(m.handleCreateProject)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cubes/{id}/projects", Handler: m.auth(m.handleListProjects)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/projects/{pid}/close", Handler: m.auth(m.handleCloseProject)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/projects/{pid}/reopen", Handler: m.auth(m.handleReopenProject)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cubes/{id}/projects/{pid}/research", Handler: m.auth(m.handleListResearch)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/projects/{pid}/research", Handler: m.auth(m.handleAddResearch)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/tasks", Handler: m.auth(m.handleCreateTask)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cubes/{id}/tasks", Handler: m.auth(m.handleListTasks)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/tasks/{tid}/start", Handler: m.auth(m.taskAction("start"))},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/tasks/{tid}/submit", Handler: m.auth(m.taskAction("submit"))},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/tasks/{tid}/confirm", Handler: m.auth(m.taskAction("confirm"))},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/tasks/{tid}/reopen", Handler: m.auth(m.taskAction("reopen"))},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/reports", Handler: m.auth(m.handleSubmitReport)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cubes/{id}/reports", Handler: m.auth(m.handleListReports)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/reports/{rid}/confirm", Handler: m.auth(m.handleConfirmReport)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/reports/{rid}/reject", Handler: m.auth(m.handleRejectReport)},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/cubes", Handler: m.auth(m.handleAdminList), Admin: true},
 	)
-	r.StateMachines = append(r.StateMachines, domain.MachineCube, domain.MachineMember)
+	r.StateMachines = append(r.StateMachines, domain.MachineCube, domain.MachineMember,
+		domain.MachineProject, domain.MachineTask, domain.MachineReport)
 	r.CapProviders = append(r.CapProviders, capProvider{m})
 	r.Jobs = append(r.Jobs, module.JobDef{Name: "cube.plan_expire", Interval: 30 * time.Minute, Run: m.svc.ExpireDue})
 	if m.deps.Entities != nil {
@@ -429,6 +451,10 @@ func writeCubeErr(w http.ResponseWriter, err error) {
 		writeErr(w, codeCubeLimit, err.Error())
 	case errors.Is(err, domain.ErrMemberLimit):
 		writeErr(w, codeMemberLimit, err.Error())
+	case errors.Is(err, domain.ErrTaskTransition), errors.Is(err, domain.ErrProjectClosed):
+		writeErr(w, codeTaskTrans, err.Error())
+	case errors.Is(err, domain.ErrRejectReason):
+		writeErr(w, codeRejectReason, err.Error())
 	case errors.Is(err, domain.ErrBadTier):
 		writeErr(w, codeBadTier, err.Error())
 	case errors.Is(err, domain.ErrInvalidInput):
@@ -448,9 +474,9 @@ func httpStatus(code int) int {
 		return http.StatusNotFound
 	case codeCubeLimit:
 		return http.StatusTooManyRequests
-	case codeMemberLimit:
+	case codeMemberLimit, codeTaskTrans:
 		return http.StatusConflict
-	case codeParamInvalid, codeHoney, codeInviteBad, codeInvalidInput, codeBadTier:
+	case codeParamInvalid, codeHoney, codeInviteBad, codeInvalidInput, codeBadTier, codeRejectReason:
 		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError

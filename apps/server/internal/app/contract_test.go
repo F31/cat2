@@ -34,9 +34,13 @@ func emittedTopics() []string {
 		tradecontract.EventOrderCreated, tradecontract.EventOrderPaid, tradecontract.EventOrderClosed, tradecontract.EventRefundSucceeded,
 		membershipcontract.EventMemberActivated, membershipcontract.EventMemberExpired, membershipcontract.EventSubAccountChanged,
 		msgcontract.EventMessageSent,
-		// p3 cube（其余随协作实体/分摊落地补）
+		// p3 cube
 		cubecontract.EventCubeCreated, cubecontract.EventMemberJoined,
 		cubecontract.EventMemberRemoved, cubecontract.EventCubeDissolved,
+		cubecontract.EventProjectCreated, cubecontract.EventProjectClosed, cubecontract.EventProjectReopened,
+		cubecontract.EventTaskAssigned, cubecontract.EventTaskSubmitted, cubecontract.EventTaskConfirmed,
+		cubecontract.EventReportSubmitted, cubecontract.EventReportConfirmed, cubecontract.EventReportRejected,
+		// 其余（分摊 cube.ApportionFormed/Failed 随 §3 落地）
 	}
 }
 

@@ -91,6 +91,100 @@ type InviteTicket struct {
 	NeedConfirm bool      `json:"need_confirm"`
 }
 
+// Project 立方内项目（引用 + 本地状态）。
+type Project struct {
+	ID              int64     `json:"id,string"`
+	CubeID          int64     `json:"cube_id,string"`
+	Type            int16     `json:"type"` // 1研究/2承接
+	ContentProjectID int64    `json:"content_project_id,string,omitempty"`
+	Name            string    `json:"name"`
+	RelatedRef      string    `json:"related_ref,omitempty"`
+	RelatedCustomer string    `json:"related_customer,omitempty"`
+	LeaderID        int64     `json:"leader_id,string"`
+	Participants    []string  `json:"participants"`
+	Progress        int16     `json:"progress"`
+	TodoCount       int       `json:"todo_count"`
+	Status          int16     `json:"status"` // 0进行中/1已关闭
+	SourceRef       string    `json:"source_ref,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+// Task 任务（四态；project_id=0 表示内部工作安排）。
+type Task struct {
+	ID            int64      `json:"id,string"`
+	CubeID        int64      `json:"cube_id,string"`
+	ProjectID     int64      `json:"project_id,string,omitempty"`
+	Title         string     `json:"title"`
+	AssigneeID    int64      `json:"assignee_id,string"`
+	Progress      int16      `json:"progress"`
+	ConfirmUserID int64      `json:"confirm_user_id,string,omitempty"`
+	DueAt         *time.Time `json:"due_at,omitempty"`
+	Status        int16      `json:"status"` // 0待办/1进行中/2待确认/3已完成
+	RejectReason  string     `json:"reject_reason,omitempty"`
+	ReopenedCount int        `json:"reopened_count"`
+	CreatedAt     time.Time  `json:"created_at"`
+}
+
+// Report 重点客户报备。
+type Report struct {
+	ID             int64      `json:"id,string"`
+	CubeID         int64      `json:"cube_id,string"`
+	ProjectID      int64      `json:"project_id,string,omitempty"`
+	ReporterID     int64      `json:"reporter_id,string"`
+	CustomerName   string     `json:"customer_name"`
+	CustomerType   string     `json:"customer_type,omitempty"`
+	RegionCode     string     `json:"region_code,omitempty"`
+	RelatedItemRef string     `json:"related_item_ref,omitempty"`
+	AmountWan      int64      `json:"amount_wan,omitempty"`
+	Note           string     `json:"note,omitempty"`
+	Status         int16      `json:"status"` // 0待确认/1已确认/2已驳回
+	RejectReason   string     `json:"reject_reason,omitempty"`
+	ConfirmedAt    *time.Time `json:"confirmed_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+}
+
+// Research 研究记录。
+type Research struct {
+	ID         int64     `json:"id,string"`
+	ProjectID  int64     `json:"project_id,string"`
+	Content    string    `json:"content"`
+	Decision   string    `json:"decision,omitempty"`
+	OperatorID int64     `json:"operator_id,string"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// ProjectInput 新建项目入参。
+type ProjectInput struct {
+	Type            int16
+	Name            string
+	RelatedRef      string
+	RelatedCustomer string
+	Participants    []string
+	ContentProjectID int64
+	SourceRef       string
+}
+
+// TaskInput 新建任务入参。
+type TaskInput struct {
+	ProjectID     int64
+	Title         string
+	AssigneeID    int64
+	ConfirmUserID int64
+	DueAt         *time.Time
+}
+
+// ReportInput 报备入参。
+type ReportInput struct {
+	ProjectID      int64
+	CustomerName   string
+	ContactPhone   string
+	CustomerType   string
+	RegionCode     string
+	RelatedItemRef string
+	AmountWan      int64
+	Note           string
+}
+
 // Facade cube 对外接口。
 type Facade interface {
 	Brief(ctx context.Context, cubeID int64) (CubeBrief, error)
@@ -107,4 +201,22 @@ type Facade interface {
 	Leave(ctx context.Context, cubeID, userID int64) error
 	// HasActiveMembership 用户是否属于任一正常立方（circle「已加入立方」前提）。
 	HasActiveMembership(ctx context.Context, userID int64) (bool, error)
+
+	// ---- 协作实体（§2）----
+	CreateProject(ctx context.Context, cubeID, userID int64, in ProjectInput) (Project, error)
+	ListProjects(ctx context.Context, cubeID int64, typ int16) ([]Project, error)
+	CloseProject(ctx context.Context, cubeID, projectID, userID int64) error
+	ReopenProject(ctx context.Context, cubeID, projectID, userID int64) error
+	AddResearch(ctx context.Context, cubeID, projectID, userID int64, content, decision string) (Research, error)
+	ListResearch(ctx context.Context, cubeID, projectID, userID int64) ([]Research, error)
+	CreateTask(ctx context.Context, cubeID, userID int64, in TaskInput) (Task, error)
+	ListTasks(ctx context.Context, cubeID, projectID int64) ([]Task, error)
+	StartTask(ctx context.Context, taskID, userID int64) error
+	SubmitTask(ctx context.Context, taskID, userID int64, progress int16) error
+	ConfirmTask(ctx context.Context, taskID, userID int64, approve bool, reason string) error
+	ReopenTask(ctx context.Context, taskID, userID int64) error
+	SubmitReport(ctx context.Context, cubeID, userID int64, in ReportInput) (Report, bool, error)
+	ListReports(ctx context.Context, cubeID, projectID int64) ([]Report, error)
+	ConfirmReport(ctx context.Context, reportID, userID int64) error
+	RejectReport(ctx context.Context, reportID, userID int64, reason string) error
 }

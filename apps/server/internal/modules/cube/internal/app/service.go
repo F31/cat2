@@ -11,6 +11,7 @@ import (
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/policy"
+	"catcube/internal/kernel/sensitive"
 	"catcube/internal/modules/cube/contract"
 	"catcube/internal/modules/cube/internal/domain"
 	"catcube/internal/modules/cube/internal/infra"
@@ -38,15 +39,33 @@ type Repo interface {
 	InsertInvite(ctx context.Context, inv infra.Invite) error
 	GetInviteByCode(ctx context.Context, code string) (infra.Invite, error)
 	IncrInviteUse(ctx context.Context, q infra.Querier, code string) error
+	// 协作实体（§2）
+	CreateProject(ctx context.Context, q infra.Querier, p infra.Project) error
+	GetProject(ctx context.Context, id int64) (infra.Project, error)
+	ListProjects(ctx context.Context, cubeID int64, typ, status int16) ([]infra.Project, error)
+	SetProjectStatus(ctx context.Context, q infra.Querier, id int64, status int16) error
+	CreateTask(ctx context.Context, q infra.Querier, t infra.Task) error
+	GetTask(ctx context.Context, id int64) (infra.Task, error)
+	ListTasks(ctx context.Context, cubeID, projectID int64) ([]infra.Task, error)
+	UpdateTaskStatus(ctx context.Context, q infra.Querier, id int64, status int16, progress int16, rejectReason string) error
+	ReopenTask(ctx context.Context, q infra.Querier, id int64, operatorID int64, logJSON []byte) error
+	CreateReport(ctx context.Context, q infra.Querier, r infra.Report) error
+	GetReport(ctx context.Context, id int64) (infra.Report, error)
+	ListReports(ctx context.Context, cubeID, projectID int64) ([]infra.Report, error)
+	SetReportStatus(ctx context.Context, q infra.Querier, id int64, status int16, rejectReason string, confirmOrg int64) error
+	CountDuplicateReport(ctx context.Context, cubeID int64, customerName string) (int, error)
+	CreateResearch(ctx context.Context, q infra.Querier, r infra.Research) error
+	ListResearch(ctx context.Context, projectID int64) ([]infra.Research, error)
 }
 
 // Options 构造参数。
 type Options struct {
-	Repo     Repo
-	Pool     *db.Pool
-	Bus      *eventbus.Bus
-	Policy   *policy.Engine
-	Identity idcontract.Facade
+	Repo      Repo
+	Pool      *db.Pool
+	Bus       *eventbus.Bus
+	Policy    *policy.Engine
+	Identity  idcontract.Facade
+	Encryptor *sensitive.Encryptor
 }
 
 // Service cube 应用服务。
@@ -56,10 +75,12 @@ type Service struct {
 	bus      *eventbus.Bus
 	policy   *policy.Engine
 	identity idcontract.Facade
+	enc      *sensitive.Encryptor
 }
 
 func New(o Options) *Service {
-	return &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, policy: o.Policy, identity: o.Identity}
+	return &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, policy: o.Policy,
+		identity: o.Identity, enc: o.Encryptor}
 }
 
 const inviteTTL = 7 * 24 * time.Hour

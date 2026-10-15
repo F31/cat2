@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/cube.TaskAssigned.v1.json",
+  "title": "cube.TaskAssigned.v1",
+  "description": "cube 协作实体事件。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "cube.TaskAssigned.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["cube_id","task_id","user_id"],
+      "properties": { "cube_id": { "type": "string" },"task_id": { "type": "string" },"user_id": { "type": "string" } }
+    }
+  },
+  "additionalProperties": false
+}

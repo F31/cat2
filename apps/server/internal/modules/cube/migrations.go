@@ -69,4 +69,86 @@ CREATE TABLE IF NOT EXISTS cub_invite (
 	status smallint NOT NULL DEFAULT 0     -- 0有效/1失效
 );
 CREATE INDEX IF NOT EXISTS idx_cub_invite_cube ON cub_invite(cube_id, status);
+
+-- 协作实体（4.2.16）：立方内项目=引用+本地状态
+CREATE TABLE IF NOT EXISTS cub_project (
+	id bigint PRIMARY KEY,
+	cube_id bigint NOT NULL,
+	type smallint NOT NULL DEFAULT 1,       -- 1研究/2承接
+	content_project_id bigint,              -- 可空，无外键（引用平台项目）
+	name varchar(64) NOT NULL,
+	related_ref varchar(64),                -- 关联对象（EntityRef）
+	related_customer varchar(64),           -- 承接：合作方客户
+	leader_id bigint NOT NULL,
+	participants jsonb NOT NULL DEFAULT '[]'::jsonb,
+	progress smallint NOT NULL DEFAULT 0,
+	todo_count int NOT NULL DEFAULT 0,
+	status smallint NOT NULL DEFAULT 0,     -- 0进行中/1已关闭
+	closed_at timestamptz,
+	source_ref varchar(64),                 -- 来源圈条目
+	owner_space_id smallint NOT NULL DEFAULT 1,
+	created_at timestamptz NOT NULL DEFAULT now(),
+	updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_cub_project_cube ON cub_project(cube_id, type, status);
+
+CREATE TABLE IF NOT EXISTS cub_task (
+	id bigint PRIMARY KEY,
+	cube_id bigint NOT NULL,
+	project_id bigint,                      -- 可空=内部工作安排
+	title varchar(128) NOT NULL,
+	assignee_id bigint NOT NULL,
+	progress smallint NOT NULL DEFAULT 0,   -- 0-100
+	confirm_user_id bigint,
+	due_at timestamptz,
+	status smallint NOT NULL DEFAULT 0,     -- 0待办/1进行中/2待确认/3已完成
+	reject_reason varchar(200),
+	reopened_count int NOT NULL DEFAULT 0,
+	reopen_log jsonb NOT NULL DEFAULT '[]'::jsonb,
+	created_at timestamptz NOT NULL DEFAULT now(),
+	updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_cub_task_cube ON cub_task(cube_id, project_id, status);
+CREATE INDEX IF NOT EXISTS idx_cub_task_assignee ON cub_task(assignee_id, status);
+
+CREATE TABLE IF NOT EXISTS cub_report (
+	id bigint PRIMARY KEY,
+	cube_id bigint NOT NULL,
+	project_id bigint,
+	reporter_id bigint NOT NULL,
+	customer_name varchar(64) NOT NULL,
+	customer_contact_enc bytea,
+	customer_type varchar(32),
+	region_code varchar(32),
+	related_item_ref varchar(64),
+	amount_wan bigint,
+	note varchar(200),
+	status smallint NOT NULL DEFAULT 0,     -- 0待确认/1已确认/2已驳回
+	reject_reason varchar(200),
+	confirm_org_id bigint,
+	confirmed_at timestamptz,
+	created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_cub_report_cube ON cub_report(cube_id, project_id, status);
+
+CREATE TABLE IF NOT EXISTS cub_research (
+	id bigint PRIMARY KEY,
+	project_id bigint NOT NULL,
+	content text NOT NULL,
+	decision varchar(200),
+	operator_id bigint NOT NULL,
+	created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_cub_research_project ON cub_research(project_id);
+
+CREATE TABLE IF NOT EXISTS cub_project_link_req (
+	id bigint PRIMARY KEY,
+	cube_id bigint NOT NULL,
+	content_project_id bigint NOT NULL,
+	initiator_id bigint NOT NULL,
+	target_role smallint NOT NULL DEFAULT 1, -- 1项目方/2猫蜜
+	status smallint NOT NULL DEFAULT 0,      -- 0待确认/1已同意/2已拒绝
+	created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_cub_link_req_cube ON cub_project_link_req(cube_id, status);
 `
