@@ -55,7 +55,7 @@
 - [x] 6.2 订阅方幂等表（事件 ID 去重）与失败重试已实现；死信后台管理：`GET /api/admin/v1/dead-letters`（按时间倒序）与 `POST .../{eventID}/replay`（复位 status=0/retry=0），admin-web「死信队列」页；ops 模块（R1）+ archcheck 阶梯登记
 - [x] 6.3 `kernel/scheduler`：模块注册 `SchedulerJob`；PG 咨询锁保证全局单活；批量、幂等、可重入（`sys_job` 表）
 - [x] 6.4 `kernel/statemachine`：声明式 `StateMachineDef{from,event,to,actor,guard}` 引擎；非法转移在引擎层拒绝；统一写状态日志并发布事件
-- [ ] 6.5 到期转态示范：以一张带 `expires_at` 部分索引的样例表跑通「每分钟批量扫描、分批、幂等」链路（供后续模块复用）
+- [x] 6.5 到期转态链路：`kernel/expiry.Run`（部分索引批量扫描、分批、单条 UPDATE 幂等、表名白名单、批回调发事件）；带样例表与集成测试（`TestIntegrationExpirySample`），供各模块到期 Job 复用
 
 ## 7. kernel：授权、配额、幂等、事务
 
@@ -69,13 +69,13 @@
 
 ## 8. ports 与 adapters
 
-- [ ] 8.1 端口接口定义已完成（cache/queue/search/storage/pay/moderation/notify/realtime/wechat/llm）；**契约测试套件未建**
-- [ ] 8.2 `adapters/pg`：queue 与 search 已实现；未过契约套件（套件未建）
-- [ ] 8.3 `adapters/local`：进程内 cache 已实现；未过契约套件
-- [ ] 8.4 `adapters/oss`：预签名骨架（供应商接入 TODO）；未过契约套件
-- [ ] 8.5 `adapters/wechat`：code2session 与 `GetPhoneNumberByCode`（新版 code 手机号接口，access_token 缓存、session_key 不下发不入日志）已实现；支付骨架（下单/回调验签）待 p2
-- [ ] 8.6 `adapters/moderation`：文本同步机检已实现；图片异步回调待接
-- [ ] 8.7 契约测试套件同一套跑在每个适配器上
+- [x] 8.1 端口接口定义完成；契约测试套件 `internal/ports/suite`（Cache/Queue/Search/Storage/Pay/Moderation/Realtime 同套用例）已建
+- [x] 8.2 `adapters/pg`：queue 与 search 过契约套件（`pg/suite_test.go`，integration）
+- [x] 8.3 `adapters/local`：进程内 cache 与 Realtime Noop 过契约套件
+- [x] 8.4 `adapters/oss`：过契约套件（未配置 endpoint 时本地 FS 回退 Put/URL/Delete）
+- [x] 8.5 `adapters/wechat`：code2session/手机号接口已实现；开发态支付适配器（预支付/回调验签/退款）过契约套件（真实商户接入待 p0 支付合规闭环）
+- [x] 8.6 `adapters/moderation`：文本机检已实现；契约套件入口已备（无 token 时跳过）；图片异步回调待接（p0 内容安全接入）
+- [x] 8.7 同一套契约测试跑在每个适配器上（suite + 各适配器 suite_test.go）
 
 ## 9. identity 模块骨架（R0）
 

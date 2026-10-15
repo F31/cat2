@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"catcube/internal/kernel/config"
+	"catcube/internal/kernel/expiry"
 	"catcube/internal/kernel/obs"
 	"catcube/internal/modules/circle"
 	"catcube/internal/modules/cube"
@@ -3394,5 +3395,48 @@ func TestIntegrationDeadLetterReplay(t *testing.T) {
 	_ = h.app.Pool.QueryRow(ctx, `SELECT status, retry_count FROM sys_outbox WHERE event_id=$1`, eid).Scan(&status, &retry)
 	if status != 0 || retry != 0 {
 		t.Fatalf("重放应复位 status=0/retry=0: %d/%d", status, retry)
+	}
+}
+
+// 到期转态样例链路（p1 §6.5）：批量扫描、分批、幂等（重复执行不二次转移）。
+func TestIntegrationExpirySample(t *testing.T) {
+	h := newTestApp(t)
+	ctx := context.Background()
+	// 样例表：带 expires_at 部分索引（供各模块复用的模板）
+	if _, err := h.app.Pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS demo_expiry (
+			id bigint PRIMARY KEY, status smallint NOT NULL DEFAULT 0, expires_at timestamptz
+		);
+		CREATE INDEX IF NOT EXISTS idx_demo_expiry_due ON demo_expiry(expires_at) WHERE status=0;`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.app.Pool.Exec(ctx, `DELETE FROM demo_expiry`); err != nil {
+		t.Fatal(err)
+	}
+	base := int64(777000000000000000)
+	// 1 已到期生效中；2 未到期；3 已过期（已是目标态）
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO demo_expiry (id, status, expires_at) VALUES
+		($1,0,now()-interval '1 hour'), ($2,0,now()+interval '1 hour'), ($3,1,now()-interval '1 day')`,
+		base+1, base+2, base+3); err != nil {
+		t.Fatal(err)
+	}
+	n, err := expiry.Run(ctx, h.app.Pool, expiry.Spec{Table: "demo_expiry", ActiveStatus: 0, ExpiredStatus: 5}, nil)
+	if err != nil || n != 1 {
+		t.Fatalf("应转移 1 条: n=%d err=%v", n, err)
+	}
+	// 幂等：再次执行 0
+	if n, err := expiry.Run(ctx, h.app.Pool, expiry.Spec{Table: "demo_expiry", ActiveStatus: 0, ExpiredStatus: 5}, nil); err != nil || n != 0 {
+		t.Fatalf("重复执行应 0（幂等）: n=%d err=%v", n, err)
+	}
+	var statusExpired, statusFuture int16
+	_ = h.app.Pool.QueryRow(ctx, `SELECT status FROM demo_expiry WHERE id=$1`, base+1).Scan(&statusExpired)
+	_ = h.app.Pool.QueryRow(ctx, `SELECT status FROM demo_expiry WHERE id=$1`, base+2).Scan(&statusFuture)
+	if statusExpired != 5 || statusFuture != 0 {
+		t.Fatalf("到期转移/未到期保持不符: %d/%d", statusExpired, statusFuture)
+	}
+	// 非法表名拒绝
+	if _, err := expiry.Run(ctx, h.app.Pool, expiry.Spec{Table: "demo;drop", ActiveStatus: 0, ExpiredStatus: 5}, nil); err == nil {
+		t.Fatal("非法表名应被拒")
 	}
 }
