@@ -1497,6 +1497,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/notices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 站内信列表（unread=1 仅未读） */
+        get: operations["listNotices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notices/{id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 标记站内信已读 */
+        post: operations["readNotice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notice-preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 通知偏好列表（资金与审核类不可关闭） */
+        get: operations["listNoticePreferences"];
+        /** 设置通知偏好 */
+        put: operations["setNoticePreference"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscribe-quota/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 申请订阅消息授权额度（上下文动作处调用） */
+        post: operations["applySubscribeQuota"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1653,6 +1722,25 @@ export interface components {
             amount_wan?: number;
             /** @description ≤200字 */
             note?: string;
+        };
+        Notice: {
+            id: string;
+            template_code: string;
+            title: string;
+            content: string;
+            ref?: string;
+            /** @enum {string} */
+            channel: "inapp" | "subscribe" | "sms";
+            is_read: boolean;
+            /** Format: date-time */
+            read_at?: string | null;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        NoticePreference: {
+            template_code: string;
+            enabled: boolean;
+            closeable: boolean;
         };
         Circle: {
             id: string;
@@ -5036,6 +5124,146 @@ export interface operations {
                     "application/json": components["schemas"]["Envelope"] & {
                         data?: {
                             id?: string;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    listNotices: {
+        parameters: {
+            query?: {
+                unread?: "1";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 站内信与未读数 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["Notice"][];
+                            unread?: number;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    readNotice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            read?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    listNoticePreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 偏好列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["NoticePreference"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    setNoticePreference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    template_code: string;
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            saved?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    applySubscribeQuota: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    template_code: string;
+                    n?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            applied?: boolean;
                         };
                     };
                 };

@@ -11,6 +11,7 @@ import (
 	circlecontract "catcube/internal/modules/circle/contract"
 	contentcontract "catcube/internal/modules/content/contract"
 	cubecontract "catcube/internal/modules/cube/contract"
+	"catcube/internal/modules/notice"
 	idcontract "catcube/internal/modules/identity/contract"
 	membershipcontract "catcube/internal/modules/membership/contract"
 	msgcontract "catcube/internal/modules/msg/contract"
@@ -64,6 +65,7 @@ func TestOpenAPIDeclaresP3Paths(t *testing.T) {
 		"/cubes/{id}/link-requests:", "/cubes/{id}/link-requests/{reqID}/decide:", "/cubes/{id}/projects/{pid}/publish:",
 		"/circles:", "/circles/{id}:", "/circles/{id}/apply:", "/circles/{id}/invite:", "/circles/join:",
 		"/circles/{id}/dissolve:", "/circles/{id}/demands:", "/circles/{id}/feeds:",
+		"/notices:", "/notices/{id}/read:", "/notice-preferences:", "/subscribe-quota/apply:",
 	}
 	for _, p := range paths {
 		if !strings.Contains(text, "\n  "+p) {
@@ -157,6 +159,13 @@ func TestOpenAPIDeclaresAdminPaths(t *testing.T) {
 		if !strings.Contains(text, "\n  "+p) {
 			t.Fatalf("admin OpenAPI 缺少路径 %q", strings.TrimSuffix(p, ":"))
 		}
+	}
+}
+
+// 通知模板覆盖（p3 §7 / 11.4）：订阅的全部业务事件均有模板，且模板数 ≥36（PRD 11.3 触达）。
+func TestNoticeTemplatesCoverEvents(t *testing.T) {
+	if err := notice.ValidateTemplates(); err != nil {
+		t.Fatal(err)
 	}
 }
 

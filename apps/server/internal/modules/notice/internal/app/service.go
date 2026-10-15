@@ -1,0 +1,295 @@
+// Package app notice 应用服务：模板数据驱动的事件触达、订阅额度、同圈同日合并、站内兜底。
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"log/slog"
+	"strings"
+	"sync"
+	"time"
+
+	"catcube/internal/kernel/db"
+	"catcube/internal/kernel/eventbus"
+	"catcube/internal/modules/notice/contract"
+	"catcube/internal/modules/notice/internal/domain"
+	"catcube/internal/modules/notice/internal/infra"
+	"catcube/pkg/ids"
+)
+
+// CircleFacade 圈成员（合并发送用；notice 依赖 circle contract，不读其表）。
+type CircleFacade interface {
+	Members(ctx context.Context, circleID int64) ([]int64, error)
+}
+
+// Repo 应用层仓储能力。
+type Repo interface {
+	UpsertTemplate(ctx context.Context, id int64, t domain.Template) error
+	ListTemplates(ctx context.Context) ([]domain.Template, error)
+	InsertNotice(ctx context.Context, q infra.Querier, n infra.Notice) error
+	ListNotices(ctx context.Context, userID int64, unreadOnly bool, limit int) ([]infra.Notice, error)
+	UnreadCount(ctx context.Context, userID int64) (int, error)
+	MarkRead(ctx context.Context, userID, noticeID int64) error
+	Preference(ctx context.Context, userID int64, code string) (bool, error)
+	SetPreference(ctx context.Context, userID int64, code string, enabled bool) error
+	IncrQuota(ctx context.Context, userID int64, code string, n int) error
+	ConsumeQuota(ctx context.Context, q infra.Querier, userID int64, code string) (bool, error)
+	UpsertDigest(ctx context.Context, circleID int64) (int, error)
+	DueDigests(ctx context.Context, limit int) ([]int64, error)
+	DigestCount(ctx context.Context, circleID int64) (int, error)
+	MarkDigestSent(ctx context.Context, circleID, noticeID int64) error
+}
+
+// Options 构造参数。
+type Options struct {
+	Repo   Repo
+	Pool   *db.Pool
+	Bus    *eventbus.Bus
+	Circle CircleFacade
+}
+
+// Service notice 应用服务。
+type Service struct {
+	repo   Repo
+	pool   *db.Pool
+	bus    *eventbus.Bus
+	circle CircleFacade
+
+	mu        sync.RWMutex
+	templates map[string]domain.Template
+}
+
+func New(o Options) *Service {
+	s := &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, circle: o.Circle, templates: map[string]domain.Template{}}
+	for _, t := range Templates {
+		s.templates[t.EventCode] = t
+	}
+	return s
+}
+
+// Register 登记模板（幂等，后台可改文案/渠道）。
+func (s *Service) Register(ctx context.Context) error {
+	for _, t := range Templates {
+		if err := s.repo.UpsertTemplate(ctx, int64(ids.New()), t); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Topics 订阅的全部业务事件 Topic。
+func Topics() []string {
+	out := make([]string, 0, len(Templates))
+	for _, t := range Templates {
+		out = append(out, t.EventCode)
+	}
+	return out
+}
+
+// Handle 事件触达：查模板 → 接收人 → 偏好 → 渠道（订阅额度不足降级站内）→ 合并或写站内。
+func (s *Service) Handle(ctx context.Context, e eventbus.Event) error {
+	tpl, ok := s.template(e.Topic)
+	if !ok {
+		return nil
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(e.Payload, &payload); err != nil {
+		return nil
+	}
+	userID, ok := domain.Receiver(tpl.ReceiverRule, payload)
+	if !ok || userID == 0 {
+		return nil
+	}
+	// 偏好：可关闭且已关闭 → 跳过（资金/审核类不可关闭）
+	if tpl.Closeable {
+		enabled, err := s.repo.Preference(ctx, userID, tpl.Code)
+		if err != nil {
+			return err
+		}
+		if !enabled {
+			return nil
+		}
+	}
+	title := domain.Render(tpl.TitleTpl, payload)
+	content := domain.Render(tpl.ContentTpl, payload)
+
+	// 同圈同日合并：仅累计，由日结 Job 汇总发送
+	if tpl.MergeRule == domain.MergeSameCircleDay {
+		if circleID := nestedID(payload, "circle_id"); circleID != 0 {
+			_, err := s.repo.UpsertDigest(ctx, circleID)
+			return err
+		}
+	}
+
+	channel := domain.ChannelInApp
+	if hasChannel(tpl.Channels, domain.ChannelSubscribe) {
+		if ok, err := s.repo.ConsumeQuota(ctx, s.pool, userID, tpl.Code); err == nil && ok {
+			channel = domain.ChannelSubscribe
+		}
+	}
+	if hasChannel(tpl.Channels, domain.ChannelSMS) && channel == domain.ChannelSubscribe {
+		channel = domain.ChannelSMS // 资金类优先短信（额度已消耗）
+	}
+	return s.repo.InsertNotice(ctx, s.pool, infra.Notice{
+		ID: int64(ids.New()), UserID: userID, TemplateCode: tpl.Code,
+		Title: title, Content: content, Ref: e.ID, Channel: channel,
+	})
+}
+
+// RunDigest 日结：同圈同日合并为一条（本人不收）。
+func (s *Service) RunDigest(ctx context.Context) error {
+	idsDue, err := s.repo.DueDigests(ctx, 200)
+	if err != nil {
+		return err
+	}
+	for _, circleID := range idsDue {
+		count, err := s.repo.DigestCount(ctx, circleID)
+		if err != nil || count == 0 {
+			continue
+		}
+		var members []int64
+		if s.circle != nil {
+			members, _ = s.circle.Members(ctx, circleID)
+		}
+		var first int64
+		for _, uid := range members {
+			n := infra.Notice{
+				ID: int64(ids.New()), UserID: uid, TemplateCode: "circle.DemandPublished.v1",
+				Title: "圈内动态汇总", Content: "你所在的圈子今日有 " + itoa(int64(count)) + " 条新需求",
+				Ref: "circle:" + itoa(circleID), Channel: domain.ChannelInApp,
+			}
+			if err := s.repo.InsertNotice(ctx, s.pool, n); err != nil {
+				slog.Warn("notice 日结发送失败", "circle", circleID, "user", uid, "err", err)
+				continue
+			}
+			if first == 0 {
+				first = n.ID
+			}
+		}
+		if first != 0 {
+			_ = s.repo.MarkDigestSent(ctx, circleID, first)
+		}
+	}
+	return nil
+}
+
+// ---- 查询与偏好 ----
+
+func (s *Service) List(ctx context.Context, userID int64, unreadOnly bool, limit int) ([]contract.Notice, error) {
+	rows, err := s.repo.ListNotices(ctx, userID, unreadOnly, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contract.Notice, 0, len(rows))
+	for _, n := range rows {
+		out = append(out, contract.Notice{ID: n.ID, TemplateCode: n.TemplateCode, Title: n.Title,
+			Content: n.Content, Ref: n.Ref, Channel: n.Channel, IsRead: n.IsRead, ReadAt: n.ReadAt, CreatedAt: n.CreatedAt})
+	}
+	return out, nil
+}
+
+func (s *Service) UnreadCount(ctx context.Context, userID int64) (int, error) {
+	return s.repo.UnreadCount(ctx, userID)
+}
+
+func (s *Service) MarkRead(ctx context.Context, userID, noticeID int64) error {
+	return s.repo.MarkRead(ctx, userID, noticeID)
+}
+
+func (s *Service) Preferences(ctx context.Context, userID int64) ([]contract.Preference, error) {
+	out := make([]contract.Preference, 0, len(Templates))
+	for _, t := range Templates {
+		enabled := true
+		if t.Closeable {
+			if v, err := s.repo.Preference(ctx, userID, t.Code); err == nil {
+				enabled = v
+			}
+		}
+		out = append(out, contract.Preference{TemplateCode: t.Code, Enabled: enabled, Closeable: t.Closeable})
+	}
+	return out, nil
+}
+
+func (s *Service) SetPreference(ctx context.Context, userID int64, code string, enabled bool) error {
+	tpl, ok := s.template(code)
+	if !ok {
+		return domain.ErrTemplateNotFound
+	}
+	if !tpl.Closeable {
+		return nil // 资金/审核类不可关闭
+	}
+	return s.repo.SetPreference(ctx, userID, code, enabled)
+}
+
+func (s *Service) ApplyQuota(ctx context.Context, userID int64, code string, n int) error {
+	if _, ok := s.template(code); !ok {
+		return domain.ErrTemplateNotFound
+	}
+	if n <= 0 || n > 10 {
+		n = 1
+	}
+	return s.repo.IncrQuota(ctx, userID, code, n)
+}
+
+// ---- 内部 ----
+
+func (s *Service) template(topic string) (domain.Template, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	t, ok := s.templates[topic]
+	return t, ok
+}
+
+func hasChannel(chs []string, ch string) bool {
+	for _, c := range chs {
+		if c == ch {
+			return true
+		}
+	}
+	return false
+}
+
+func nestedID(payload map[string]any, field string) int64 {
+	v, ok := payload[field]
+	if !ok {
+		return 0
+	}
+	switch t := v.(type) {
+	case string:
+		var id int64
+		for _, c := range strings.TrimSpace(t) {
+			if c < '0' || c > '9' {
+				return 0
+			}
+			id = id*10 + int64(c-'0')
+		}
+		return id
+	case float64:
+		return int64(t)
+	}
+	return 0
+}
+
+func itoa(v int64) string {
+	if v == 0 {
+		return "0"
+	}
+	neg := v < 0
+	if neg {
+		v = -v
+	}
+	var b [20]byte
+	i := len(b)
+	for v > 0 {
+		i--
+		b[i] = byte('0' + v%10)
+		v /= 10
+	}
+	if neg {
+		i--
+		b[i] = '-'
+	}
+	return string(b[i:])
+}
+
+var _ = time.Now

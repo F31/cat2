@@ -38,6 +38,7 @@ import (
 	"catcube/internal/modules/identity"
 	"catcube/internal/modules/membership"
 	"catcube/internal/modules/msg"
+	"catcube/internal/modules/notice"
 	"catcube/internal/modules/profile"
 	"catcube/internal/modules/social"
 	"catcube/internal/modules/trade"
@@ -175,6 +176,9 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine,
 		Encryptor: encryptor, Entities: entityReg,
 	})
+	noticeMod := notice.New(notice.Deps{
+		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Circle: circleMod.Facade(),
+	})
 	mods := []module.Module{
 		dictMod,
 		mediaMod,
@@ -188,6 +192,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		membershipMod,
 		cubeMod,
 		circleMod,
+		noticeMod,
 		msgMod,
 		discoveryMod,
 	}

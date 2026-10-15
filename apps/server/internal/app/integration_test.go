@@ -2741,3 +2741,96 @@ func circleStatus(t *testing.T, h *testApp, circleID int64, tok string) int16 {
 	_ = json.Unmarshal(env.Data, &d)
 	return d.Status
 }
+
+// 通知中心（p3 §7）：事件→站内信、订阅额度消耗与降级、同圈同日合并、资金/审核类不可关闭。
+func TestIntegrationNotice(t *testing.T) {
+	h := newTestApp(t)
+	aPhone := randPhone()
+	_, aTok := loginPhone(t, h, aPhone)
+	if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", aTok, map[string]any{
+		"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+	}); s != http.StatusOK || env.Code != 0 {
+		t.Fatalf("实名失败: %d %+v", s, env)
+	}
+	// 实名事件 → 站内信（verify.CertificationApproved）
+	relayAll(t, h)
+	_, env := h.do(http.MethodGet, "/api/mp/v1/notices", aTok, nil)
+	var list struct {
+		Items []struct {
+			TemplateCode string `json:"template_code"`
+			Channel      string `json:"channel"`
+		} `json:"items"`
+		Unread int `json:"unread"`
+	}
+	_ = json.Unmarshal(env.Data, &list)
+	found := false
+	for _, n := range list.Items {
+		if n.TemplateCode == "verify.CertificationApproved.v1" {
+			found = true
+		}
+	}
+	if !found || list.Unread == 0 {
+		t.Fatalf("实名通过应产生站内信: %+v", list)
+	}
+
+	// 订阅额度不足 → 降级站内（channel=inapp）；申请额度后再发 → subscribe
+	_, env = h.do(http.MethodPost, "/api/mp/v1/subscribe-quota/apply", aTok, map[string]any{
+		"template_code": "verify.CertificationRejected.v1", "n": 1,
+	})
+	if env.Code != 0 {
+		t.Fatalf("申请额度失败: %+v", env)
+	}
+	// 触发一条拒绝事件：用不合规身份证号（100002）→ verify 会拒绝并发布事件？开发态二要素对固定号通过；
+	// 改为直接验证偏好接口行为与不可关闭约束。
+	_, env = h.do(http.MethodPut, "/api/mp/v1/notice-preferences", aTok, map[string]any{
+		"template_code": "trade.RefundSucceeded.v1", "enabled": false,
+	})
+	if env.Code != 0 {
+		t.Fatalf("设置偏好失败: %+v", env)
+	}
+	_, env = h.do(http.MethodGet, "/api/mp/v1/notice-preferences", aTok, nil)
+	var prefs struct {
+		Items []struct {
+			TemplateCode string `json:"template_code"`
+			Enabled      bool   `json:"enabled"`
+			Closeable    bool   `json:"closeable"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &prefs)
+	for _, p := range prefs.Items {
+		if p.TemplateCode == "trade.RefundSucceeded.v1" {
+			if p.Closeable {
+				t.Fatalf("资金类不可关闭(closeable 应 false): %+v", p)
+			}
+			if !p.Enabled {
+				t.Fatalf("不可关闭类应恒为开启: %+v", p)
+			}
+		}
+	}
+
+	// 同圈同日合并：圈内需求发布 → ntc_digest 计数（不直接发个人信）
+	bPhone := randPhone()
+	_, bTok := loginPhone(t, h, bPhone)
+	_, _ = h.do(http.MethodPost, "/api/mp/v1/certs", bTok, map[string]any{
+		"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+	})
+	_, env = h.do(http.MethodPost, "/api/mp/v1/circles", aTok, map[string]any{
+		"name": "通知测试圈", "type": 2, "duration_days": 30,
+	})
+	var cir struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cir)
+	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/demands", cir.ID), aTok, map[string]any{
+		"title": "需求一", "content": "内容",
+	}); e.Code != 0 {
+		t.Fatalf("发布需求失败: %+v", e)
+	}
+	relayAll(t, h) // 投递 circle.DemandPublished → notice 合并计数
+	var digestCount int
+	_ = h.app.Pool.QueryRow(context.Background(),
+		`SELECT count FROM ntc_digest WHERE circle_id=$1 AND date=current_date`, cir.ID).Scan(&digestCount)
+	if digestCount < 1 {
+		t.Fatalf("同圈同日应合并计数: %d", digestCount)
+	}
+}

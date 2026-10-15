@@ -2410,6 +2410,91 @@ paths:
                 is_announcement: { type: boolean }
       responses:
         '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { id: { type: string } } } } } ] } } } }
+  /notices:
+    get:
+      tags: [notice]
+      summary: 站内信列表（unread=1 仅未读）
+      operationId: listNotices
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: unread, in: query, schema: { type: string, enum: ['1'] } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: 站内信与未读数
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { $ref: '#/components/schemas/Notice' } }
+                          unread: { type: integer }
+  /notices/{id}/read:
+    post:
+      tags: [notice]
+      summary: 标记站内信已读
+      operationId: readNotice
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { read: { type: boolean } } } } } ] } } } }
+  /notice-preferences:
+    get:
+      tags: [notice]
+      summary: 通知偏好列表（资金与审核类不可关闭）
+      operationId: listNoticePreferences
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 偏好列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { $ref: '#/components/schemas/NoticePreference' } }
+    put:
+      tags: [notice]
+      summary: 设置通知偏好
+      operationId: setNoticePreference
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template_code, enabled]
+              properties: { template_code: { type: string }, enabled: { type: boolean } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { saved: { type: boolean } } } } } ] } } } }
+  /subscribe-quota/apply:
+    post:
+      tags: [notice]
+      summary: 申请订阅消息授权额度（上下文动作处调用）
+      operationId: applySubscribeQuota
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template_code]
+              properties: { template_code: { type: string }, n: { type: integer } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { applied: { type: boolean } } } } } ] } } } }
 components:
   securitySchemes:
     bearerAuth:
@@ -2580,6 +2665,26 @@ components:
         related_item_ref: { type: string }
         amount_wan: { type: integer }
         note: { type: string, description: ≤200字 }
+    Notice:
+      type: object
+      required: [id, template_code, title, content, channel, is_read]
+      properties:
+        id: { type: string }
+        template_code: { type: string }
+        title: { type: string }
+        content: { type: string }
+        ref: { type: string }
+        channel: { type: string, enum: [inapp, subscribe, sms] }
+        is_read: { type: boolean }
+        read_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+    NoticePreference:
+      type: object
+      required: [template_code, enabled, closeable]
+      properties:
+        template_code: { type: string }
+        enabled: { type: boolean }
+        closeable: { type: boolean }
     Circle:
       type: object
       required: [id, name, type, status, owner_user_id, member_count]

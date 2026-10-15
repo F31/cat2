@@ -143,6 +143,27 @@ func (e FavoriteItemKind) Valid() bool {
 	}
 }
 
+// Defines values for NoticeChannel.
+const (
+	Inapp     NoticeChannel = "inapp"
+	Sms       NoticeChannel = "sms"
+	Subscribe NoticeChannel = "subscribe"
+)
+
+// Valid indicates whether the value is a known member of the NoticeChannel enum.
+func (e NoticeChannel) Valid() bool {
+	switch e {
+	case Inapp:
+		return true
+	case Sms:
+		return true
+	case Subscribe:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OpenMembershipInputLevel.
 const (
 	OpenMembershipInputLevelN1 OpenMembershipInputLevel = 1
@@ -305,6 +326,21 @@ func (e CreateUploadJSONBodyContentType) Valid() bool {
 	case Imagejpeg:
 		return true
 	case Imagepng:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListNoticesParamsUnread.
+const (
+	ListNoticesParamsUnreadN1 ListNoticesParamsUnread = "1"
+)
+
+// Valid indicates whether the value is a known member of the ListNoticesParamsUnread enum.
+func (e ListNoticesParamsUnread) Valid() bool {
+	switch e {
+	case ListNoticesParamsUnreadN1:
 		return true
 	default:
 		return false
@@ -986,6 +1022,29 @@ type Message struct {
 	SessionId string `json:"session_id"`
 }
 
+// Notice defines model for Notice.
+type Notice struct {
+	Channel      NoticeChannel `json:"channel"`
+	Content      string        `json:"content"`
+	CreatedAt    *time.Time    `json:"created_at,omitempty"`
+	Id           string        `json:"id"`
+	IsRead       bool          `json:"is_read"`
+	ReadAt       *time.Time    `json:"read_at,omitempty"`
+	Ref          *string       `json:"ref,omitempty"`
+	TemplateCode string        `json:"template_code"`
+	Title        string        `json:"title"`
+}
+
+// NoticeChannel defines model for Notice.Channel.
+type NoticeChannel string
+
+// NoticePreference defines model for NoticePreference.
+type NoticePreference struct {
+	Closeable    bool   `json:"closeable"`
+	Enabled      bool   `json:"enabled"`
+	TemplateCode string `json:"template_code"`
+}
+
 // OpenMembershipInput defines model for OpenMembershipInput.
 type OpenMembershipInput struct {
 	Level OpenMembershipInputLevel `json:"level"`
@@ -1421,6 +1480,21 @@ type InviteSubAccountJSONBody struct {
 	SubUserId string `json:"sub_user_id"`
 }
 
+// SetNoticePreferenceJSONBody defines parameters for SetNoticePreference.
+type SetNoticePreferenceJSONBody struct {
+	Enabled      bool   `json:"enabled"`
+	TemplateCode string `json:"template_code"`
+}
+
+// ListNoticesParams defines parameters for ListNotices.
+type ListNoticesParams struct {
+	Unread *ListNoticesParamsUnread `form:"unread,omitempty" json:"unread,omitempty"`
+	Limit  *int                     `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListNoticesParamsUnread defines parameters for ListNotices.
+type ListNoticesParamsUnread string
+
 // CreateOrderParams defines parameters for CreateOrder.
 type CreateOrderParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
@@ -1471,6 +1545,12 @@ type SendMessageJSONBody struct {
 // MarkSessionReadJSONBody defines parameters for MarkSessionRead.
 type MarkSessionReadJSONBody struct {
 	ReadSeq *int `json:"read_seq,omitempty"`
+}
+
+// ApplySubscribeQuotaJSONBody defines parameters for ApplySubscribeQuota.
+type ApplySubscribeQuotaJSONBody struct {
+	N            *int   `json:"n,omitempty"`
+	TemplateCode string `json:"template_code"`
 }
 
 // DeactivateAccountParams defines parameters for DeactivateAccount.
@@ -1577,6 +1657,9 @@ type OpenMembershipJSONRequestBody = OpenMembershipInput
 // InviteSubAccountJSONRequestBody defines body for InviteSubAccount for application/json ContentType.
 type InviteSubAccountJSONRequestBody InviteSubAccountJSONBody
 
+// SetNoticePreferenceJSONRequestBody defines body for SetNoticePreference for application/json ContentType.
+type SetNoticePreferenceJSONRequestBody SetNoticePreferenceJSONBody
+
 // CreateOrderJSONRequestBody defines body for CreateOrder for application/json ContentType.
 type CreateOrderJSONRequestBody = CreateOrderInput
 
@@ -1594,6 +1677,9 @@ type SendMessageJSONRequestBody SendMessageJSONBody
 
 // MarkSessionReadJSONRequestBody defines body for MarkSessionRead for application/json ContentType.
 type MarkSessionReadJSONRequestBody MarkSessionReadJSONBody
+
+// ApplySubscribeQuotaJSONRequestBody defines body for ApplySubscribeQuota for application/json ContentType.
+type ApplySubscribeQuotaJSONRequestBody ApplySubscribeQuotaJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -1858,6 +1944,18 @@ type ServerInterface interface {
 	// RemoveSubAccount 移除子账号（企业版主账号）
 	// (DELETE /membership/sub-accounts/{subUserID})
 	RemoveSubAccount(w http.ResponseWriter, r *http.Request, subUserID string)
+	// ListNoticePreferences 通知偏好列表（资金与审核类不可关闭）
+	// (GET /notice-preferences)
+	ListNoticePreferences(w http.ResponseWriter, r *http.Request)
+	// SetNoticePreference 设置通知偏好
+	// (PUT /notice-preferences)
+	SetNoticePreference(w http.ResponseWriter, r *http.Request)
+	// ListNotices 站内信列表（unread=1 仅未读）
+	// (GET /notices)
+	ListNotices(w http.ResponseWriter, r *http.Request, params ListNoticesParams)
+	// ReadNotice 标记站内信已读
+	// (POST /notices/{id}/read)
+	ReadNotice(w http.ResponseWriter, r *http.Request, id string)
 	// CreateOrder 创建订单（金额由业务模块计算并给快照；强制 Idempotency-Key）
 	// (POST /orders)
 	CreateOrder(w http.ResponseWriter, r *http.Request, params CreateOrderParams)
@@ -1894,6 +1992,9 @@ type ServerInterface interface {
 	// MarkSessionRead 提交已读游标（幂等；清零该会话未读）
 	// (POST /sessions/{id}/read)
 	MarkSessionRead(w http.ResponseWriter, r *http.Request, id string)
+	// ApplySubscribeQuota 申请订阅消息授权额度（上下文动作处调用）
+	// (POST /subscribe-quota/apply)
+	ApplySubscribeQuota(w http.ResponseWriter, r *http.Request)
 	// GetMe 当前用户摘要
 	// (GET /users/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
@@ -4439,6 +4540,106 @@ func (siw *ServerInterfaceWrapper) RemoveSubAccount(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListNoticePreferences operation middleware
+func (siw *ServerInterfaceWrapper) ListNoticePreferences(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListNoticePreferences(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetNoticePreference operation middleware
+func (siw *ServerInterfaceWrapper) SetNoticePreference(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetNoticePreference(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListNotices operation middleware
+func (siw *ServerInterfaceWrapper) ListNotices(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListNoticesParams
+
+	// ------------- Optional query parameter "unread" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "unread", r.URL.Query(), &params.Unread, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unread"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unread", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListNotices(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReadNotice operation middleware
+func (siw *ServerInterfaceWrapper) ReadNotice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReadNotice(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateOrder operation middleware
 func (siw *ServerInterfaceWrapper) CreateOrder(w http.ResponseWriter, r *http.Request) {
 
@@ -4855,6 +5056,20 @@ func (siw *ServerInterfaceWrapper) MarkSessionRead(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// ApplySubscribeQuota operation middleware
+func (siw *ServerInterfaceWrapper) ApplySubscribeQuota(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplySubscribeQuota(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMe operation middleware
 func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
 
@@ -5135,6 +5350,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/demands", wrapper.PublishCircleDemand)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/demands/{did}/renew", wrapper.RenewCircleDemand)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/feeds", wrapper.PublishCircleFeed)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/notices", wrapper.ListNotices)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/notices/{id}/read", wrapper.ReadNotice)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/notice-preferences", wrapper.ListNoticePreferences)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/notice-preferences", wrapper.SetNoticePreference)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/subscribe-quota/apply", wrapper.ApplySubscribeQuota)
 
 	return m
 }

@@ -63,14 +63,14 @@
 
 ## 7. notice（R6）通知中心
 
-- [ ] 7.1 迁移：`ntc_template`、`ntc_notice`、`ntc_subscribe_quota`、`ntc_digest`（4.2.20）
-- [ ] 7.2 NoticeTemplate 数据驱动：事件→接收人规则→文案→渠道（站内/订阅消息/短信）→是否合并；PRD 11.3 共 36 条触达逐条映射为模板注册（清单在详细设计 8.3）
-- [ ] 7.3 订阅全部业务事件执行模板；业务模块从不直接发通知（archcheck/评审检查）
-- [ ] 7.4 订阅消息授权额度：`ntc_subscribe_quota`；在关注/加入猫立方/提交任务等上下文动作处申请授权（前端 SubscribeAsk 组件），发送时消耗；无额度降级站内未读并下次进入提示开启
-- [ ] 7.5 同圈同日合并：`ntc_digest(circle_id,date,count)` upsert 计数 + 日结 SchedulerJob 发送（避免先判断再自增竞态）；本人不收
-- [ ] 7.6 站内信兜底：任何事件至少一条站内；资金与审核类不可关闭；短信仅资金场景
-- [ ] 7.7 接口：`GET /notices`、`POST /notices/{id}/read`、`GET/PUT /notice-preferences`、`POST /subscribe-quota/apply`
-- [ ] 7.8 admin/：公告与模板管理 AdminSection（页面 p4）
+- [x] 7.1 迁移：`ntc_template`、`ntc_notice`、`ntc_subscribe_quota`、`ntc_digest`（+ `ntc_preference` 偏好表）
+- [x] 7.2 NoticeTemplate 数据驱动：事件→接收人规则（支持 `payload.a.b` 嵌套路径）→文案 `{field}` 渲染→渠道（站内/订阅/短信）→合并；已登记 38 条模板（≥36），`ValidateTemplates` 契约测试守门
+- [x] 7.3 notice 订阅全部业务事件（38 topics）执行模板；业务模块只发领域事件，从不调用 notice（archcheck 表前缀/依赖阶梯保证）
+- [x] 7.4 订阅授权额度：`POST /subscribe-quota/apply` 申请，发送时 `ConsumeQuota` 消耗；无额度降级站内（channel=inapp）；资金类优先短信
+- [x] 7.5 同圈同日合并：`ntc_digest` upsert 计数（`ON CONFLICT DO UPDATE` 无竞态）+ `notice.digest` 日结 Job 汇总发送给圈成员（经 circle Facade，不读其表）
+- [x] 7.6 站内信兜底：模板默认含 inapp；资金/审核类 `closeable=false` 不可关闭（`SetPreference` 忽略并恒开）；短信仅资金场景（退款/限制）
+- [x] 7.7 接口：`GET /notices`（含未读数）、`POST /notices/{id}/read`、`GET/PUT /notice-preferences`、`POST /subscribe-quota/apply`
+- [ ] 7.8 admin/：公告与模板管理 AdminSection（模板表与登记已就绪；后台页面随 p4）
 
 ## 8. msg 群聊补全
 
