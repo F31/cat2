@@ -255,6 +255,14 @@ func (s *Store) PendingFulfillments(ctx context.Context, limit int) ([]Fulfillme
 	return out, rows.Err()
 }
 
+// CountRetryExceeded 重试达标/死信待人工补偿的履约数（监控告警，p6 §4.7）。
+func (s *Store) CountRetryExceeded(ctx context.Context, threshold int) (int64, error) {
+	var n int64
+	err := s.pool.QueryRow(ctx,
+		`SELECT count(1) FROM trd_fulfillment WHERE retry_count >= $1 OR status = 9`, threshold).Scan(&n)
+	return n, err
+}
+
 // UpdateFulfillment 更新履约状态（成功=1；失败 retry+1，≥8 置死信 9）。
 func (s *Store) UpdateFulfillment(ctx context.Context, orderID int64, ok bool, lastErr string) error {
 	if ok {
@@ -271,7 +279,8 @@ func (s *Store) UpdateFulfillment(ctx context.Context, orderID int64, ok bool, l
 // ResetFulfillment 死信手动补偿：重置为待履约。
 func (s *Store) ResetFulfillment(ctx context.Context, orderID int64) (bool, error) {
 	tag, err := s.pool.Exec(ctx,
-		`UPDATE trd_fulfillment SET status=0, retry_count=0, last_error='人工补偿', updated_at=now() WHERE order_id=$1 AND status=9`, orderID)
+		// 不刷新 updated_at：保持原排队次序，补偿不插队、不被积压淹没
+		`UPDATE trd_fulfillment SET status=0, retry_count=0, last_error='人工补偿' WHERE order_id=$1 AND status=9`, orderID)
 	if err != nil {
 		return false, err
 	}

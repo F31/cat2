@@ -5,9 +5,12 @@ package eventbus
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
+
+	"catcube/internal/kernel/obs"
 )
 
 // Event 领域事件。Topic 命名 `module.PastTense.vN`。
@@ -41,6 +44,22 @@ type OutboxStore interface {
 	// ListDead 死信列表（后台重放）。
 	ListDead(ctx context.Context) ([]Event, error)
 	Replay(ctx context.Context, id string) error
+	// Stats 积压/最老事件年龄/死信数（监控）。
+	Stats(ctx context.Context) (OutboxStats, error)
+}
+
+// OutboxStats Outbox 运行状态。
+type OutboxStats struct {
+	Backlog          int64
+	Dead             int64
+	OldestAgeSeconds int64
+}
+
+// AlertThresholds 监控告警阈值（0=不告警）。
+type AlertThresholds struct {
+	Backlog   int64
+	OldestAge int64
+	DeadCount int64
 }
 
 // Bus 进程内事件分发 + Outbox 持久化。
@@ -113,6 +132,7 @@ func (b *Bus) Relay(ctx context.Context, consumer string, limit int) (int, error
 		}
 		if err := b.dispatch(ctx, e); err != nil {
 			slog.Warn("事件投递失败（订阅处理器错误）", "topic", e.Topic, "event_id", e.ID, "err", err)
+			obs.Default().Inc("catcube_outbox_retry_total")
 			_ = b.store.MarkRetry(ctx, e.ID)
 			continue
 		}
@@ -125,6 +145,32 @@ func (b *Bus) Relay(ctx context.Context, consumer string, limit int) (int, error
 			return n, err
 		}
 		n++
+		obs.Default().Inc("catcube_outbox_relayed_total")
 	}
 	return n, nil
+}
+
+// ReportStats 采集 Outbox 指标并按阈值告警（worker 定时调用）。
+func (b *Bus) ReportStats(ctx context.Context, th AlertThresholds) (OutboxStats, error) {
+	if b.store == nil {
+		return OutboxStats{}, nil
+	}
+	st, err := b.store.Stats(ctx)
+	if err != nil {
+		return st, err
+	}
+	m := obs.Default()
+	m.SetGauge("catcube_outbox_backlog", float64(st.Backlog))
+	m.SetGauge("catcube_outbox_dead", float64(st.Dead))
+	m.SetGauge("catcube_outbox_oldest_age_seconds", float64(st.OldestAgeSeconds))
+	if th.Backlog > 0 && st.Backlog > th.Backlog {
+		m.Alert("outbox_backlog_high", fmt.Sprintf("积压 %d 超过阈值 %d", st.Backlog, th.Backlog))
+	}
+	if th.OldestAge > 0 && st.OldestAgeSeconds > th.OldestAge {
+		m.Alert("outbox_oldest_age_high", fmt.Sprintf("最老事件 %ds 超过阈值 %ds", st.OldestAgeSeconds, th.OldestAge))
+	}
+	if th.DeadCount > 0 && st.Dead > th.DeadCount {
+		m.Alert("outbox_dead_high", fmt.Sprintf("死信 %d 超过阈值 %d", st.Dead, th.DeadCount))
+	}
+	return st, nil
 }

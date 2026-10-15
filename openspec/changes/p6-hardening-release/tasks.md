@@ -30,8 +30,8 @@
 - [x] 4.3 内容安全超时：`trust.Review` 返回 `OutcomePending`（机检不可用→建机检重试任务，内容保持「审核中」不放行）；content 提交按结论三态处理；`moderation.DevClient`（`[FAULT]` 模拟超时）+ 集成测试 `TestIntegrationModerationTimeoutGate`
 - [x] 4.4 Redis 不可用回退：`adapters/redis`（标准库 RESP 客户端）+ `Fallback` 主备缓存（Redis 失败读写回退进程内 + 降级回调告警），`CATCUBE_REDIS_ADDR` 装配；单测（正常/降级往返）+ 集成测试（cube-home 聚合缓存）
 - [ ] 4.5 notice 故障 → 业务不受影响，事件积压后重放无丢失
-- [ ] 4.6 Outbox 积压与最老消息年龄监控告警触发；死信后台重放演练
-- [ ] 4.7 履约重试超阈告警 + 后台手动补偿演练（付了钱没开通的兜底链路）
+- [x] 4.6 Outbox 监控：`eventbus.Bus.ReportStats` + `pg.Outbox.Stats`（积压/最老年龄/死信）→ 指标 `catcube_outbox_*` 与阈值告警（`CATCUBE_ALERT_OUTBOX_*`，`kernel.outbox_monitor` 任务）；`GET /metrics` 导出；死信后台重放（`/dead-letters/{id}/replay`）；集成测试 `TestIntegrationOutboxBacklogAlert`/`TestIntegrationMetricsEndpoint`
+- [x] 4.7 履约兜底：`trd_fulfillment` 重试超阈/死信计数 → `catcube_fulfillment_stuck` 指标与 `fulfillment_retry_exceeded` 告警（阈值 `CATCUBE_ALERT_FULFILL_RETRY`）；后台 `/fulfillments/{orderID}/retry` 手动补偿（保持原排队次序）；集成测试 `TestIntegrationFulfillmentAlertAndManualCompensation`
 
 ## 5. 可观测完善
 

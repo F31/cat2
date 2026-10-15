@@ -67,6 +67,9 @@ func (*memOutbox) MarkRetry(context.Context, string) error              { return
 func (*memOutbox) MarkDead(context.Context, string) error               { return nil }
 func (*memOutbox) ListDead(context.Context) ([]eventbus.Event, error)   { return nil, nil }
 func (*memOutbox) Replay(context.Context, string) error                 { return nil }
+func (*memOutbox) Stats(context.Context) (eventbus.OutboxStats, error) {
+	return eventbus.OutboxStats{}, nil
+}
 
 type envelope struct {
 	Code    int             `json:"code"`

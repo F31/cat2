@@ -31,6 +31,19 @@ func NewRunner(pool *db.Pool, lockKey int64) *Runner {
 
 func (r *Runner) Register(jobs []Job) { r.jobs = append(r.jobs, jobs...) }
 
+// Jobs 已注册任务（观测/测试）。
+func (r *Runner) Jobs() []Job { return r.jobs }
+
+// RunOnce 立即执行指定任务一次（运维手动触发/测试）。返回是否找到该任务。
+func (r *Runner) RunOnce(ctx context.Context, name string) (bool, error) {
+	for _, j := range r.jobs {
+		if j.Name == name {
+			return true, j.Run(ctx)
+		}
+	}
+	return false, nil
+}
+
 // Start 启动循环；单活：拿不到咨询锁的实例空转待命。
 func (r *Runner) Start(ctx context.Context) {
 	locked, err := r.pool.AdvisoryLock(ctx, r.lockKey)

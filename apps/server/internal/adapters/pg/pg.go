@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"time"
 
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
@@ -180,6 +181,24 @@ func (o *Outbox) List(ctx context.Context, limit int) ([]eventbus.Event, error) 
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// Stats Outbox 积压/最老事件年龄/死信数（监控告警，p6 §4.6）。
+func (o *Outbox) Stats(ctx context.Context) (eventbus.OutboxStats, error) {
+	var st eventbus.OutboxStats
+	var oldest *time.Time
+	if err := o.pool.QueryRow(ctx, `
+		SELECT
+			count(1) FILTER (WHERE status IN (0,1,2)),
+			count(1) FILTER (WHERE status = 9),
+			min(occurred_at) FILTER (WHERE status IN (0,1,2))
+		FROM sys_outbox`).Scan(&st.Backlog, &st.Dead, &oldest); err != nil {
+		return st, err
+	}
+	if oldest != nil {
+		st.OldestAgeSeconds = int64(time.Since(*oldest).Seconds())
+	}
+	return st, nil
 }
 
 func (o *Outbox) MarkDone(ctx context.Context, id string) error {

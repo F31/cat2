@@ -17,6 +17,7 @@ import (
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
+	"catcube/internal/kernel/obs"
 	idcontract "catcube/internal/modules/identity/contract"
 	"catcube/internal/modules/trade/contract"
 	"catcube/internal/modules/trade/internal/app"
@@ -32,6 +33,8 @@ type Deps struct {
 	Pay      ports.Pay
 	Identity idcontract.Facade
 	Audit    *audit.Recorder
+	// AlertRetryThreshold 履约重试告警阈值（0=不告警）
+	AlertRetryThreshold int
 }
 
 // Module trade 模块。
@@ -41,6 +44,13 @@ type Module struct {
 }
 
 func New(deps Deps) *Module { return &Module{deps: deps} }
+
+func (m *Module) threshold() int {
+	if m.deps.AlertRetryThreshold > 0 {
+		return m.deps.AlertRetryThreshold
+	}
+	return 8
+}
 
 func (m *Module) Name() string        { return "trade" }
 func (m *Module) Rank() module.Rank   { return module.RankR1 }
@@ -60,8 +70,20 @@ func (m *Module) Register(r *module.Registry) error {
 	r.Jobs = append(r.Jobs,
 		module.JobDef{Name: "trade.close_expired", Interval: time.Minute, Run: m.svc.CloseExpired},
 		module.JobDef{Name: "trade.fulfill", Interval: 30 * time.Second, Run: func(ctx context.Context) error {
-			_, err := m.svc.RunFulfillment(ctx)
-			return err
+			if _, err := m.svc.RunFulfillment(ctx); err != nil {
+				return err
+			}
+			// 履约重试超阈/死信告警（付了钱没开通的兜底链路，p6 §4.7）
+			n, err := m.svc.CountStuckFulfillments(ctx, m.threshold())
+			if err != nil {
+				return err
+			}
+			obs.Default().SetGauge("catcube_fulfillment_stuck", float64(n))
+			if m.deps.AlertRetryThreshold > 0 && n > 0 {
+				obs.Default().Alert("fulfillment_retry_exceeded",
+					fmt.Sprintf("%d 笔履约重试超阈(≥%d)/死信，需人工补偿", n, m.deps.AlertRetryThreshold))
+			}
+			return nil
 		}},
 		module.JobDef{Name: "trade.recon", Interval: time.Hour, Run: m.svc.RunRecon},
 		module.JobDef{Name: "trade.apportion_expire", Interval: 5 * time.Minute, Run: m.svc.ExpireApportions},

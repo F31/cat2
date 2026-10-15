@@ -39,6 +39,19 @@ func (s *fakeStore) MarkRetry(_ context.Context, id string) error { s.retry[id]+
 func (s *fakeStore) MarkDead(_ context.Context, id string) error  { s.retry[id] = 8; return nil }
 func (s *fakeStore) ListDead(context.Context) ([]Event, error)    { return nil, nil }
 func (s *fakeStore) Replay(_ context.Context, id string) error    { s.retry[id] = 0; return nil }
+func (s *fakeStore) Stats(context.Context) (OutboxStats, error) {
+	backlog, dead := 0, 0
+	for _, e := range s.events {
+		switch {
+		case s.done[e.ID]:
+		case s.retry[e.ID] >= 8:
+			dead++
+		default:
+			backlog++
+		}
+	}
+	return OutboxStats{Backlog: int64(backlog), Dead: int64(dead)}, nil
+}
 
 type fakeProcessed struct{ seen map[string]bool }
 

@@ -79,7 +79,8 @@ type App struct {
 	Modules []module.Module
 	Mux     *http.ServeMux
 	Sched   *scheduler.Runner
-	Cache   ports.Cache // 缓存（Redis 主备或进程内），供降级观测与测试
+	Cache   ports.Cache              // 缓存（Redis 主备或进程内），供降级观测与测试
+	AlertTh eventbus.AlertThresholds // Outbox 告警阈值（测试/看板）
 	ready   bool
 }
 
@@ -183,6 +184,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	})
 	tradeMod := trade.New(trade.Deps{
 		Pool: pool, Bus: bus, Pay: pay.NewDevClient(), Identity: identityMod.Facade(), Audit: auditRec,
+		AlertRetryThreshold: cfg.AlertFulfillRetry,
 	})
 	membershipMod := membership.New(membership.Deps{
 		Pool: pool, Bus: bus, Trade: tradeMod.Facade(), Verify: verifyMod.Facade(),
@@ -236,7 +238,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	a := &App{Config: cfg, Pool: pool, Bus: bus, Policy: policyEngine, Modules: ordered, Mux: http.NewServeMux(), Cache: cache}
+	a := &App{Config: cfg, Pool: pool, Bus: bus, Policy: policyEngine, Modules: ordered, Mux: http.NewServeMux(), Cache: cache, AlertTh: eventbus.AlertThresholds{Backlog: cfg.AlertOutboxBacklog, OldestAge: cfg.AlertOutboxOldestSec, DeadCount: cfg.AlertOutboxDead}}
 
 	// 逐模块 Register：收集路由/事件/任务/能力
 	for _, m := range ordered {
@@ -266,13 +268,23 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	}})
 
 	// 事件投递 worker：轮询 Outbox 分发订阅（至少一次；订阅方幂等）
-	a.scheduler().Register([]scheduler.Job{{
-		Name: "kernel.outbox_relay", Interval: 2 * time.Second,
-		Run: func(ctx context.Context) error {
-			_, err := bus.Relay(ctx, "worker", 200)
-			return err
+	alertTh := eventbus.AlertThresholds{Backlog: cfg.AlertOutboxBacklog, OldestAge: cfg.AlertOutboxOldestSec, DeadCount: cfg.AlertOutboxDead}
+	a.scheduler().Register([]scheduler.Job{
+		{
+			Name: "kernel.outbox_relay", Interval: 2 * time.Second,
+			Run: func(ctx context.Context) error {
+				_, err := bus.Relay(ctx, "worker", 200)
+				return err
+			},
 		},
-	}})
+		{
+			Name: "kernel.outbox_monitor", Interval: 30 * time.Second,
+			Run: func(ctx context.Context) error {
+				_, err := bus.ReportStats(ctx, alertTh)
+				return err
+			},
+		},
+	})
 
 	// BFF 只读聚合层（组合各模块 contract）：首屏聚合与详情聚合
 	bff.New(bff.Deps{
@@ -308,6 +320,12 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "ok", "data": map[string]any{"items": adminMenus}})
+	})
+
+	// 指标导出（Prometheus 文本格式）
+	a.Mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		_, _ = w.Write([]byte(obs.Default().Render()))
 	})
 
 	// 健康检查

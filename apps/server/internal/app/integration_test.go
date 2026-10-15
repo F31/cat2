@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -47,14 +48,21 @@ type testApp struct {
 	srv *httptest.Server
 }
 
-func newTestApp(t *testing.T) *testApp {
+func newTestApp(t *testing.T) *testApp { return newTestAppCfg(t, nil) }
+
+// newTestAppCfg 允许按用例覆盖配置（告警阈值等）。
+func newTestAppCfg(t *testing.T, mut func(*config.Config)) *testApp {
 	t.Helper()
 	url := os.Getenv("CATCUBE_TEST_DATABASE_URL")
 	if url == "" {
 		t.Skip("未设置 CATCUBE_TEST_DATABASE_URL，跳过集成测试")
 	}
 	ctx := context.Background()
-	a, err := Wire(ctx, config.Config{DatabaseURL: url, HTTPAddr: ":0", Roles: []string{"api"}, DevSMSCode: "123456", Moderation: "dev"})
+	cfg := config.Config{DatabaseURL: url, HTTPAddr: ":0", Roles: []string{"api"}, DevSMSCode: "123456", Moderation: "dev"}
+	if mut != nil {
+		mut(&cfg)
+	}
+	a, err := Wire(ctx, cfg)
 	if err != nil {
 		t.Fatalf("装配失败: %v", err)
 	}
@@ -3630,5 +3638,103 @@ func TestIntegrationModerationTimeoutGate(t *testing.T) {
 	}
 	if status != 1 {
 		t.Fatalf("机检通过内容应展示中(1)，实际 %d", status)
+	}
+}
+
+// 指标导出（p6 §5.3 前置）：/metrics 暴露 Prometheus 文本。
+func TestIntegrationMetricsEndpoint(t *testing.T) {
+	h := newTestApp(t)
+	_, tok := loginUser(t, h)
+	_ = tok
+	_, _ = h.do(http.MethodPost, "/api/mp/v1/orders", tok, nil)
+	h.app.Bus.ReportStats(context.Background(), h.app.AlertTh)
+	resp, err := http.Get(h.srv.URL + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	text := string(body)
+	if !strings.Contains(text, "catcube_outbox_backlog") {
+		t.Fatalf("/metrics 应含 outbox 积压指标: %s", text)
+	}
+}
+
+// Outbox 积压监控告警（p6 §4.6）：超阈触发告警并计入指标。
+func TestIntegrationOutboxBacklogAlert(t *testing.T) {
+	h := newTestAppCfg(t, func(c *config.Config) {
+		c.AlertOutboxBacklog = 1
+		c.AlertOutboxDead = 0
+	})
+	_, tok := loginUser(t, h)
+	// 制造事件但不投递（测试不启动 relay worker）→ 积压
+	_, _ = h.do(http.MethodPost, "/api/mp/v1/orders", tok, map[string]any{})
+	_, _ = h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+		"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+	})
+	found, err := h.app.Sched.RunOnce(context.Background(), "kernel.outbox_monitor")
+	if err != nil || !found {
+		t.Fatalf("outbox_monitor 任务应可执行: found=%v err=%v", found, err)
+	}
+	if n := obs.Default().AlertCount("outbox_backlog_high"); n == 0 {
+		t.Fatalf("积压超阈应触发告警（backlog=%v）", obs.Default().Gauge("catcube_outbox_backlog"))
+	}
+	// 告警计数经 /metrics 暴露
+	resp, err := http.Get(h.srv.URL + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), `catcube_alerts_total{alert="outbox_backlog_high"}`) {
+		t.Fatalf("/metrics 应含告警计数: %s", string(body))
+	}
+}
+
+// 履约重试超阈告警 + 手动补偿（p6 §4.7）。
+func TestIntegrationFulfillmentAlertAndManualCompensation(t *testing.T) {
+	h := newTestAppCfg(t, func(c *config.Config) { c.AlertFulfillRetry = 1 })
+	uid, tok := loginUser(t, h)
+	_, env := h.doH(http.MethodPost, "/api/mp/v1/orders", tok, map[string]any{
+		"biz_type": "member", "amount_fen": 9900,
+		"price_snapshot": map[string]any{"price_fen": 9900, "years": 1},
+	}, map[string]string{"Idempotency-Key": fmt.Sprintf("it-fulfill-alert-%d", time.Now().UnixNano())})
+	var order struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &order)
+	if order.ID == 0 {
+		t.Fatalf("下单失败: %+v", env)
+	}
+	payOrderAndNotify(t, h, tok, order.ID)
+	// 人为制造「付了钱没开通」：履约重试超阈
+	if _, err := h.app.Pool.Exec(context.Background(),
+		`UPDATE trd_fulfillment SET status=9, retry_count=9, last_error='未注册履约方', updated_at=now()-interval '1 year' WHERE order_id=$1`, order.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.app.Sched.RunOnce(context.Background(), "trade.fulfill"); err != nil {
+		t.Fatalf("履约任务执行失败: %v", err)
+	}
+	if n := obs.Default().AlertCount("fulfillment_retry_exceeded"); n == 0 {
+		t.Fatal("履约重试超阈应触发告警")
+	}
+	// 后台手动补偿：复位后重试履约成功
+	if s, env := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/fulfillments/%d/retry", order.ID), tok, nil); s != http.StatusOK || env.Code != 0 {
+		t.Fatalf("后台补偿失败: %d %+v", s, env)
+	}
+	if _, err := h.app.Sched.RunOnce(context.Background(), "trade.fulfill"); err != nil {
+		t.Fatalf("补偿后履约失败: %v", err)
+	}
+	var status int16
+	if err := h.app.Pool.QueryRow(context.Background(), `SELECT status FROM trd_fulfillment WHERE order_id=$1`, order.ID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != 1 {
+		t.Fatalf("补偿后履约应完成(status=1)，实际 %d", status)
+	}
+	var memberN int
+	_ = h.app.Pool.QueryRow(context.Background(), `SELECT count(1) FROM mbr_member WHERE user_id=$1 AND expires_at > now()`, uid).Scan(&memberN)
+	if memberN == 0 {
+		t.Fatal("补偿后应开通会员权益")
 	}
 }

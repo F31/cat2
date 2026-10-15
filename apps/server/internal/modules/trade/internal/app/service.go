@@ -42,6 +42,7 @@ type Repo interface {
 	UpdateFulfillment(ctx context.Context, orderID int64, ok bool, lastErr string) error
 	UpsertRecon(ctx context.Context, date, channel string, orderCount int, amountFen int64, diff bool, detail []byte) error
 	ResetFulfillment(ctx context.Context, orderID int64) (bool, error)
+	CountRetryExceeded(ctx context.Context, threshold int) (int64, error)
 	// 分摊认筹
 	InsertApportion(ctx context.Context, q infra.Querier, g infra.ApportionGroup) error
 	GetApportion(ctx context.Context, id int64) (infra.ApportionGroup, error)
@@ -364,6 +365,11 @@ func (s *Service) RunFulfillment(ctx context.Context) (int, error) {
 // RetryFulfillment 后台手动补偿：死信履约单重置重试。
 func (s *Service) RetryFulfillment(ctx context.Context, orderID int64) (bool, error) {
 	return s.repo.ResetFulfillment(ctx, orderID)
+}
+
+// CountStuckFulfillments 重试超阈/死信履约数（告警与看板）。
+func (s *Service) CountStuckFulfillments(ctx context.Context, threshold int) (int64, error) {
+	return s.repo.CountRetryExceeded(ctx, threshold)
 }
 
 // RunRecon 每日对账（dev 以订单侧汇总为准，差异需对接渠道账单）。
