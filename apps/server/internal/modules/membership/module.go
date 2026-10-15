@@ -92,6 +92,9 @@ func (m *Module) Migrations() string { return migrations }
 // Facade 对外契约。
 func (m *Module) Facade() memcontract.Facade { return m }
 
+// ExpireDue 手动触发到期回落（运维入口；定时由 membership.expire Job 调用同一实现）。
+func (m *Module) ExpireDue(ctx context.Context) error { return m.svc.ExpireDue(ctx) }
+
 func (m *Module) Quote(ctx context.Context, level int16, years int) (memcontract.Quote, error) {
 	return m.svc.Quote(ctx, level, years)
 }

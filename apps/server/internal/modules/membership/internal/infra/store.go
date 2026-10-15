@@ -156,6 +156,23 @@ func (s *Store) RemoveSub(ctx context.Context, tx db.Tx, masterID, subUserID int
 	return err
 }
 
+// ExpireSubsByMaster 主账号企业版过期 → 子账号同步回落（status=2，保留归属记录）。
+func (s *Store) ExpireSubsByMaster(ctx context.Context, masterID int64) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE mbr_sub_account SET status=2, removed_at=now() WHERE master_id=$1 AND status=1`, masterID)
+	return err
+}
+
+// PurgeRemovedSubs 清理超过保留期（30 天）的已移除归属记录。
+func (s *Store) PurgeRemovedSubs(ctx context.Context, before time.Time) (int64, error) {
+	tag, err := s.pool.Exec(ctx,
+		`DELETE FROM mbr_sub_account WHERE status=2 AND removed_at IS NOT NULL AND removed_at < $1`, before)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 func snap(b []byte) []byte {
 	if len(b) == 0 {
 		return []byte("{}")

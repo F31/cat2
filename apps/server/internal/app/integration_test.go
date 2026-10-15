@@ -25,6 +25,7 @@ import (
 	"catcube/internal/modules/msg"
 	"catcube/internal/modules/trade"
 	"catcube/internal/modules/trust"
+	"catcube/pkg/ids"
 )
 
 type envelope struct {
@@ -1279,6 +1280,60 @@ func TestIntegrationMediaUpload(t *testing.T) {
 	})
 	if status != http.StatusBadRequest {
 		t.Fatalf("非法类型应 400: %d %+v", status, env)
+	}
+}
+
+// 企业版过期回落（8.5）：主账号过期 → 子账号同步失效（保留归属 30 天，超期清理）。
+func TestIntegrationEnterpriseSubExpiry(t *testing.T) {
+	h := newTestApp(t)
+	masterID, _ := loginUser(t, h)
+	subID, _ := loginUser(t, h)
+	ctx := context.Background()
+
+	// 直接构造已过期的企业版主账号与一个生效子账号（企业版开通需企业认证，p2 未开放）
+	if _, err := h.app.Pool.Exec(ctx, `INSERT INTO mbr_member (user_id, level, status, started_at, expires_at)
+		VALUES ($1,3,1,now()-interval '2 years',now()-interval '1 day')`, masterID); err != nil {
+		t.Fatal(err)
+	}
+	staleSubID := int64(ids.New())
+	if _, err := h.app.Pool.Exec(ctx, `INSERT INTO mbr_sub_account (id, master_id, sub_user_id, status, invited_at)
+		VALUES ($1,$2,$3,1,now())`, int64(ids.New()), masterID, subID); err != nil {
+		t.Fatal(err)
+	}
+	// 一条超保留期的历史已移除记录（应被清理）
+	if _, err := h.app.Pool.Exec(ctx, `INSERT INTO mbr_sub_account (id, master_id, sub_user_id, status, invited_at, removed_at)
+		VALUES ($1,$2,$3,2,now()-interval '60 days',now()-interval '31 days')`, staleSubID, masterID, 999999999); err != nil {
+		t.Fatal(err)
+	}
+
+	var memMod *membership.Module
+	for _, m := range h.app.Modules {
+		if mm, ok := m.(*membership.Module); ok {
+			memMod = mm
+		}
+	}
+	if memMod == nil {
+		t.Fatal("membership 模块未装载")
+	}
+	if err := memMod.ExpireDue(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var status int16
+	if err := h.app.Pool.QueryRow(ctx,
+		`SELECT status FROM mbr_sub_account WHERE master_id=$1 AND sub_user_id=$2`, masterID, subID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != 2 {
+		t.Fatalf("主账号过期后子账号应同步失效: status=%d", status)
+	}
+	var purged int
+	if err := h.app.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM mbr_sub_account WHERE id=$1`, staleSubID).Scan(&purged); err != nil {
+		t.Fatal(err)
+	}
+	if purged != 0 {
+		t.Fatal("超保留期的归属记录应被清理")
 	}
 }
 

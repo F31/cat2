@@ -20,8 +20,8 @@ archcheck: ## 边界检查（依赖阶梯/表前缀/infra禁令/bff只读）
 test: ## 后端单元测试
 	cd $(SERVER_DIR) && go test ./...
 
-test-integration: ## 后端集成测试（需 CATCUBE_TEST_DATABASE_URL 指向可用 PG）
-	cd $(SERVER_DIR) && go test -tags=integration ./...
+test-integration: ## 后端集成测试（需 CATCUBE_TEST_DATABASE_URL 指向可用 PG；共享同一测试库，须 -p 1 串行）
+	cd $(SERVER_DIR) && go test -tags=integration -p 1 -count=1 ./...
 
 up: ## S0 一键起（app 全角色 + PostgreSQL）
 	docker compose -f deploy/compose/docker-compose.s0.yml up -d --build

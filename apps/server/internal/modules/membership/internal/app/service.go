@@ -46,6 +46,8 @@ type Repo interface {
 	AdminList(ctx context.Context, level, status int16, limit int) ([]infra.Member, error)
 	MarkExpired(ctx context.Context, userID int64) error
 	ListSubs(ctx context.Context, masterID int64) ([]infra.SubAccount, error)
+	ExpireSubsByMaster(ctx context.Context, masterID int64) error
+	PurgeRemovedSubs(ctx context.Context, before time.Time) (int64, error)
 	CountActiveSubs(ctx context.Context, masterID int64) (int, error)
 	InsertSub(ctx context.Context, tx db.Tx, id, masterID, subUserID int64, expiresAt time.Time) error
 	RemoveSub(ctx context.Context, tx db.Tx, masterID, subUserID int64) error
@@ -285,8 +287,14 @@ func (s *Service) ExpireDue(ctx context.Context) error {
 		if err := s.repo.MarkExpired(ctx, m.UserID); err != nil {
 			continue
 		}
+		// 企业版主账号过期 → 子账号同步回落（归属记录保留 30 天）
+		if m.Level == memcontract.LevelEnterprise {
+			_ = s.repo.ExpireSubsByMaster(ctx, m.UserID)
+		}
 		_ = s.emit(ctx, memcontract.NewMemberExpired(ids.New().String(), memcontract.MemberPayload{UserID: m.UserID, Level: m.Level}))
 	}
+	// 归属记录保留期清理（30 天）
+	_, _ = s.repo.PurgeRemovedSubs(ctx, time.Now().UTC().AddDate(0, 0, -30))
 	return nil
 }
 
