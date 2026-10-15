@@ -1,0 +1,503 @@
+openapi: 3.0.3
+info:
+  title: 猫平方运营后台 API
+  version: 0.1.0
+  description: |
+    运营后台（admin）对外契约首版。与小程序契约（mp.yaml）分离，`make gen` 由本文件
+    生成 Go stub 与 TS 类型。RBAC 细化为 p4；当前仅要求已登录（Admin 标记预留）。
+
+    ## 全局约定
+    - 统一响应信封 `{ code, message, data, request_id }`；成功 `code=0`
+    - 错误码 `MMNNNN`：MM 为模块前缀（见 contracts/errors/README.md）
+    - 金额一律分（int64）；ID 在 JSON 中为字符串；时间 RFC3339（UTC）
+servers:
+  - url: /api/admin/v1
+tags:
+  - name: admin-identity
+  - name: admin-content
+  - name: admin-trust
+  - name: admin-trade
+  - name: admin-membership
+security:
+  - bearerAuth: []
+paths:
+  /users:
+    get:
+      tags: [admin-identity]
+      summary: 用户列表（按状态/关键字）
+      operationId: adminListUsers
+      parameters:
+        - name: status
+          in: query
+          schema: { type: integer, description: '-1 全部；0 正常 / 1 封禁等' }
+        - name: q
+          in: query
+          schema: { type: string, description: 昵称/手机号（脱敏）模糊 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        '200':
+          description: 用户列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/AdminUser' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /users/{id}/ban:
+    post:
+      tags: [admin-identity]
+      summary: 封禁账号（递增 authz_ver，旧令牌立即失效）
+      operationId: adminBanUser
+      parameters:
+        - $ref: '#/components/parameters/PathUserID'
+      responses:
+        '200':
+          description: 封禁结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/StatusData' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /users/{id}/unban:
+    post:
+      tags: [admin-identity]
+      summary: 解封账号
+      operationId: adminUnbanUser
+      parameters:
+        - $ref: '#/components/parameters/PathUserID'
+      responses:
+        '200':
+          description: 解封结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/StatusData' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /contents:
+    get:
+      tags: [admin-content]
+      summary: 内容列表（按类型/状态）
+      operationId: adminListContents
+      parameters:
+        - name: kind
+          in: query
+          schema: { type: string, enum: [project, product, meeting, event] }
+        - name: status
+          in: query
+          schema: { type: integer, description: '-1 全部；0 审核中 / 1 展示中 / 2 已下架' }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        '200':
+          description: 内容列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/ContentItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /contents/{id}/takedown:
+    post:
+      tags: [admin-content]
+      summary: 下架内容（记录原因）
+      operationId: adminTakedownContent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        '200':
+          description: 下架后的内容
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContentItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /review-tasks:
+    get:
+      tags: [admin-trust]
+      summary: 审核队列（按 SLA 到期升序）
+      operationId: adminReviewQueue
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        '200':
+          description: 待审队列
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/ReviewTask' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /review-tasks/{id}/resolve:
+    post:
+      tags: [admin-trust]
+      summary: 复核结论（通过/驳回，驳回须填原因）
+      operationId: adminResolveReview
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmed]
+              properties:
+                confirmed: { type: boolean }
+                reason: { type: string, description: 驳回原因（驳回时必填） }
+      responses:
+        '200':
+          description: 复核结论（含违规记分与限制）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Verdict' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /review-metrics:
+    get:
+      tags: [admin-trust]
+      summary: 审核 SLA 指标（待审/超时/平均复核时长）
+      operationId: adminReviewMetrics
+      responses:
+        '200':
+          description: SLA 指标
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SLAMetric' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /orders:
+    get:
+      tags: [admin-trade]
+      summary: 订单列表（按状态）
+      operationId: adminListOrders
+      parameters:
+        - name: status
+          in: query
+          schema: { type: integer, description: '-1 全部；0 待支付 / 1 已支付 / 2 已关闭' }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        '200':
+          description: 订单列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /refunds:
+    post:
+      tags: [admin-trade]
+      summary: 发起退款
+      operationId: adminRefund
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order_id, amount_fen]
+              properties:
+                order_id: { type: string }
+                amount_fen: { type: integer }
+                reason: { type: string }
+      responses:
+        '200':
+          description: 退款记录
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Refund' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /fulfillments/{orderID}/retry:
+    post:
+      tags: [admin-trade]
+      summary: 履约补偿重试（死信重置）
+      operationId: adminRetryFulfillment
+      parameters:
+        - name: orderID
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 是否重置成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          reset: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /members:
+    get:
+      tags: [admin-membership]
+      summary: 会员列表（按等级/状态）
+      operationId: adminListMembers
+      parameters:
+        - name: level
+          in: query
+          schema: { type: integer, description: '-1 全部；1 VIP / 3 企业版' }
+        - name: status
+          in: query
+          schema: { type: integer, description: '-1 全部；1 生效中 / 2 已过期' }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        '200':
+          description: 会员列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/AdminMember' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Access Token（RS256 JWT，仅含 sub/sid/authz_ver，2h 有效）
+  parameters:
+    PathUserID:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+  responses:
+    BadRequest:
+      description: 参数错误
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: 未认证/令牌失效
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: 无权限
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Envelope:
+      type: object
+      properties:
+        code: { type: integer }
+        message: { type: string }
+        data: { nullable: true }
+        request_id: { type: string }
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: integer }
+        message: { type: string }
+    StatusData:
+      type: object
+      properties:
+        status: { type: integer }
+    AdminUser:
+      type: object
+      properties:
+        id: { type: string }
+        nickname: { type: string }
+        status: { type: integer, description: '0 正常 / 1 封禁等' }
+        identity_type: { type: integer, description: '1 个人 / 2 组织' }
+        realname_status: { type: integer }
+        phone_masked: { type: string }
+        created_at: { type: string, format: date-time }
+    TagSet:
+      type: object
+      properties:
+        industry: { type: array, items: { type: string } }
+        region: { type: string }
+        nature: { type: array, items: { type: string } }
+        need: { type: array, items: { type: string } }
+        offer: { type: array, items: { type: string } }
+        domain: { type: array, items: { type: string } }
+    ContentItem:
+      type: object
+      required: [id, kind, title, status]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [project, product, meeting, event] }
+        owner_ref:
+          type: object
+          properties:
+            type: { type: string }
+            id: { type: string }
+        title: { type: string }
+        cover_file_id: { type: string }
+        region_code: { type: string }
+        tagset: { $ref: '#/components/schemas/TagSet' }
+        status: { type: integer, description: '0 审核中 / 1 展示中 / 2 已下架' }
+        reject_reason: { type: string }
+        published_at: { type: string, format: date-time, nullable: true }
+        fields: { type: object, additionalProperties: true }
+        member_gate: { type: array, items: { type: string } }
+        unlock_reason: { type: string }
+    ReviewTask:
+      type: object
+      required: [id, source, subject_type, subject_id, risk_level, status]
+      properties:
+        id: { type: string }
+        source: { type: integer, description: '1 机器命中 / 2 举报 / 3 认证材料 / 4 产品入库 / 5 高风险抽检' }
+        subject_type: { type: string }
+        subject_id: { type: string }
+        risk_level: { type: integer }
+        status: { type: integer, description: '0 待审 / 1 通过 / 2 驳回 / 3 已关闭' }
+        reason: { type: string }
+        sla_overdue: { type: boolean }
+    Verdict:
+      type: object
+      required: [task_id, subject_type, subject_id, user_id, points, total, restricted]
+      properties:
+        task_id: { type: string }
+        subject_type: { type: string }
+        subject_id: { type: string }
+        user_id: { type: string }
+        points: { type: integer }
+        total: { type: integer }
+        restricted: { type: boolean }
+    SLAMetric:
+      type: object
+      required: [pending, overdue, avg_review_seconds]
+      properties:
+        pending: { type: integer }
+        overdue: { type: integer }
+        avg_review_seconds: { type: integer }
+    Order:
+      type: object
+      required: [id, biz_type, buyer_id, amount_fen, status]
+      properties:
+        id: { type: string }
+        biz_type: { type: string }
+        biz_ref: { type: string }
+        buyer_id: { type: string }
+        amount_fen: { type: integer }
+        price_snapshot: { type: object, additionalProperties: true }
+        status: { type: integer, description: '0 待支付 / 1 已支付 / 2 已关闭' }
+        pay_expire_at: { type: string, format: date-time }
+        paid_at: { type: string, format: date-time, nullable: true }
+        closed_at: { type: string, format: date-time, nullable: true }
+    Refund:
+      type: object
+      required: [id, payment_id, amount_fen, status, refund_no]
+      properties:
+        id: { type: string }
+        payment_id: { type: string }
+        amount_fen: { type: integer }
+        status: { type: integer }
+        refund_no: { type: string }
+        created_at: { type: string, format: date-time }
+    AdminMember:
+      type: object
+      properties:
+        user_id: { type: string }
+        level: { type: integer, description: '1 VIP / 3 企业版' }
+        status: { type: integer, description: '1 生效中 / 2 已过期' }
+        started_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        last_order_id: { type: string }

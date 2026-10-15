@@ -4,7 +4,9 @@ SERVER_DIR := apps/server
 
 gen: ## 契约生成（OpenAPI → Go stub + TS 类型；事件 Schema → TS 类型）
 	cd $(SERVER_DIR) && go tool oapi-codegen -config internal/gen/oapi-codegen.yaml ../../contracts/openapi/mp.yaml
+	cd $(SERVER_DIR) && go tool oapi-codegen -config internal/gen/oapi-codegen.admin.yaml ../../contracts/openapi/admin.yaml
 	pnpm exec openapi-typescript contracts/openapi/mp.yaml -o packages/api-client/src/schema.d.ts
+	pnpm exec openapi-typescript contracts/openapi/admin.yaml -o packages/api-client/src/admin-schema.d.ts
 	mkdir -p packages/domain-types/src/events
 	for f in contracts/events/*.json; do \
 		n=$$(basename $$f .json); \

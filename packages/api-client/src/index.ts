@@ -1,8 +1,11 @@
 // 本包 schema.d.ts 由 contracts/openapi/*.yaml 经 `make gen` 生成（openapi-typescript），勿手改。
 // 本文件为基于生成类型的薄客户端（信封解包、游标分页、Idempotency-Key）。
 import type { paths, components } from './schema'
+import type { components as adminComponents, paths as adminPaths } from './admin-schema'
 
 export type { paths, components }
+// 运营后台契约类型（contracts/openapi/admin.yaml 生成）
+export type { adminPaths, adminComponents }
 
 /** 统一响应信封（与 contracts/openapi 约定一致）。 */
 export interface Envelope<T = unknown> {

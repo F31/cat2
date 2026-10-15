@@ -103,6 +103,27 @@ func TestOpenAPIDeclaresP2Paths(t *testing.T) {
 	}
 }
 
+// 运营后台契约（admin.yaml）声明全部 admin 路由。
+func TestOpenAPIDeclaresAdminPaths(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(contractsDir(t, "openapi"), "admin.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	paths := []string{
+		"/users:", "/users/{id}/ban:", "/users/{id}/unban:",
+		"/contents:", "/contents/{id}/takedown:",
+		"/review-tasks:", "/review-tasks/{id}/resolve:", "/review-metrics:",
+		"/orders:", "/refunds:", "/fulfillments/{orderID}/retry:",
+		"/members:",
+	}
+	for _, p := range paths {
+		if !strings.Contains(text, "\n  "+p) {
+			t.Fatalf("admin OpenAPI 缺少路径 %q", strings.TrimSuffix(p, ":"))
+		}
+	}
+}
+
 func contractsDir(t *testing.T, sub string) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)

@@ -112,7 +112,7 @@
 
 ## 11. admin 基础管理
 
-- [x] 11.1 admin 接口：用户列表/封禁解封（identity `/api/admin/v1/users*`）、内容列表/下架（content `/api/admin/v1/contents*`）、订单列表（trade `/api/admin/v1/orders`）、会员列表（membership `/api/admin/v1/members`）；审核队列（trust）与退款/履约补偿（trade）此前已具备。（RBAC 细化在 p4；独立 admin OpenAPI 契约随 admin-web 落地补）
+- [x] 11.1 admin 接口：用户列表/封禁解封（identity `/api/admin/v1/users*`）、内容列表/下架（content `/api/admin/v1/contents*`）、订单列表（trade `/api/admin/v1/orders`）、会员列表（membership `/api/admin/v1/members`）；审核队列（trust）与退款/履约补偿（trade）此前已具备。（RBAC 细化在 p4；独立契约 `contracts/openapi/admin.yaml` 已补，`make gen` 生成 `internal/gen/admin` stub 与 `packages/api-client/src/admin-schema.d.ts`，`TestOpenAPIDeclaresAdminPaths` 校验）
 - [x] 11.2 admin-web（Vite+AntD+Router）：登录页、侧栏+顶栏布局、概览(SLA) 与用户/内容/审核队列/订单/会员基础页面（列表+操作；驳回必填原因）；`tsc --noEmit` 与 `vite build` 通过。（菜单暂前端声明，模块 AdminSection 声明式组装与 RBAC 细化在 p4）
 
 ## 12. 测试与门禁
