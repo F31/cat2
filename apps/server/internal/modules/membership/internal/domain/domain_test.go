@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -66,5 +67,37 @@ func TestMachineValid(t *testing.T) {
 	}
 	if StateOf(1, true) != StateActive || StateOf(2, true) != StateExpired || StateOf(0, false) != StateNone {
 		t.Fatal("状态推导错误")
+	}
+}
+
+// 表驱动：状态机 #12 合法转移（开通/续期/到期回落）。
+func TestMembershipLegalTransitions(t *testing.T) {
+	eng := statemachine.NewEngine(nil)
+	cases := []struct{ from, event, actor, want string }{
+		{StateNone, EventActivate, "user", StateActive},    // 新开通
+		{StateExpired, EventActivate, "user", StateActive}, // 过期重开
+		{StateActive, EventActivate, "user", StateActive},  // 续期
+		{StateActive, EventExpire, "system", StateExpired}, // 到期回落
+	}
+	for _, c := range cases {
+		got, err := eng.Apply(context.Background(), Machine, 1, c.from, c.event, c.actor)
+		if err != nil || got != c.want {
+			t.Fatalf("%s --%s(%s)--> 期望 %s，实际 %s err=%v", c.from, c.event, c.actor, c.want, got, err)
+		}
+	}
+}
+
+// 表驱动：状态机 #12 非法转移必须被拒绝。
+func TestMembershipIllegalTransitions(t *testing.T) {
+	eng := statemachine.NewEngine(nil)
+	cases := []struct{ from, event, actor string }{
+		{StateNone, EventExpire, "system"},    // 未开通不可到期
+		{StateExpired, EventExpire, "system"}, // 已过期不可再到期
+		{StateActive, EventExpire, "user"},    // 到期回落只能由系统驱动
+	}
+	for _, c := range cases {
+		if _, err := eng.Apply(context.Background(), Machine, 1, c.from, c.event, c.actor); err == nil {
+			t.Fatalf("非法转移应被拒绝: %s --%s(%s)", c.from, c.event, c.actor)
+		}
 	}
 }

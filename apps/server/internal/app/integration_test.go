@@ -918,6 +918,128 @@ func fulfillMemberOrder(t *testing.T, h *testApp, orderID int64) {
 	}
 }
 
+// 端到端闭环（12.4）：注册 → 补画像 → feed 有匹配 → 详情 → 开通会员 → 联系Ta 建会话 → 发消息 → 未读正确。
+func TestIntegrationClosedLoop(t *testing.T) {
+	h := newTestApp(t)
+	aID, aTok := loginUser(t, h)
+	bID, bTok := loginUser(t, h)
+
+	// 补画像（供需互补 + 同行业 + 同区域）
+	setCard(t, h, aTok, "张三", "310000", []string{"A01"}, []string{"N1"}, []string{"O1"})
+	setCard(t, h, bTok, "李四", "310000", []string{"A01"}, []string{"O1"}, []string{"N1"})
+	relayAll(t, h)
+	refreshCandidates(t, h)
+
+	// 一、A 的广场 feed 命中 B
+	_, env := h.do(http.MethodGet, "/api/mp/v1/feed", aTok, nil)
+	var feed struct {
+		Items []struct {
+			Ref string `json:"ref"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &feed)
+	found := false
+	for _, it := range feed.Items {
+		if it.Ref == fmt.Sprintf("user:%d", bID) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("feed 应命中匹配对象 B: %+v", feed.Items)
+	}
+
+	// 二、查看 B 的公开详情（游客亦可，未实名不影响被检索）
+	status, env := h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/cards/user:%d", bID), "", nil)
+	if status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("详情应可浏览: %d %+v", status, env)
+	}
+
+	// 三、开通会员（mock 支付回调）
+	makeMember(t, h, aTok)
+
+	// 四、联系Ta：建立单聊会话（幂等）
+	_, env = h.do(http.MethodPost, "/api/mp/v1/sessions", aTok, map[string]any{"target_ref": fmt.Sprintf("user:%d", bID)})
+	var ensured struct {
+		Session struct {
+			ID int64 `json:"id,string"`
+		} `json:"session"`
+	}
+	_ = json.Unmarshal(env.Data, &ensured)
+	if ensured.Session.ID == 0 {
+		t.Fatalf("建立会话失败: %+v", ensured)
+	}
+	sid := ensured.Session.ID
+
+	// 五、A 发消息 → B 未读 = 1
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/sessions/%d/messages", sid), aTok, map[string]any{"content": "你好，想聊聊合作"})
+	if env.Code != 0 {
+		t.Fatalf("发消息失败: %+v", env)
+	}
+	_, env = h.do(http.MethodGet, "/api/mp/v1/sessions", bTok, nil)
+	var sessions struct {
+		Items []struct {
+			ID     int64 `json:"id,string"`
+			Unread int   `json:"unread"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &sessions)
+	var unread int
+	for _, s := range sessions.Items {
+		if s.ID == sid {
+			unread = s.Unread
+		}
+	}
+	if unread != 1 {
+		t.Fatalf("B 未读应 1，实际 %d（%+v）", unread, sessions.Items)
+	}
+	_ = aID
+}
+
+// 权限矩阵关键格（12.1）：游客可浏览；未实名不影响被检索；发起单聊=会员权益。
+func TestIntegrationPermissionMatrix(t *testing.T) {
+	h := newTestApp(t)
+	_, aTok := loginUser(t, h)
+	bID, bTok := loginUser(t, h)
+	// 两人均未实名、非会员
+	setCard(t, h, aTok, "王五", "310000", []string{"A01"}, []string{"N1"}, nil)
+	setCard(t, h, bTok, "赵六", "310000", []string{"A01"}, nil, []string{"N1"})
+	relayAll(t, h)
+	refreshCandidates(t, h)
+
+	// 游客：搜索与公开名片可用
+	if status, env := h.do(http.MethodGet, "/api/mp/v1/search?type=user", "", nil); status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("游客应可搜索: %d %+v", status, env)
+	}
+	if status, env := h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/cards/user:%d", bID), "", nil); status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("游客应可看公开名片: %d %+v", status, env)
+	}
+	// 未实名用户仍被检索到（实名不影响被检索）
+	_, env := h.do(http.MethodGet, "/api/mp/v1/search?type=user", "", nil)
+	var sr struct {
+		Items []struct {
+			Ref string `json:"ref"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &sr)
+	found := false
+	for _, it := range sr.Items {
+		if it.Ref == fmt.Sprintf("user:%d", bID) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("未实名用户应仍被检索: %+v", sr.Items)
+	}
+	// 非会员发起单聊 → 拒绝；成为会员后放行
+	if status, env := h.do(http.MethodPost, "/api/mp/v1/sessions", aTok, map[string]any{"target_ref": fmt.Sprintf("user:%d", bID)}); status != http.StatusForbidden || env.Code != 70004 {
+		t.Fatalf("非会员发起单聊应 070004/403: %d %+v", status, env)
+	}
+	makeMember(t, h, aTok)
+	if status, env := h.do(http.MethodPost, "/api/mp/v1/sessions", aTok, map[string]any{"target_ref": fmt.Sprintf("user:%d", bID)}); status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("会员发起单聊应放行: %d %+v", status, env)
+	}
+}
+
 // 认证锁定字段不可自改（verify 通过后写 locked_fields）。
 func TestIntegrationProfileLocked(t *testing.T) {
 	h := newTestApp(t)
