@@ -35,6 +35,9 @@ type SessionRow struct {
 	LastMessageAt *time.Time
 	Unread        int
 	PeerID        int64
+	Title         string
+	LastPreview   string
+	LastSenderID  int64
 }
 
 // MessageRow 消息行。
@@ -95,10 +98,15 @@ func (s *Store) ListSessions(ctx context.Context, userID int64) ([]SessionRow, e
 		SELECT s.id, s.kind, s.last_seq, s.last_message_at,
 		       GREATEST(COALESCE(s.last_seq - c.read_seq, s.last_seq), 0) AS unread,
 		       COALESCE((SELECT pm.user_id FROM msg_session_member pm
-		                  WHERE pm.session_id=s.id AND pm.user_id<>$1 LIMIT 1), 0) AS peer_id
+		                  WHERE pm.session_id=s.id AND pm.user_id<>$1 LIMIT 1), 0) AS peer_id,
+		       COALESCE(s.title, '') AS title,
+		       COALESCE(lm.content, '') AS last_preview,
+		       COALESCE(lm.sender_id, 0) AS last_sender_id
 		  FROM msg_session s
 		  JOIN msg_session_member m ON m.session_id=s.id AND m.user_id=$1
 		  LEFT JOIN msg_read_cursor c ON c.session_id=s.id AND c.user_id=$1
+		  LEFT JOIN LATERAL (SELECT content, sender_id FROM msg_message mm
+		                     WHERE mm.session_id=s.id ORDER BY mm.seq DESC LIMIT 1) lm ON true
 		 ORDER BY s.last_message_at DESC NULLS LAST, s.id DESC
 		 LIMIT 100`, userID)
 	if err != nil {
@@ -108,12 +116,75 @@ func (s *Store) ListSessions(ctx context.Context, userID int64) ([]SessionRow, e
 	var out []SessionRow
 	for rows.Next() {
 		var r SessionRow
-		if err := rows.Scan(&r.ID, &r.Kind, &r.LastSeq, &r.LastMessageAt, &r.Unread, &r.PeerID); err != nil {
+		if err := rows.Scan(&r.ID, &r.Kind, &r.LastSeq, &r.LastMessageAt, &r.Unread, &r.PeerID, &r.Title, &r.LastPreview, &r.LastSenderID); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// EnsureGroup 创建/获取群聊会话（biz_ref 幂等，返回 id 与是否新建）。
+func (s *Store) EnsureGroup(ctx context.Context, tx pgx.Tx, id int64, bizRef, title string) (int64, bool, error) {
+	var sid int64
+	err := tx.QueryRow(ctx, `SELECT id FROM msg_session WHERE kind=2 AND biz_ref=$1`, bizRef).Scan(&sid)
+	if err == nil {
+		return sid, false, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO msg_session (id, kind, biz_ref, title, last_seq)
+		VALUES ($1, 2, $2, $3, 0) ON CONFLICT (biz_ref) WHERE kind=2 DO NOTHING`, id, bizRef, title); err != nil {
+		return 0, false, err
+	}
+	if err := tx.QueryRow(ctx, `SELECT id FROM msg_session WHERE kind=2 AND biz_ref=$1`, bizRef).Scan(&sid); err != nil {
+		return 0, false, err
+	}
+	_, _ = tx.Exec(ctx, `UPDATE msg_session SET title=$2 WHERE id=$1 AND COALESCE(title,'')=''`, sid, title)
+	return sid, true, nil
+}
+
+// ListGroups 全部群聊（成员重算用）。
+func (s *Store) ListGroups(ctx context.Context) ([]struct{ ID int64; BizRef string }, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id, COALESCE(biz_ref,'') FROM msg_session WHERE kind=2`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []struct{ ID int64; BizRef string }
+	for rows.Next() {
+		var g struct{ ID int64; BizRef string }
+		if err := rows.Scan(&g.ID, &g.BizRef); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+// ListMembers 会话成员 id。
+func (s *Store) ListMembers(ctx context.Context, sessionID int64) ([]int64, error) {
+	rows, err := s.pool.Query(ctx, `SELECT user_id FROM msg_session_member WHERE session_id=$1`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// RemoveMember 移除会话成员。
+func (s *Store) RemoveMember(ctx context.Context, tx pgx.Tx, sessionID, userID int64) error {
+	_, err := tx.Exec(ctx, `DELETE FROM msg_session_member WHERE session_id=$1 AND user_id=$2`, sessionID, userID)
+	return err
 }
 
 // LockSession 行锁取最大序号（并发发送时分配 seq）。

@@ -25,6 +25,7 @@ import (
 	"catcube/internal/modules/cube/internal/domain"
 	"catcube/internal/modules/cube/internal/infra"
 	idcontract "catcube/internal/modules/identity/contract"
+	msgcontract "catcube/internal/modules/msg/contract"
 	tradecontract "catcube/internal/modules/trade/contract"
 	"catcube/internal/shared/entityref"
 )
@@ -41,6 +42,7 @@ type Deps struct {
 	Trade     tradecontract.Facade
 	Settings  *settings.Registry
 	Content   contentcontract.Facade
+	Msg       msgcontract.Facade
 }
 
 // Module cube 模块。
@@ -53,7 +55,7 @@ func New(deps Deps) *Module { return &Module{deps: deps} }
 
 func (m *Module) Name() string        { return "cube" }
 func (m *Module) Rank() module.Rank   { return module.RankR3 }
-func (m *Module) DependsOn() []string { return []string{"identity", "content", "trade"} }
+func (m *Module) DependsOn() []string { return []string{"identity", "content", "trade", "msg"} }
 
 // cube 错误码（contracts/errors/README.md 13 段）。
 const (
@@ -80,6 +82,7 @@ func (m *Module) Register(r *module.Registry) error {
 		Repo: infra.NewStore(m.deps.Pool), Pool: m.deps.Pool, Bus: m.deps.Bus,
 		Policy: m.deps.Policy, Identity: m.deps.Identity, Encryptor: m.deps.Encryptor,
 		Trade: m.deps.Trade, Settings: m.deps.Settings, Content: m.deps.Content, Entities: m.deps.Entities,
+		Msg: m.deps.Msg,
 	})
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes", Handler: m.auth(m.handleCreate)},
@@ -185,6 +188,48 @@ func (m *Module) Leave(ctx context.Context, cubeID, userID int64) error {
 }
 func (m *Module) HasActiveMembership(ctx context.Context, userID int64) (bool, error) {
 	return m.svc.HasActiveMembership(ctx, userID)
+}
+
+// SessionMemberResolver 群成员解析器（cube 注册给 msg；成员=立方成员表）。
+func (m *Module) SessionMemberResolver() msgcontract.SessionMemberResolver {
+	return memberResolver{m: m}
+}
+
+type memberResolver struct{ m *Module }
+
+func (r memberResolver) Members(ctx context.Context, sessionRef string) ([]int64, error) {
+	cubeID := int64(0)
+	switch {
+	case strings.HasPrefix(sessionRef, "cube.project:"):
+		pid, err := strconv.ParseInt(strings.TrimPrefix(sessionRef, "cube.project:"), 10, 64)
+		if err != nil {
+			return nil, nil
+		}
+		id, err := r.m.svc.ProjectCube(ctx, pid)
+		if err != nil {
+			return nil, nil
+		}
+		cubeID = id
+	case strings.HasPrefix(sessionRef, "cube:"):
+		id, err := strconv.ParseInt(strings.TrimPrefix(sessionRef, "cube:"), 10, 64)
+		if err != nil {
+			return nil, nil
+		}
+		cubeID = id
+	default:
+		return nil, nil
+	}
+	ms, err := r.m.svc.Members(ctx, cubeID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]int64, 0, len(ms))
+	for _, mm := range ms {
+		if mm.Status != contract.MemberRemoved {
+			out = append(out, mm.UserID)
+		}
+	}
+	return out, nil
 }
 
 // Resolve 实现 entityref.Resolver（cube 展示）。
@@ -526,3 +571,4 @@ func writeErr(w http.ResponseWriter, code int, message string) {
 var _ contract.Facade = (*Module)(nil)
 var _ entityref.Resolver = (*Module)(nil)
 var _ tradecontract.OrderFulfiller = (*Module)(nil)
+var _ msgcontract.SessionMemberResolver = memberResolver{}

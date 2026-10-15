@@ -2943,3 +2943,72 @@ func TestIntegrationCircleMountToCube(t *testing.T) {
 		t.Fatalf("无建项目权限应 403: %d", s)
 	}
 }
+
+// 群聊补全（p3 §8）：建立方自动建群聊、成员解析、发消息与未读、成员移除后同步、群聊名称与预览。
+func TestIntegrationCubeGroupChat(t *testing.T) {
+	h := newTestApp(t)
+	aPhone, bPhone := randPhone(), randPhone()
+	_, aTok := loginPhone(t, h, aPhone)
+	bID, bTok := loginPhone(t, h, bPhone)
+	for _, tok := range []string{aTok, bTok} {
+		if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+			"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+		}); s != http.StatusOK || env.Code != 0 {
+			t.Fatalf("实名失败: %d %+v", s, env)
+		}
+	}
+	_, env := h.do(http.MethodPost, "/api/mp/v1/cubes", aTok, map[string]any{
+		"name": "群聊立方", "honey_user_id": fmt.Sprintf("%d", bID),
+	})
+	var cube struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cube)
+
+	// 群聊会话已建（立方名·协作），成员=猫王+猫蜜
+	_, env = h.do(http.MethodGet, "/api/mp/v1/sessions", bTok, nil)
+	var sessions struct {
+		Items []struct {
+			ID      int64  `json:"id,string"`
+			Kind    int16  `json:"kind"`
+			Title   string `json:"title"`
+			Unread  int    `json:"unread"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &sessions)
+	var sid int64
+	for _, s := range sessions.Items {
+		if s.Kind == 2 && s.Title == "群聊立方·协作" {
+			sid = s.ID
+		}
+	}
+	if sid == 0 {
+		t.Fatalf("应自动建群聊会话: %+v", sessions.Items)
+	}
+
+	// A 在群聊发消息 → B 未读 1
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/sessions/%d/messages", sid), aTok,
+		map[string]any{"content": "欢迎大家"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("群聊发消息失败: %d %+v", s, e)
+	}
+	_, env = h.do(http.MethodGet, "/api/mp/v1/sessions", bTok, nil)
+	_ = json.Unmarshal(env.Data, &sessions)
+	for _, s := range sessions.Items {
+		if s.ID == sid && s.Unread != 1 {
+			t.Fatalf("B 群聊未读应 1: %+v", s)
+		}
+	}
+
+	// 移除 B → 群成员同步移除（B 不再看到群聊）
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/members/%d/remove", cube.ID, bID), aTok,
+		map[string]any{"reason": "测试"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("移除成员失败: %d %+v", s, e)
+	}
+	relayAll(t, h) // cube.MemberRemoved → msg 群成员同步
+	var memberCount int
+	_ = h.app.Pool.QueryRow(context.Background(),
+		`SELECT count(1) FROM msg_session_member WHERE session_id=$1 AND user_id=$2`, sid, bID).Scan(&memberCount)
+	if memberCount != 0 {
+		t.Fatalf("移除后群成员应同步移除: %d", memberCount)
+	}
+}

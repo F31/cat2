@@ -3184,6 +3184,9 @@ components:
         last_seq: { type: integer }
         unread: { type: integer }
         last_message_at: { type: string, format: date-time, nullable: true }
+        title: { type: string, description: 群聊名称=立方名·模块名（或项目名） }
+        last_preview: { type: string, description: 最后消息摘要 }
+        last_sender_id: { type: string }
     Message:
       type: object
       required: [id, session_id, seq, sender_id, msg_type, content]

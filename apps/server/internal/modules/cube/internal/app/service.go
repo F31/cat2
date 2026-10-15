@@ -13,11 +13,12 @@ import (
 	"catcube/internal/kernel/policy"
 	"catcube/internal/kernel/sensitive"
 	"catcube/internal/kernel/settings"
+	contentcontract "catcube/internal/modules/content/contract"
 	"catcube/internal/modules/cube/contract"
 	"catcube/internal/modules/cube/internal/domain"
 	"catcube/internal/modules/cube/internal/infra"
-	contentcontract "catcube/internal/modules/content/contract"
 	idcontract "catcube/internal/modules/identity/contract"
+	msgcontract "catcube/internal/modules/msg/contract"
 	tradecontract "catcube/internal/modules/trade/contract"
 	"catcube/internal/shared/entityref"
 	"catcube/pkg/ids"
@@ -79,6 +80,7 @@ type Options struct {
 	Settings  *settings.Registry
 	Content   contentcontract.Facade
 	Entities  *entityref.Registry
+	Msg       msgcontract.Facade
 }
 
 // Service cube 应用服务。
@@ -93,12 +95,13 @@ type Service struct {
 	settings *settings.Registry
 	content  contentcontract.Facade
 	entities *entityref.Registry
+	msg      msgcontract.Facade
 }
 
 func New(o Options) *Service {
 	return &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, policy: o.Policy,
 		identity: o.Identity, enc: o.Encryptor, trade: o.Trade, settings: o.Settings,
-		content: o.Content, entities: o.Entities}
+		content: o.Content, entities: o.Entities, msg: o.Msg}
 }
 
 const inviteTTL = 7 * 24 * time.Hour
@@ -142,6 +145,11 @@ func (s *Service) Create(ctx context.Context, userID int64, in contract.CreateIn
 	if err != nil {
 		slog.Error("cube 创建失败", "err", err)
 		return contract.CubeBrief{}, err
+	}
+	if s.msg != nil {
+		if _, err := s.msg.EnsureGroup(ctx, "cube:"+strconv.FormatInt(cubeID, 10), in.Name+"·协作", userID); err != nil {
+			slog.Error("cube 建群聊失败", "err", err)
+		}
 	}
 	return s.brief(c, 2), nil
 }

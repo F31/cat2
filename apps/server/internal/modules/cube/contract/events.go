@@ -10,21 +10,21 @@ import (
 
 // 事件 Topic。
 const (
-	EventCubeCreated       = "cube.CubeCreated.v1"
-	EventMemberJoined      = "cube.MemberJoined.v1"
-	EventMemberRemoved     = "cube.MemberRemoved.v1"
-	EventCubeDissolved     = "cube.CubeDissolved.v1"
-	EventProjectCreated    = "cube.ProjectCreated.v1"
-	EventProjectClosed     = "cube.ProjectClosed.v1"
-	EventProjectReopened   = "cube.ProjectReopened.v1"
-	EventTaskAssigned      = "cube.TaskAssigned.v1"
-	EventTaskSubmitted     = "cube.TaskSubmitted.v1"
-	EventTaskConfirmed     = "cube.TaskConfirmed.v1"
-	EventReportSubmitted   = "cube.ReportSubmitted.v1"
-	EventReportConfirmed   = "cube.ReportConfirmed.v1"
-	EventReportRejected    = "cube.ReportRejected.v1"
-	EventApportionFormed   = "cube.ApportionFormed.v1"
-	EventApportionFailed   = "cube.ApportionFailed.v1"
+	EventCubeCreated     = "cube.CubeCreated.v1"
+	EventMemberJoined    = "cube.MemberJoined.v1"
+	EventMemberRemoved   = "cube.MemberRemoved.v1"
+	EventCubeDissolved   = "cube.CubeDissolved.v1"
+	EventProjectCreated  = "cube.ProjectCreated.v1"
+	EventProjectClosed   = "cube.ProjectClosed.v1"
+	EventProjectReopened = "cube.ProjectReopened.v1"
+	EventTaskAssigned    = "cube.TaskAssigned.v1"
+	EventTaskSubmitted   = "cube.TaskSubmitted.v1"
+	EventTaskConfirmed   = "cube.TaskConfirmed.v1"
+	EventReportSubmitted = "cube.ReportSubmitted.v1"
+	EventReportConfirmed = "cube.ReportConfirmed.v1"
+	EventReportRejected  = "cube.ReportRejected.v1"
+	EventApportionFormed = "cube.ApportionFormed.v1"
+	EventApportionFailed = "cube.ApportionFailed.v1"
 )
 
 // CubePayload 立方事件载荷。
@@ -47,23 +47,23 @@ type MemberPayload struct {
 
 // ProjectPayload 立方内项目事件载荷。
 type ProjectPayload struct {
-	CubeID    int64  `json:"cube_id,string"`
-	ProjectID int64  `json:"project_id,string"`
-	Name      string `json:"name,omitempty"`
-	SourceRef string `json:"source_ref,omitempty"`
-	OperatorID int64 `json:"operator_id,string,omitempty"`
-	Reason    string `json:"reason,omitempty"`
+	CubeID     int64  `json:"cube_id,string"`
+	ProjectID  int64  `json:"project_id,string"`
+	Name       string `json:"name,omitempty"`
+	SourceRef  string `json:"source_ref,omitempty"`
+	OperatorID int64  `json:"operator_id,string,omitempty"`
+	Reason     string `json:"reason,omitempty"`
 }
 
 // TaskPayload 任务事件载荷。
 type TaskPayload struct {
-	CubeID    int64  `json:"cube_id,string"`
-	TaskID    int64  `json:"task_id,string"`
-	ProjectID int64  `json:"project_id,string,omitempty"`
-	UserID    int64  `json:"user_id,string"`     // 接收者（负责人/确认人）
-	OperatorID int64 `json:"operator_id,string,omitempty"`
-	Status    int16  `json:"status"`
-	Reason    string `json:"reason,omitempty"`
+	CubeID     int64  `json:"cube_id,string"`
+	TaskID     int64  `json:"task_id,string"`
+	ProjectID  int64  `json:"project_id,string,omitempty"`
+	UserID     int64  `json:"user_id,string"` // 接收者（负责人/确认人）
+	OperatorID int64  `json:"operator_id,string,omitempty"`
+	Status     int16  `json:"status"`
+	Reason     string `json:"reason,omitempty"`
 }
 
 // ReportPayload 报备事件载荷。
@@ -77,11 +77,11 @@ type ReportPayload struct {
 
 // ApportionPayload 分摊事件载荷。
 type ApportionPayload struct {
-	CubeID    int64 `json:"cube_id,string"`
-	GroupID   int64 `json:"group_id,string"`
-	OrderID   int64 `json:"order_id,string,omitempty"`
-	TargetN   int   `json:"target_n,omitempty"`
-	Level     int16 `json:"level,omitempty"`
+	CubeID  int64 `json:"cube_id,string"`
+	GroupID int64 `json:"group_id,string"`
+	OrderID int64 `json:"order_id,string,omitempty"`
+	TargetN int   `json:"target_n,omitempty"`
+	Level   int16 `json:"level,omitempty"`
 }
 
 func newEvent(id, topic string, p any) eventbus.Event {
@@ -89,7 +89,9 @@ func newEvent(id, topic string, p any) eventbus.Event {
 	return eventbus.Event{ID: id, Topic: topic, OccurredAt: time.Now().UTC(), SpaceID: 1, Payload: payload}
 }
 
-func NewCubeCreated(id string, p CubePayload) eventbus.Event { return newEvent(id, EventCubeCreated, p) }
+func NewCubeCreated(id string, p CubePayload) eventbus.Event {
+	return newEvent(id, EventCubeCreated, p)
+}
 func NewMemberJoined(id string, p MemberPayload) eventbus.Event {
 	return newEvent(id, EventMemberJoined, p)
 }
@@ -108,9 +110,15 @@ func NewProjectClosed(id string, p ProjectPayload) eventbus.Event {
 func NewProjectReopened(id string, p ProjectPayload) eventbus.Event {
 	return newEvent(id, EventProjectReopened, p)
 }
-func NewTaskAssigned(id string, p TaskPayload) eventbus.Event { return newEvent(id, EventTaskAssigned, p) }
-func NewTaskSubmitted(id string, p TaskPayload) eventbus.Event { return newEvent(id, EventTaskSubmitted, p) }
-func NewTaskConfirmed(id string, p TaskPayload) eventbus.Event { return newEvent(id, EventTaskConfirmed, p) }
+func NewTaskAssigned(id string, p TaskPayload) eventbus.Event {
+	return newEvent(id, EventTaskAssigned, p)
+}
+func NewTaskSubmitted(id string, p TaskPayload) eventbus.Event {
+	return newEvent(id, EventTaskSubmitted, p)
+}
+func NewTaskConfirmed(id string, p TaskPayload) eventbus.Event {
+	return newEvent(id, EventTaskConfirmed, p)
+}
 func NewReportSubmitted(id string, p ReportPayload) eventbus.Event {
 	return newEvent(id, EventReportSubmitted, p)
 }

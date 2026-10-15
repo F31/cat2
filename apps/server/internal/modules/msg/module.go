@@ -35,7 +35,8 @@ type Deps struct {
 	Resolver *entityref.Registry
 	Realtime ports.Realtime // 一期 Noop（纯异步，无 WebSocket）
 	Audit    *audit.Recorder
-	Storage  ports.Storage // 归档压缩上传（未配置对象存储时开发态本地回退）
+	Storage        ports.Storage                  // 归档压缩上传（未配置对象存储时开发态本地回退）
+	MemberResolver contract.SessionMemberResolver // 群成员解析（cube 注册）
 }
 
 // Module msg 模块。
@@ -54,6 +55,7 @@ func (m *Module) Register(r *module.Registry) error {
 	m.svc = app.New(app.Options{
 		Repo: infra.NewStore(m.deps.Pool), Pool: m.deps.Pool, Bus: m.deps.Bus,
 		Policy: m.deps.Policy, Resolver: m.deps.Resolver, Storage: m.deps.Storage,
+		MemberResolver: m.deps.MemberResolver,
 	})
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/sessions", Handler: m.auth(m.handleEnsure)},
@@ -66,6 +68,12 @@ func (m *Module) Register(r *module.Registry) error {
 		module.JobDef{Name: "msg.ensure_partition", Interval: 24 * time.Hour, Run: m.svc.EnsurePartitions},
 		module.JobDef{Name: "msg.archive", Interval: 24 * time.Hour, Run: m.svc.Archive},
 	)
+	// 立方成员变更 → 群成员同步（订阅 cube 事件，topic 字面量）
+	for _, topic := range []string{"cube.MemberJoined.v1", "cube.MemberRemoved.v1", "cube.CubeDissolved.v1", "cube.CubeCreated.v1"} {
+		r.EventSubs = append(r.EventSubs, eventbus.Subscription{
+			Topic: topic, Handler: func(ctx context.Context, _ eventbus.Event) error { return m.svc.SyncGroups(ctx) },
+		})
+	}
 	return nil
 }
 
@@ -86,6 +94,14 @@ func (m *Module) Sessions(ctx context.Context, userID int64) ([]contract.Session
 func (m *Module) Send(ctx context.Context, userID, sessionID int64, msgType int16, content string) (contract.Message, error) {
 	return m.svc.Send(ctx, userID, sessionID, msgType, content)
 }
+func (m *Module) EnsureGroup(ctx context.Context, bizRef, title string, creatorID int64) (contract.Session, error) {
+	return m.svc.EnsureGroup(ctx, bizRef, title, creatorID)
+}
+func (m *Module) SyncGroups(ctx context.Context) error { return m.svc.SyncGroups(ctx) }
+
+// SetMemberResolver 注入群成员解析器（cube 注册；msg 不认识猫立方）。
+func (m *Module) SetMemberResolver(r contract.SessionMemberResolver) { m.deps.MemberResolver = r }
+
 func (m *Module) Sync(ctx context.Context, userID, sessionID, cursor int64, limit int) (contract.SyncResult, error) {
 	return m.svc.Sync(ctx, userID, sessionID, cursor, limit)
 }

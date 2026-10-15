@@ -2204,6 +2204,11 @@ export interface components {
             unread: number;
             /** Format: date-time */
             last_message_at?: string | null;
+            /** @description 群聊名称=立方名·模块名（或项目名） */
+            title?: string;
+            /** @description 最后消息摘要 */
+            last_preview?: string;
+            last_sender_id?: string;
         };
         Message: {
             id: string;

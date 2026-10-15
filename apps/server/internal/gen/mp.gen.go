@@ -1122,11 +1122,18 @@ type Session struct {
 	Id string `json:"id"`
 
 	// Kind 1单聊/2群聊
-	Kind          int          `json:"kind"`
-	LastMessageAt *time.Time   `json:"last_message_at,omitempty"`
-	LastSeq       int          `json:"last_seq"`
-	Peer          *SessionPeer `json:"peer,omitempty"`
-	Unread        int          `json:"unread"`
+	Kind          int        `json:"kind"`
+	LastMessageAt *time.Time `json:"last_message_at,omitempty"`
+
+	// LastPreview 最后消息摘要
+	LastPreview  *string      `json:"last_preview,omitempty"`
+	LastSenderId *string      `json:"last_sender_id,omitempty"`
+	LastSeq      int          `json:"last_seq"`
+	Peer         *SessionPeer `json:"peer,omitempty"`
+
+	// Title 群聊名称=立方名·模块名（或项目名）
+	Title  *string `json:"title,omitempty"`
+	Unread int     `json:"unread"`
 }
 
 // SessionPeer defines model for SessionPeer.

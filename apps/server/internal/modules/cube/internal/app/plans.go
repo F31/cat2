@@ -100,7 +100,9 @@ func (s *Service) planTier(ctx context.Context, level int16) domain.PlanTier {
 }
 
 // PlanOf 立方当前档位定义。
-func (s *Service) PlanOf(ctx context.Context, level int16) domain.PlanTier { return s.planTier(ctx, level) }
+func (s *Service) PlanOf(ctx context.Context, level int16) domain.PlanTier {
+	return s.planTier(ctx, level)
+}
 
 // ChangePlan 购买/升级订阅（生成 cube_plan 订单；履约在支付成功后）。
 func (s *Service) ChangePlan(ctx context.Context, cubeID, userID int64, level int16, years int) (tradecontract.Order, error) {
@@ -272,7 +274,6 @@ func (s *Service) HandleApportionFormed(ctx context.Context, payload []byte) err
 	return s.repo.SetPlan(ctx, cubeID, snap.Level, expire)
 }
 
-
 // ---- 项目关联（§4）----
 
 // LinkReq 引入申请（契约类型别名）。
@@ -421,7 +422,19 @@ func (s *Service) CreateProjectFromRef(ctx context.Context, cubeID, userID int64
 	if err != nil {
 		return 0, err
 	}
+	if s.msg != nil {
+		_, _ = s.msg.EnsureGroup(ctx, "cube.project:"+strconv.FormatInt(p.ID, 10), p.Name, userID)
+	}
 	return p.ID, nil
+}
+
+// ProjectCube 项目所属立方（群成员解析用）。
+func (s *Service) ProjectCube(ctx context.Context, projectID int64) (int64, error) {
+	p, err := s.repo.GetProject(ctx, projectID)
+	if err != nil {
+		return 0, err
+	}
+	return p.CubeID, nil
 }
 
 // PublishToPlatform 立方内未发布项目「发布到平台」：调 content.CreateFromCube 回写 ID。

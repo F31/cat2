@@ -11,20 +11,20 @@ import (
 
 // Project 立方内项目行。
 type Project struct {
-	ID             int64
-	CubeID         int64
-	Type           int16
-	ContentProject *int64
-	Name           string
-	RelatedRef     string
+	ID              int64
+	CubeID          int64
+	Type            int16
+	ContentProject  *int64
+	Name            string
+	RelatedRef      string
 	RelatedCustomer string
-	LeaderID       int64
-	Participants   []string
-	Progress       int16
-	TODO           int
-	Status         int16
-	SourceRef      string
-	CreatedAt      time.Time
+	LeaderID        int64
+	Participants    []string
+	Progress        int16
+	TODO            int
+	Status          int16
+	SourceRef       string
+	CreatedAt       time.Time
 }
 
 // Task 任务行。
@@ -45,31 +45,31 @@ type Task struct {
 
 // Report 报备行。
 type Report struct {
-	ID             int64
-	CubeID         int64
-	ProjectID      *int64
-	ReporterID     int64
-	CustomerName   string
+	ID                 int64
+	CubeID             int64
+	ProjectID          *int64
+	ReporterID         int64
+	CustomerName       string
 	CustomerContactEnc []byte
-	CustomerType   string
-	RegionCode     string
-	RelatedItemRef string
-	AmountWan      int64
-	Note           string
-	Status         int16
-	RejectReason   string
-	ConfirmedAt    *time.Time
-	CreatedAt      time.Time
+	CustomerType       string
+	RegionCode         string
+	RelatedItemRef     string
+	AmountWan          int64
+	Note               string
+	Status             int16
+	RejectReason       string
+	ConfirmedAt        *time.Time
+	CreatedAt          time.Time
 }
 
 // Research 研究记录行。
 type Research struct {
-	ID        int64
-	ProjectID int64
-	Content   string
-	Decision  string
+	ID         int64
+	ProjectID  int64
+	Content    string
+	Decision   string
 	OperatorID int64
-	CreatedAt time.Time
+	CreatedAt  time.Time
 }
 
 // LinkReq 项目引入申请行。

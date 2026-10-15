@@ -170,12 +170,14 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	cubeMod := cube.New(cube.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine, Entities: entityReg,
 		Audit: auditRec, Encryptor: encryptor, Trade: tradeMod.Facade(), Settings: settingsReg,
-		Content: contentMod.Facade(),
+		Content: contentMod.Facade(), Msg: msgMod.Facade(),
 	})
 	circleMod := circle.New(circle.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine,
 		Encryptor: encryptor, Entities: entityReg, Content: contentMod.Facade(), Cube: cubeMod.Facade(),
 	})
+	// cube 作为群成员解析器注册给 msg（msg 不认识猫立方）
+	msgMod.SetMemberResolver(cubeMod.SessionMemberResolver())
 	noticeMod := notice.New(notice.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Circle: circleMod.Facade(),
 	})

@@ -60,4 +60,6 @@ CREATE TABLE IF NOT EXISTS msg_archive_meta (
 	status smallint NOT NULL DEFAULT 0,       -- 0待归档/1已归档
 	created_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE msg_session ADD COLUMN IF NOT EXISTS title varchar(64);
 `

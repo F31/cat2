@@ -43,6 +43,13 @@ type Repo interface {
 	ExportPartition(ctx context.Context, name string, w io.Writer) (int64, error)
 	MarkArchived(ctx context.Context, name, objectKey string) error
 	DetachPartition(ctx context.Context, name string) error
+	EnsureGroup(ctx context.Context, tx db.Tx, id int64, bizRef, title string) (int64, bool, error)
+	ListGroups(ctx context.Context) ([]struct {
+		ID     int64
+		BizRef string
+	}, error)
+	ListMembers(ctx context.Context, sessionID int64) ([]int64, error)
+	RemoveMember(ctx context.Context, tx db.Tx, sessionID, userID int64) error
 }
 
 // Storage 归档对象存储（压缩包上传）。
@@ -52,27 +59,29 @@ type Storage interface {
 
 // Options 构造参数。
 type Options struct {
-	Repo     Repo
-	Pool     *db.Pool
-	Bus      *eventbus.Bus
-	Policy   *policy.Engine
-	Resolver *entityref.Registry
-	Storage  Storage
+	Repo           Repo
+	Pool           *db.Pool
+	Bus            *eventbus.Bus
+	Policy         *policy.Engine
+	Resolver       *entityref.Registry
+	Storage        Storage
+	MemberResolver contract.SessionMemberResolver
 }
 
 // Service msg 应用服务。
 type Service struct {
-	repo     Repo
-	pool     *db.Pool
-	bus      *eventbus.Bus
-	policy   *policy.Engine
-	resolver *entityref.Registry
-	storage  Storage
+	repo           Repo
+	pool           *db.Pool
+	bus            *eventbus.Bus
+	policy         *policy.Engine
+	resolver       *entityref.Registry
+	storage        Storage
+	memberResolver contract.SessionMemberResolver
 }
 
 func New(o Options) *Service {
 	return &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, policy: o.Policy,
-		resolver: o.Resolver, storage: o.Storage}
+		memberResolver: o.MemberResolver, storage: o.Storage}
 }
 
 // EnsureSession 发起单聊（幂等；发起=会员权益）。
@@ -129,13 +138,106 @@ func (s *Service) Sessions(ctx context.Context, userID int64) ([]contract.Sessio
 	}
 	out := make([]contract.Session, 0, len(rows))
 	for _, r := range rows {
-		item := contract.Session{ID: r.ID, Kind: r.Kind, LastSeq: r.LastSeq, Unread: r.Unread, LastMessageAt: r.LastMessageAt}
+		item := contract.Session{ID: r.ID, Kind: r.Kind, LastSeq: r.LastSeq, Unread: r.Unread,
+			LastMessageAt: r.LastMessageAt, Title: r.Title, LastPreview: r.LastPreview, LastSenderID: r.LastSenderID}
 		if r.Kind == contract.KindDM && r.PeerID > 0 {
 			item.Peer = s.peer(ctx, r.PeerID)
 		}
 		out = append(out, item)
 	}
 	return out, nil
+}
+
+// EnsureGroup 创建/获取群聊会话（成员由 SessionMemberResolver 解析；msg 不认识猫立方）。
+func (s *Service) EnsureGroup(ctx context.Context, bizRef, title string, creatorID int64) (contract.Session, error) {
+	if bizRef == "" {
+		return contract.Session{}, domain.ErrInvalidTarget
+	}
+	var sid int64
+	err := s.pool.InTx(ctx, func(tx db.Tx) error {
+		id, _, err := s.repo.EnsureGroup(ctx, tx, int64(ids.New()), bizRef, title)
+		if err != nil {
+			return err
+		}
+		sid = id
+		members, err := s.groupMembers(ctx, bizRef)
+		if err != nil {
+			return err
+		}
+		if creatorID != 0 {
+			members = append(members, creatorID)
+		}
+		for _, uid := range dedupe(members) {
+			if err := s.repo.AddMember(ctx, tx, sid, uid, 1); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return contract.Session{}, err
+	}
+	return contract.Session{ID: sid, Kind: contract.KindGroup, Title: title}, nil
+}
+
+// SyncGroups 成员变更后重算全部群聊成员（cube 成员事件驱动）。
+func (s *Service) SyncGroups(ctx context.Context) error {
+	groups, err := s.repo.ListGroups(ctx)
+	if err != nil {
+		return err
+	}
+	for _, g := range groups {
+		desired, err := s.groupMembers(ctx, g.BizRef)
+		if err != nil {
+			continue
+		}
+		set := map[int64]bool{}
+		for _, uid := range desired {
+			set[uid] = true
+		}
+		current, err := s.repo.ListMembers(ctx, g.ID)
+		if err != nil {
+			continue
+		}
+		if err := s.pool.InTx(ctx, func(tx db.Tx) error {
+			for _, uid := range desired {
+				if err := s.repo.AddMember(ctx, tx, g.ID, uid, 1); err != nil {
+					return err
+				}
+			}
+			for _, uid := range current {
+				if !set[uid] {
+					if err := s.repo.RemoveMember(ctx, tx, g.ID, uid); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		}); err != nil {
+			slog.Warn("msg 群成员同步失败", "session", g.ID, "err", err)
+		}
+	}
+	return nil
+}
+
+func (s *Service) groupMembers(ctx context.Context, bizRef string) ([]int64, error) {
+	if s.memberResolver == nil {
+		return nil, nil
+	}
+	return s.memberResolver.Members(ctx, bizRef)
+}
+
+func dedupe(idsIn []int64) []int64 {
+	seen := map[int64]bool{}
+	out := make([]int64, 0, len(idsIn))
+	for _, id := range idsIn {
+		if id == 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out
 }
 
 // Send 发送消息（成员校验；seq 由会话行锁分配）。

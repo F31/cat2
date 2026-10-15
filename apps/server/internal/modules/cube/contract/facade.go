@@ -8,11 +8,11 @@ import (
 
 // 成员角色。
 const (
-	RoleNone     int16 = 0
-	RoleLeader   int16 = 1 // 猫王
-	RoleHoney    int16 = 2 // 猫蜜
-	RoleMember   int16 = 3 // 普通成员
-	RoleCoBuild  int16 = 4 // 共建成员（分摊成团）
+	RoleNone    int16 = 0
+	RoleLeader  int16 = 1 // 猫王
+	RoleHoney   int16 = 2 // 猫蜜
+	RoleMember  int16 = 3 // 普通成员
+	RoleCoBuild int16 = 4 // 共建成员（分摊成团）
 )
 
 // 立方状态（状态机 #5）。
@@ -38,28 +38,28 @@ const (
 
 // CubeBrief 立方摘要（EntityResolver/展示用）。
 type CubeBrief struct {
-	ID          int64  `json:"id,string"`
-	Name        string `json:"name"`
-	LeaderID    int64  `json:"leader_id,string"`
-	HoneyID     int64  `json:"honey_id,string"`
-	PlanLevel   int16  `json:"plan_level"`
+	ID           int64      `json:"id,string"`
+	Name         string     `json:"name"`
+	LeaderID     int64      `json:"leader_id,string"`
+	HoneyID      int64      `json:"honey_id,string"`
+	PlanLevel    int16      `json:"plan_level"`
 	PlanExpireAt *time.Time `json:"plan_expire_at,omitempty"`
-	Status      int16  `json:"status"`
-	MemberCount int    `json:"member_count"`
-	RegionCode  string `json:"region_code,omitempty"`
+	Status       int16      `json:"status"`
+	MemberCount  int        `json:"member_count"`
+	RegionCode   string     `json:"region_code,omitempty"`
 }
 
 // CubeDetail 立方详情（含画像字段）。
 type CubeDetail struct {
 	CubeBrief
-	OrgID        int64    `json:"org_id,string,omitempty"`
+	OrgID         int64    `json:"org_id,string,omitempty"`
 	IndustryCodes []string `json:"industry_codes"`
-	ChainStage   string   `json:"chain_stage"`
-	Direction    string   `json:"direction"`
-	Resources    string   `json:"resources"`
-	Strength     string   `json:"strength"`
-	Cooperation  string   `json:"cooperation"`
-	MyRole       int16    `json:"my_role"`
+	ChainStage    string   `json:"chain_stage"`
+	Direction     string   `json:"direction"`
+	Resources     string   `json:"resources"`
+	Strength      string   `json:"strength"`
+	Cooperation   string   `json:"cooperation"`
+	MyRole        int16    `json:"my_role"`
 }
 
 // Member 成员。
@@ -93,21 +93,21 @@ type InviteTicket struct {
 
 // Project 立方内项目（引用 + 本地状态）。
 type Project struct {
-	ID              int64     `json:"id,string"`
-	CubeID          int64     `json:"cube_id,string"`
-	Type            int16     `json:"type"` // 1研究/2承接
-	ContentProjectID int64    `json:"content_project_id,string,omitempty"`
-	Name            string    `json:"name"`
-	RelatedRef      string    `json:"related_ref,omitempty"`
-	RelatedCustomer string    `json:"related_customer,omitempty"`
-	LeaderID        int64     `json:"leader_id,string"`
-	Participants    []string  `json:"participants"`
-	Progress        int16     `json:"progress"`
-	TodoCount       int       `json:"todo_count"`
-	Status          int16     `json:"status"` // 0进行中/1已关闭
-	SourceRef       string    `json:"source_ref,omitempty"`
-	PlatformStatus  string    `json:"platform_status,omitempty"` // active/taken_down（平台项目下架显示）
-	CreatedAt       time.Time `json:"created_at"`
+	ID               int64     `json:"id,string"`
+	CubeID           int64     `json:"cube_id,string"`
+	Type             int16     `json:"type"` // 1研究/2承接
+	ContentProjectID int64     `json:"content_project_id,string,omitempty"`
+	Name             string    `json:"name"`
+	RelatedRef       string    `json:"related_ref,omitempty"`
+	RelatedCustomer  string    `json:"related_customer,omitempty"`
+	LeaderID         int64     `json:"leader_id,string"`
+	Participants     []string  `json:"participants"`
+	Progress         int16     `json:"progress"`
+	TodoCount        int       `json:"todo_count"`
+	Status           int16     `json:"status"` // 0进行中/1已关闭
+	SourceRef        string    `json:"source_ref,omitempty"`
+	PlatformStatus   string    `json:"platform_status,omitempty"` // active/taken_down（平台项目下架显示）
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // Task 任务（四态；project_id=0 表示内部工作安排）。
@@ -156,13 +156,13 @@ type Research struct {
 
 // ProjectInput 新建项目入参。
 type ProjectInput struct {
-	Type            int16
-	Name            string
-	RelatedRef      string
-	RelatedCustomer string
-	Participants    []string
+	Type             int16
+	Name             string
+	RelatedRef       string
+	RelatedCustomer  string
+	Participants     []string
 	ContentProjectID int64
-	SourceRef       string
+	SourceRef        string
 }
 
 // TaskInput 新建任务入参。

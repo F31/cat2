@@ -33,6 +33,9 @@ type Session struct {
 	LastSeq       int64      `json:"last_seq"`
 	Unread        int        `json:"unread"`
 	LastMessageAt *time.Time `json:"last_message_at,omitempty"`
+	Title         string     `json:"title,omitempty"`          // 群聊名称
+	LastPreview   string     `json:"last_preview,omitempty"`   // 最后消息摘要
+	LastSenderID  int64      `json:"last_sender_id,string,omitempty"`
 }
 
 // Message 消息。
@@ -77,4 +80,8 @@ type Facade interface {
 	Sync(ctx context.Context, userID, sessionID, cursor int64, limit int) (SyncResult, error)
 	// MarkRead 提交已读游标到指定序号。
 	MarkRead(ctx context.Context, userID, sessionID, readSeq int64) error
+	// EnsureGroup 创建/获取群聊会话（bizRef 幂等；成员由 SessionMemberResolver 解析）。
+	EnsureGroup(ctx context.Context, bizRef, title string, creatorID int64) (Session, error)
+	// SyncGroups 成员变更后重算全部群聊成员（cube 成员事件驱动）。
+	SyncGroups(ctx context.Context) error
 }

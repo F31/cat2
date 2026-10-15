@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"catcube/internal/kernel/db"
@@ -88,6 +89,9 @@ func (s *Service) CreateProject(ctx context.Context, cubeID, userID int64, in co
 	if err != nil {
 		slog.Error("cube 建项目失败", "err", err)
 		return contract.Project{}, err
+	}
+	if s.msg != nil {
+		_, _ = s.msg.EnsureGroup(ctx, "cube.project:"+strconv.FormatInt(p.ID, 10), p.Name, userID)
 	}
 	return toProject(p), nil
 }
