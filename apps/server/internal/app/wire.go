@@ -135,7 +135,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		identityDeps.WeChat = dev
 		identityDeps.PhoneCode = dev
 	}
-	storage := oss.NewClient("", "default", "", "", "")
+	storage := oss.NewClient(cfg.OSSEndpoint, cfg.OSSBucket, cfg.CDNHost, cfg.OSSAK, cfg.OSSSK)
 
 	// 模块（shared + R0 + R1 + R2）
 	identityMod := identity.New(identityDeps)

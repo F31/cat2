@@ -35,6 +35,7 @@ import (
 	"catcube/internal/modules/notice"
 	"catcube/internal/modules/trade"
 	"catcube/internal/modules/trust"
+	"catcube/internal/shared/dict"
 	"catcube/internal/shared/media"
 	"catcube/pkg/ids"
 )
@@ -3410,6 +3411,43 @@ func TestIntegrationMediaOrphanPurge(t *testing.T) {
 	}
 }
 
+// 图片规格访问（p1 §12.3）：规格校验 + URL 输出（CDN 处理参数注入）。
+func TestIntegrationMediaURLSpecs(t *testing.T) {
+	h := newTestApp(t)
+	_, tok := loginUser(t, h)
+	_, env := h.do(http.MethodPost, "/api/mp/v1/media/uploads", tok, map[string]any{
+		"filename": "a.png", "content_type": "image/png", "size": 1024,
+	})
+	var ticket struct {
+		FileID int64 `json:"file_id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &ticket)
+	if ticket.FileID == 0 {
+		t.Fatalf("上传申请失败: %+v", env)
+	}
+	var mm *media.Module
+	for _, m := range h.app.Modules {
+		if v, ok := m.(*media.Module); ok {
+			mm = v
+		}
+	}
+	if mm == nil {
+		t.Fatal("media 模块未装载")
+	}
+	ctx := context.Background()
+	// 已知规格：返回非空地址
+	for _, spec := range []string{"", "thumb_s", "cover", "avatar"} {
+		u, err := mm.Facade().URL(ctx, ticket.FileID, spec)
+		if err != nil || u == "" {
+			t.Fatalf("规格 %q 应返回地址: %q %v", spec, u, err)
+		}
+	}
+	// 未知规格：明确报错
+	if _, err := mm.Facade().URL(ctx, ticket.FileID, "thumb_xl"); err == nil {
+		t.Fatal("未知规格应报错")
+	}
+}
+
 // 死信查询与重放（p1 §6.2）：标记死信 → 后台列出 → 重放复位。
 func TestIntegrationDeadLetterReplay(t *testing.T) {
 	h := newTestApp(t)
@@ -4162,4 +4200,68 @@ func grepLine(text, key string) string {
 		}
 	}
 	return ""
+}
+
+// 画像字段模板渲染与校验（p1 §11.4）：字段池 + 主体类型模板 → 渲染/必填校验/类型校验。
+func TestIntegrationProfileFieldTemplate(t *testing.T) {
+	h := newTestApp(t)
+	var dm *dict.Module
+	for _, m := range h.app.Modules {
+		if v, ok := m.(*dict.Module); ok {
+			dm = v
+		}
+	}
+	if dm == nil {
+		t.Fatal("dict 模块未装载")
+	}
+	ctx := context.Background()
+	// 导入种子（字段池 + 模板）
+	if _, err := dm.Seed(ctx, "../../../../contracts/seeds/dict"); err != nil {
+		t.Fatalf("种子导入失败: %v", err)
+	}
+	f := dm.Facade()
+	// 个人模板渲染：含字段池元数据、按 sort 排序
+	fields, err := f.FieldTemplate(ctx, "person")
+	if err != nil {
+		t.Fatalf("模板渲染失败: %v", err)
+	}
+	if len(fields) == 0 || fields[0].Field != "real_name" || fields[0].Label != "真实姓名" || !fields[0].Required {
+		t.Fatalf("模板渲染不正确: %+v", fields)
+	}
+	if fields[0].ValueType == "" {
+		t.Fatal("应带字段池 value_type")
+	}
+	// 必填缺失 → 拒绝
+	if _, err := f.RenderValidate(ctx, "person", map[string]any{"industry": []any{"A01"}}); err == nil {
+		t.Fatal("缺必填字段应拒绝")
+	}
+	// 类型非法 → 拒绝（industry 需要数组）
+	if _, err := f.RenderValidate(ctx, "person", map[string]any{
+		"real_name": "张三", "region": "310000", "industry": "A01",
+	}); err == nil {
+		t.Fatal("industry 非数组应拒绝")
+	}
+	// 合法 → 通过
+	if _, err := f.RenderValidate(ctx, "person", map[string]any{
+		"real_name": "张三", "region": "310000", "industry": []any{"A01"},
+	}); err != nil {
+		t.Fatalf("合法画像应通过: %v", err)
+	}
+	// 组织模板字段与个人模板不同（组织字段存在、个人字段不出现）
+	orgFields, err := f.FieldTemplate(ctx, "org")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hasOrg, hasBackground := false, false
+	for _, x := range orgFields {
+		if x.Field == "org_name" {
+			hasOrg = true
+		}
+		if x.Field == "background" {
+			hasBackground = true
+		}
+	}
+	if !hasOrg || hasBackground {
+		t.Fatalf("组织模板应含组织字段且不含个人字段: %+v", orgFields)
+	}
 }

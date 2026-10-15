@@ -108,13 +108,17 @@ func (m *Module) Upload(ctx context.Context, mime string, sizeBytes int64, purpo
 	return contract.UploadTicket{FileID: int64(id), UploadURL: url, ExpiresAt: time.Now().Add(15 * time.Minute)}, nil
 }
 
-// URL 访问地址。
+// URL 访问地址（spec 见 specs.go：缩略图/封面走 CDN 处理参数）。
 func (m *Module) URL(ctx context.Context, fileID int64, spec string) (string, error) {
+	sp, err := ResolveSpec(spec)
+	if err != nil {
+		return "", err
+	}
 	var bucket, key string
 	if err := m.pool.QueryRow(ctx, `SELECT bucket, object_key FROM med_file WHERE id=$1`, fileID).Scan(&bucket, &key); err != nil {
 		return "", err
 	}
-	return m.storage.URL(ctx, bucket, key, spec)
+	return m.storage.URL(ctx, bucket, key, sp.ProviderOps)
 }
 
 // Bind 引用计数 +1。

@@ -104,7 +104,7 @@
 - [x] 11.1 迁移：`dct_taxonomy_option`（dimension/code/label/parent_code/sort/status，只停用不删除）、`dct_subject_type`、`dct_field_template`、`dct_field_def`
 - [x] 11.2 taxonomy 服务：`Options(dimension)`、`Resolve(code)`；行业/子行业两级联动（parent_code 支持扩展，未来加级不发版）
 - [x] 11.3 主体类型配置：类型编码创建后不可改、名称、图标、can_publish、home_visible、排序、状态
-- [ ] 11.4 画像字段模板：表结构与字段池已建；模板渲染/校验服务为占位
+- [x] 11.4 画像字段模板：`dict` 字段池（`dct_field_def`）+ 主体类型模板（`dct_field_template.fields`）种子（`contracts/seeds/dict/{field_def,field_template}.json`）；`FieldTemplate/RenderValidate`（模板与字段池联表渲染、按 sort 排序、必填与类型校验、引用未登记字段显式报错）；集成测试 `TestIntegrationProfileFieldTemplate`
 - [x] 11.5 `TagSet` 值对象与 `ValidateTagSet` 统一校验（非法 code 拒绝）
 - [x] 11.6 `contracts/seeds/` 种子导入命令（幂等）：行业两级、区域省市县、合作需求/供给、会议/活动领域、主体类型六类（`catcube seed`）
 - [x] 11.7 admin/：`dict.taxonomy`（主体类型与选项）、`profile.templates`（画像字段模板）AdminSection 声明已登记（页面 p4）
@@ -113,7 +113,7 @@
 
 - [x] 12.1 迁移：`med_file`（详细设计 4.2.7 全字段）
 - [x] 12.2 预签名直传：类型与大小校验（JPG/JPEG/PNG ≤5MB）已实现；OSS 预签名为骨架（供应商接入 TODO）；封面尺寸校验待补
-- [ ] 12.3 缩略图生成与 CDN 域名输出；`Url(fileId, 规格)`
+- [x] 12.3 图片规格与 CDN 输出：`media/specs.go` 规格集（orig/thumb_s/m/thumb_l/cover/avatar → 供应商处理参数，CDN 侧生成缩略图）；`URL(fileId, spec)` 校验规格后注入 CDN 处理参数（未知规格显式报错）；OSS/CDN 经 `CATCUBE_OSS_ENDPOINT`/`CATCUBE_CDN_HOST` 配置注入；单测 `specs_test` + 集成测试 `TestIntegrationMediaURLSpecs`
 - [x] 12.4 `Bind(ownerRef)`/`Unbind` 引用计数已实现；孤儿文件定时清理 `media.purge_orphans`（引用归零且超 7 天→删对象+删行，测试覆盖）；实体删除事件回收路径已备（`Unbind` 供各模块调用）
 - [x] 12.5 entityref 轻量包：`EntityRef{type,id}` 类型 + `EntityResolver` 注册表 + `Resolve/BatchResolve`（无独立表）
 

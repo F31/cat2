@@ -3,6 +3,9 @@ package infra
 
 import (
 	"context"
+	"errors"
+
+	"github.com/jackc/pgx/v5"
 
 	"catcube/internal/kernel/db"
 	"catcube/internal/shared/dict/contract"
@@ -39,6 +42,37 @@ func (r *Repo) Resolve(ctx context.Context, code string) (contract.Option, error
 		 FROM dct_taxonomy_option WHERE code=$1`, code).
 		Scan(&o.Dimension, &o.Code, &o.Label, &o.ParentCode, &o.Sort, &o.Enabled)
 	return o, err
+}
+
+// FieldDefs 字段池。
+func (r *Repo) FieldDefs(ctx context.Context) ([]contract.FieldDef, error) {
+	rows, err := r.pool.Query(ctx, `SELECT field, label, value_type FROM dct_field_def ORDER BY field`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []contract.FieldDef
+	for rows.Next() {
+		var d contract.FieldDef
+		if err := rows.Scan(&d.Field, &d.Label, &d.ValueType); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// FieldTemplateFields 读取某主体类型的模板字段声明 [{field,required,sort}]。
+func (r *Repo) FieldTemplateFields(ctx context.Context, subjectTypeCode string) ([]byte, error) {
+	var raw []byte
+	err := r.pool.QueryRow(ctx, `SELECT fields FROM dct_field_template WHERE name=$1`, subjectTypeCode).Scan(&raw)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return raw, nil
 }
 
 func (r *Repo) SubjectTypes(ctx context.Context) ([]contract.SubjectType, error) {

@@ -23,6 +23,13 @@ type Config struct {
 	IdentityEncKey string // 字段加密（手机号/证件号）
 	BlindKey       string // 盲索引（phone_hmac）独立密钥
 
+	// 对象存储 / CDN（未配置时本地回退，开发态）
+	OSSEndpoint string
+	OSSBucket   string
+	CDNHost     string
+	OSSAK       string
+	OSSSK       string
+
 	// Moderation 内容安全实现：空=禁用（不机检）/dev=开发演练实现（含降级开关）
 	Moderation string
 

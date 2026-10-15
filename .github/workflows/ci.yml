@@ -13,10 +13,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-      - name: 边界检查（依赖阶梯/表前缀/infra 禁令/bff 只读）
-        run: make archcheck
-      - name: go vet
-        run: cd apps/server && go vet ./...
+      - name: 全量静态检查（archcheck + 日志敏感信息扫描 + go vet）
+        run: make lint
 
   test:
     runs-on: ubuntu-latest
@@ -25,10 +23,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-      - name: 后端测试
-        run: cd apps/server && go test ./...
+      - name: 后端测试（含 pkg 公共库）
+        run: |
+          cd apps/server && go test ./... && go test ./pkg/...
       - name: archcheck 自检
         run: cd tools/archcheck && go test ./...
+      - name: logscan 自检
+        run: cd tools/logscan && go test ./...
 
   contract:
     runs-on: ubuntu-latest

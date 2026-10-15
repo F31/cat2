@@ -1,0 +1,35 @@
+{
+  "dimension": "field_template",
+  "version": 1,
+  "note": "画像字段模板（按主体类型；person=个人，org=组织；第二层匹配画像含 industry/region/need/offer）。",
+  "items": [
+    {
+      "code": "person",
+      "name": "个人名片模板",
+      "fields": [
+        { "field": "real_name", "required": true, "sort": 1 },
+        { "field": "position", "required": false, "sort": 2 },
+        { "field": "industry", "required": true, "sort": 3 },
+        { "field": "region", "required": true, "sort": 4 },
+        { "field": "need", "required": false, "sort": 5 },
+        { "field": "offer", "required": false, "sort": 6 },
+        { "field": "intro", "required": false, "sort": 7 },
+        { "field": "contact_phone", "required": false, "sort": 8 }
+      ]
+    },
+    {
+      "code": "org",
+      "name": "组织名片模板",
+      "fields": [
+        { "field": "org_name", "required": true, "sort": 1 },
+        { "field": "org_nature", "required": true, "sort": 2 },
+        { "field": "industry", "required": true, "sort": 3 },
+        { "field": "region", "required": true, "sort": 4 },
+        { "field": "main_business", "required": false, "sort": 5 },
+        { "field": "qualification", "required": false, "sort": 6 },
+        { "field": "org_intro", "required": false, "sort": 7 },
+        { "field": "contact_phone", "required": false, "sort": 8 }
+      ]
+    }
+  ]
+}

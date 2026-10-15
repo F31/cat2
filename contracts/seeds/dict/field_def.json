@@ -1,0 +1,22 @@
+{
+  "dimension": "field_def",
+  "version": 1,
+  "note": "画像字段池（代码侧登记，随版本发布；模板只能引用此处字段）。",
+  "items": [
+    { "code": "real_name", "name": "真实姓名", "value_type": "string" },
+    { "code": "org_name", "name": "组织名称", "value_type": "string" },
+    { "code": "org_nature", "name": "组织性质", "value_type": "tags" },
+    { "code": "position", "name": "职务", "value_type": "string" },
+    { "code": "industry", "name": "所属行业", "value_type": "tags" },
+    { "code": "region", "name": "所在地区", "value_type": "enum" },
+    { "code": "need", "name": "合作需求", "value_type": "tags" },
+    { "code": "offer", "name": "合作提供", "value_type": "tags" },
+    { "code": "intro", "name": "个人简介", "value_type": "text" },
+    { "code": "org_intro", "name": "组织简介", "value_type": "text" },
+    { "code": "main_business", "name": "主要交付", "value_type": "text" },
+    { "code": "qualification", "name": "资质证明", "value_type": "file" },
+    { "code": "background", "name": "背景身份", "value_type": "string" },
+    { "code": "contact_phone", "name": "联系电话", "value_type": "phone" },
+    { "code": "annual_revenue", "name": "年营收（万元）", "value_type": "int" }
+  ]
+}

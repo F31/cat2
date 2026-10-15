@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"sort"
@@ -22,6 +23,12 @@ type SeedFile struct {
 		Name       string `json:"name"`
 		ParentCode string `json:"parent_code"`
 		Sort       int    `json:"sort"`
+		ValueType  string `json:"value_type,omitempty"` // field_def 维度
+		Fields     []struct {
+			Field    string `json:"field"`
+			Required bool   `json:"required"`
+			Sort     int    `json:"sort"`
+		} `json:"fields,omitempty"` // field_template 维度
 	} `json:"items"`
 }
 
@@ -64,7 +71,23 @@ func (r *Repo) importOne(ctx context.Context, sf SeedFile) (int, error) {
 				return fmt.Errorf("维度 %s 存在缺 code/name 的条目", sf.Dimension)
 			}
 			var err error
-			if sf.Dimension == "subject_type" {
+			if sf.Dimension == "field_def" {
+				_, err = tx.Exec(ctx, `
+					INSERT INTO dct_field_def (field, label, value_type)
+					VALUES ($1,$2,$3)
+					ON CONFLICT (field) DO UPDATE SET label=EXCLUDED.label, value_type=EXCLUDED.value_type`,
+					it.Code, it.Name, it.ValueType)
+			} else if sf.Dimension == "field_template" {
+				raw, merr := json.Marshal(it.Fields)
+				if merr != nil {
+					return merr
+				}
+				_, err = tx.Exec(ctx, `
+					INSERT INTO dct_field_template (id, name, fields, created_at, updated_at)
+					VALUES ($1,$2,$3,now(),now())
+					ON CONFLICT (id) DO UPDATE SET fields=EXCLUDED.fields, updated_at=now()`,
+					int64(templateID(it.Code)), it.Code, raw)
+			} else if sf.Dimension == "subject_type" {
 				_, err = tx.Exec(ctx, `
 					INSERT INTO dct_subject_type (id, code, name, sort, status, created_at, updated_at)
 					VALUES ($1,$2,$3,$4,1,now(),now())
@@ -85,4 +108,11 @@ func (r *Repo) importOne(ctx context.Context, sf SeedFile) (int, error) {
 		return nil
 	})
 	return n, err
+}
+
+// templateID 由主体类型编码派生稳定 ID（幂等导入：同编码同 ID）。
+func templateID(code string) int64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte("dict.field_template." + code))
+	return int64(h.Sum64() & 0x7fffffffffffffff)
 }
