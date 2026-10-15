@@ -558,8 +558,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 详情页聚合（名片+Badges+会员等级+关注状态；内容类含归属人名片） */
+        /** 详情页聚合（名片+Badges+会员等级+关注状态；内容类含归属人名片）；游客可看（登录态可选） */
         get: operations["aggregateDetail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/aggregate/contact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 揭示联系方式（手机号，会员权益；非会员 120007） */
+        get: operations["aggregateContact"];
         put?: never;
         post?: never;
         delete?: never;
@@ -775,10 +792,220 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cubes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 我参与的猫立方 */
+        get: operations["listMyCubes"];
+        put?: never;
+        /** 创建猫立方（已实名个人；创建者=猫王，必配猫蜜） */
+        post: operations["createCube"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 凭邀请码加入猫立方（已实名、未被移除过） */
+        post: operations["joinCube"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 猫立方详情（含我的角色） */
+        get: operations["getCube"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 生成邀请码（猫王/猫蜜；7 天有效） */
+        post: operations["inviteCube"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 成员列表 */
+        get: operations["listCubeMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/members/{uid}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 移除成员（猫王/猫蜜；被移除者不可自行重进） */
+        post: operations["removeCubeMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 主动退出（猫王须先转让） */
+        post: operations["leaveCube"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 转让猫王（仅猫王；目标须为成员） */
+        post: operations["transferCube"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/dissolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 解散猫立方（猫王） */
+        post: operations["dissolveCube"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Cube: {
+            id: string;
+            name: string;
+            leader_id: string;
+            honey_id?: string;
+            /** @description 1 基础 / 2 进阶 / 3 高阶 */
+            plan_level: number;
+            /** Format: date-time */
+            plan_expire_at?: string | null;
+            /** @description 0 正常 / 1 封禁 / 2 已解散 */
+            status: number;
+            member_count: number;
+            region_code?: string;
+        };
+        CubeDetail: components["schemas"]["Cube"] & {
+            org_id?: string;
+            industry_codes?: string[];
+            chain_stage?: string;
+            direction?: string;
+            resources?: string;
+            strength?: string;
+            cooperation?: string;
+            /** @description 0 非成员 / 1 猫王 / 2 猫蜜 / 3 成员 / 4 共建成员 */
+            my_role?: number;
+        };
+        CubeMember: {
+            user_id: string;
+            role: number;
+            status: number;
+            /** Format: date-time */
+            joined_at?: string;
+        };
+        InviteTicket: {
+            code: string;
+            /** Format: date-time */
+            expire_at: string;
+            need_confirm: boolean;
+        };
+        CubeCreateInput: {
+            /** @description ≤64字 */
+            name: string;
+            /** @description 可关联一个组织（保持独立实体） */
+            org_id?: string;
+            region_code?: string;
+            industry_codes?: string[];
+            chain_stage?: string;
+            direction?: string;
+            /** @description 有啥 */
+            resources?: string;
+            /** @description 优势 */
+            strength?: string;
+            /** @description 合作 */
+            cooperation?: string;
+            /** @description 必配猫蜜（不可为自己） */
+            honey_user_id: string;
+        };
         Envelope: {
             /** @description 0=成功；否则 MMNNNN 错误码 */
             code: number;
@@ -1233,6 +1460,11 @@ export interface operations {
                     iv?: string;
                     /** @description 设备标识（会话审计） */
                     device?: string;
+                    /**
+                     * @description 注册身份（1个人/2组织），仅注册新用户时生效；登录老用户忽略，缺省 1
+                     * @enum {integer}
+                     */
+                    identity_type?: 1 | 2;
                 };
             };
         };
@@ -2183,7 +2415,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 聚合详情 */
+            /** @description 聚合详情（游客访问时 following=false、member 省略） */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2195,7 +2427,37 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+        };
+    };
+    aggregateContact: {
+        parameters: {
+            query: {
+                ref: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 联系方式 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            ref?: string;
+                            /** @description 未配置时为空串 */
+                            phone?: string;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listMatches: {
@@ -2618,6 +2880,285 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    listMyCubes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 立方列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["Cube"][];
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createCube: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CubeCreateInput"];
+            };
+        };
+        responses: {
+            /** @description 立方摘要 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["Cube"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    joinCube: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 立方摘要 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["Cube"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getCube: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 立方详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["CubeDetail"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    inviteCube: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 邀请凭证 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["InviteTicket"];
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listCubeMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成员列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["CubeMember"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    removeCubeMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            removed?: boolean;
+                        };
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    leaveCube: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            left?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    transferCube: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    to_user_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            transferred?: boolean;
+                        };
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    dissolveCube: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            dissolved?: boolean;
+                        };
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
         };
     };
 }

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/cube.MemberRemoved.v1.json",
+  "title": "cube.MemberRemoved.v1",
+  "description": "猫立方成员被移除或主动退出。供 notice/msg 群成员同步消费。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "cube.MemberRemoved.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["cube_id", "user_id"],
+      "properties": {
+        "cube_id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "operator_id": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

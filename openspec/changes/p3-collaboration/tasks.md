@@ -2,14 +2,14 @@
 
 ## 1. cube：空间与成员
 
-- [ ] 1.1 迁移：`cub_cube`（4.2.15 全字段含 plan_level/plan_expire_at/owner_space_id）、`cub_member`、`cub_plan`、`cub_invite`
-- [ ] 1.2 创建猫立方：组名/区域/行业/环节/方向/有啥/优势/合作；创建者即猫王且必须再指定 1 名猫蜜；个人已实名即可创建；可关联一个组织复用字段（保持独立实体）
-- [ ] 1.3 邀请制加入：猫王+猫蜜邀请（微信卡片/二维码/邀请码，7 天有效可重发，需对方确认、可配免确认）；加入须已实名且未被该立方移除过；被移除不可自行重进须重新邀请
-- [ ] 1.4 猫王转让（记审计）；成员角色：猫王/猫蜜/普通成员/共建成员
-- [ ] 1.5 配额 QuotaDef：可加入立方数（基础 1/进阶 3/高阶不限，口径按 p0 待确认 #15 结论）、单立方成员数（基础 10/进阶 50/高阶不限）
-- [ ] 1.6 状态机 #5 猫立方（正常/封禁/已解散）、#6 成员 + 表驱动测试
-- [ ] 1.7 contract：`CubeBrief`、`RoleOf`、`Invite/Join/Transfer`；注册 `CapabilityProvider`（立方内角色）、`EntityResolver`（cube、cube.project）
-- [ ] 1.8 事件：`CubeCreated/MemberJoined/MemberRemoved/CubeDissolved`；成员变更同步递增相关用户 authz_ver
+- [x] 1.1 迁移：`cub_cube`（4.2.15 全字段含 plan_level/plan_expire_at/owner_space_id）、`cub_member`、`cub_plan`、`cub_invite`
+- [x] 1.2 创建猫立方：组名/区域/行业/环节/方向/有啥/优势/合作；创建者即猫王且必须再指定 1 名猫蜜（不可为自己）；创建者与猫蜜均须已实名；可关联一个组织复用字段（保持独立实体）
+- [x] 1.3 邀请制加入：猫王+猫蜜邀请（邀请码；前端据此生成卡片/二维码，7 天有效）；加入须已实名且未被该立方移除过；被移除不可自行重进（`CanJoin` + 终态 #6）；「需对方确认/可配免确认」配置化留待 settings（§3）
+- [x] 1.4 猫王转让（`cube:leader:transfer` 落审计；角色变更递增 authz_ver）；成员角色：猫王/猫蜜/普通成员/共建成员（退出/移除亦记审计）
+- [ ] 1.5 配额：档位上限常量与创建/加入时校验已实现（可加入立方数、单立方成员数）；QuotaDef 声明式化与 settings 后台可配随 §3 订阅落地（口径按 p0 #15 结论）
+- [x] 1.6 状态机 #5 猫立方（正常/封禁/已解散）、#6 成员（正常→退出/被移除，被移除为终态）+ 表驱动测试
+- [x] 1.7 contract：`CubeBrief`/`RoleOf`/`Invite`/`JoinByCode`/`Transfer`/`Dissolve`/`RemoveMember`/`Leave`；注册 `CapabilityProvider`（`cube.member`）与 `EntityResolver`（cube；cube.project 随 §4）
+- [x] 1.8 事件：`CubeCreated/MemberJoined/MemberRemoved/CubeDissolved`（Schema 已入 `contracts/events/`）；成员变更同步递增相关用户 authz_ver
 
 ## 2. cube：协作实体
 

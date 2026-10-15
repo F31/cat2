@@ -1350,6 +1350,114 @@ func TestIntegrationMediaUpload(t *testing.T) {
 	}
 }
 
+// 猫立方空间与成员（p3 §1）：创建/邀请加入/移除不可重进/转让/退出/档位上限。
+func TestIntegrationCubeSpaces(t *testing.T) {
+	h := newTestApp(t)
+	// 用固定手机号登录，便于成员变更（authz_ver 失效）后重新登录取新令牌
+	aPhone, bPhone, cPhone := randPhone(), randPhone(), randPhone()
+	_, aTok := loginPhone(t, h, aPhone)
+	bID, bTok := loginPhone(t, h, bPhone)
+	cID, cTok := loginPhone(t, h, cPhone)
+	for _, tok := range []string{aTok, bTok, cTok} {
+		if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+			"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+		}); s != http.StatusOK || env.Code != 0 {
+			t.Fatalf("实名失败: %d %+v", s, env)
+		}
+	}
+
+	// A 创建，指定 B 为猫蜜
+	status, env := h.do(http.MethodPost, "/api/mp/v1/cubes", aTok, map[string]any{
+		"name": "协作一号", "honey_user_id": fmt.Sprintf("%d", bID),
+	})
+	var cube struct {
+		ID          int64 `json:"id,string"`
+		MemberCount int   `json:"member_count"`
+	}
+	_ = json.Unmarshal(env.Data, &cube)
+	if status != http.StatusOK || env.Code != 0 || cube.ID == 0 || cube.MemberCount != 2 {
+		t.Fatalf("创建猫立方失败: %d %+v", status, env)
+	}
+
+	// 基础档可加入 1 个 → 二次创建被拒 130007
+	status, env = h.do(http.MethodPost, "/api/mp/v1/cubes", aTok, map[string]any{
+		"name": "协作二号", "honey_user_id": fmt.Sprintf("%d", bID),
+	})
+	if status != http.StatusTooManyRequests || env.Code != 130007 {
+		t.Fatalf("超可加入立方数应 130007/429: %d %+v", status, env)
+	}
+
+	// B（猫蜜）邀请 → C 凭码加入
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/invites", cube.ID), bTok, nil)
+	var ticket struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(env.Data, &ticket)
+	if ticket.Code == "" {
+		t.Fatalf("邀请码生成失败: %+v", env)
+	}
+	if status, env := h.do(http.MethodPost, "/api/mp/v1/cubes/join", cTok, map[string]any{"code": ticket.Code}); status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("加入失败: %d %+v", status, env)
+	}
+
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/cubes/%d/members", cube.ID), aTok, nil)
+	var members struct {
+		Items []struct {
+			UserID int64 `json:"user_id,string"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &members)
+	if len(members.Items) != 3 {
+		t.Fatalf("成员应 3 人: %+v", members.Items)
+	}
+
+	// A 移除 C → C 用旧码重进被拒 130006
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/members/%d/remove", cube.ID, cID), aTok,
+		map[string]any{"reason": "测试移除"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("移除失败: %d %+v", s, e)
+	}
+	_, cTok2 := loginPhone(t, h, cPhone) // 移除会失效旧令牌，重新登录
+	if status, env := h.do(http.MethodPost, "/api/mp/v1/cubes/join", cTok2, map[string]any{"code": ticket.Code}); status != http.StatusForbidden || env.Code != 130006 {
+		t.Fatalf("被移除者重进应 130006/403: %d %+v", status, env)
+	}
+
+	// 转让给 B：B 成为猫王（角色变更递增 authz_ver，用新令牌读详情）
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/transfer", cube.ID), aTok,
+		map[string]any{"to_user_id": fmt.Sprintf("%d", bID)}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("转让失败: %d %+v", s, e)
+	}
+	_, bTok2 := loginPhone(t, h, bPhone)
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/cubes/%d", cube.ID), bTok2, nil)
+	var detail struct {
+		MyRole int16 `json:"my_role"`
+	}
+	_ = json.Unmarshal(env.Data, &detail)
+	if detail.MyRole != 1 {
+		t.Fatalf("B 应为猫王(role=1): %+v", detail)
+	}
+	_, aTok2 := loginPhone(t, h, aPhone)
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/leave", cube.ID), aTok2, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("退出失败: %d %+v", s, e)
+	}
+}
+
+// loginPhone 以指定手机号登录（开发态 code=手机号），返回 (user_id, token)。
+func loginPhone(t *testing.T, h *testApp, phone string) (int64, string) {
+	t.Helper()
+	_, env := h.do(http.MethodPost, "/api/mp/v1/auth/wechat", "", map[string]string{"code": "wx-" + phone, "phone_code": phone})
+	var l struct {
+		UserID int64 `json:"user_id,string"`
+		Tokens struct {
+			AccessToken string `json:"access_token"`
+		} `json:"tokens"`
+	}
+	_ = json.Unmarshal(env.Data, &l)
+	if l.UserID == 0 {
+		t.Fatalf("登录失败: %+v", env)
+	}
+	return l.UserID, l.Tokens.AccessToken
+}
+
 // 后台封禁/解封落审计（sys_audit）。
 func TestIntegrationAdminBanAudited(t *testing.T) {
 	h := newTestApp(t)

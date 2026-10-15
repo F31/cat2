@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	contentcontract "catcube/internal/modules/content/contract"
+	cubecontract "catcube/internal/modules/cube/contract"
 	idcontract "catcube/internal/modules/identity/contract"
 	membershipcontract "catcube/internal/modules/membership/contract"
 	msgcontract "catcube/internal/modules/msg/contract"
@@ -33,6 +34,28 @@ func emittedTopics() []string {
 		tradecontract.EventOrderCreated, tradecontract.EventOrderPaid, tradecontract.EventOrderClosed, tradecontract.EventRefundSucceeded,
 		membershipcontract.EventMemberActivated, membershipcontract.EventMemberExpired, membershipcontract.EventSubAccountChanged,
 		msgcontract.EventMessageSent,
+		// p3 cube（其余随协作实体/分摊落地补）
+		cubecontract.EventCubeCreated, cubecontract.EventMemberJoined,
+		cubecontract.EventMemberRemoved, cubecontract.EventCubeDissolved,
+	}
+}
+
+// 契约测试（p3）：新增协作模块 OpenAPI 路径已声明。
+func TestOpenAPIDeclaresP3Paths(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(contractsDir(t, "openapi"), "mp.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	paths := []string{
+		"/cubes:", "/cubes/join:", "/cubes/{id}:", "/cubes/{id}/invites:",
+		"/cubes/{id}/members:", "/cubes/{id}/members/{uid}/remove:",
+		"/cubes/{id}/leave:", "/cubes/{id}/transfer:", "/cubes/{id}/dissolve:",
+	}
+	for _, p := range paths {
+		if !strings.Contains(text, "\n  "+p) {
+			t.Fatalf("OpenAPI 缺少 p3 路径 %q", strings.TrimSuffix(p, ":"))
+		}
 	}
 }
 

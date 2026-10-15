@@ -31,6 +31,7 @@ import (
 	"catcube/internal/kernel/settings"
 	"catcube/internal/modules/content"
 	contentcontract "catcube/internal/modules/content/contract"
+	"catcube/internal/modules/cube"
 	"catcube/internal/modules/discovery"
 	"catcube/internal/modules/identity"
 	"catcube/internal/modules/membership"
@@ -163,6 +164,10 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		Pool: pool, Bus: bus, Trade: tradeMod.Facade(), Verify: verifyMod.Facade(),
 		Identity: identityMod.Facade(), Settings: settingsReg, Policy: policyEngine,
 	})
+	cubeMod := cube.New(cube.Deps{
+		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine, Entities: entityReg,
+		Audit: auditRec,
+	})
 	mods := []module.Module{
 		dictMod,
 		mediaMod,
@@ -174,6 +179,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		socialMod,
 		tradeMod,
 		membershipMod,
+		cubeMod,
 		msgMod,
 		discoveryMod,
 	}

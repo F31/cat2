@@ -121,16 +121,16 @@ func (e FavoriteItemKind) Valid() bool {
 
 // Defines values for OpenMembershipInputLevel.
 const (
-	N1 OpenMembershipInputLevel = 1
-	N3 OpenMembershipInputLevel = 3
+	OpenMembershipInputLevelN1 OpenMembershipInputLevel = 1
+	OpenMembershipInputLevelN3 OpenMembershipInputLevel = 3
 )
 
 // Valid indicates whether the value is a known member of the OpenMembershipInputLevel enum.
 func (e OpenMembershipInputLevel) Valid() bool {
 	switch e {
-	case N1:
+	case OpenMembershipInputLevelN1:
 		return true
-	case N3:
+	case OpenMembershipInputLevelN3:
 		return true
 	default:
 		return false
@@ -161,6 +161,24 @@ func (e ReportInputReasonCode) Valid() bool {
 	case Porn:
 		return true
 	case Spam:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WechatLoginJSONBodyIdentityType.
+const (
+	WechatLoginJSONBodyIdentityTypeN1 WechatLoginJSONBodyIdentityType = 1
+	WechatLoginJSONBodyIdentityTypeN2 WechatLoginJSONBodyIdentityType = 2
+)
+
+// Valid indicates whether the value is a known member of the WechatLoginJSONBodyIdentityType enum.
+func (e WechatLoginJSONBodyIdentityType) Valid() bool {
+	switch e {
+	case WechatLoginJSONBodyIdentityTypeN1:
+		return true
+	case WechatLoginJSONBodyIdentityTypeN2:
 		return true
 	default:
 		return false
@@ -461,6 +479,84 @@ type CreateOrderInput struct {
 	Subject       *string                 `json:"subject,omitempty"`
 }
 
+// Cube defines model for Cube.
+type Cube struct {
+	HoneyId      *string    `json:"honey_id,omitempty"`
+	Id           string     `json:"id"`
+	LeaderId     string     `json:"leader_id"`
+	MemberCount  int        `json:"member_count"`
+	Name         string     `json:"name"`
+	PlanExpireAt *time.Time `json:"plan_expire_at,omitempty"`
+
+	// PlanLevel 1 基础 / 2 进阶 / 3 高阶
+	PlanLevel  int     `json:"plan_level"`
+	RegionCode *string `json:"region_code,omitempty"`
+
+	// Status 0 正常 / 1 封禁 / 2 已解散
+	Status int `json:"status"`
+}
+
+// CubeCreateInput defines model for CubeCreateInput.
+type CubeCreateInput struct {
+	ChainStage *string `json:"chain_stage,omitempty"`
+
+	// Cooperation 合作
+	Cooperation *string `json:"cooperation,omitempty"`
+	Direction   *string `json:"direction,omitempty"`
+
+	// HoneyUserId 必配猫蜜（不可为自己）
+	HoneyUserId   string    `json:"honey_user_id"`
+	IndustryCodes *[]string `json:"industry_codes,omitempty"`
+
+	// Name ≤64字
+	Name string `json:"name"`
+
+	// OrgId 可关联一个组织（保持独立实体）
+	OrgId      *string `json:"org_id,omitempty"`
+	RegionCode *string `json:"region_code,omitempty"`
+
+	// Resources 有啥
+	Resources *string `json:"resources,omitempty"`
+
+	// Strength 优势
+	Strength *string `json:"strength,omitempty"`
+}
+
+// CubeDetail defines model for CubeDetail.
+type CubeDetail struct {
+	ChainStage    *string   `json:"chain_stage,omitempty"`
+	Cooperation   *string   `json:"cooperation,omitempty"`
+	Direction     *string   `json:"direction,omitempty"`
+	HoneyId       *string   `json:"honey_id,omitempty"`
+	Id            string    `json:"id"`
+	IndustryCodes *[]string `json:"industry_codes,omitempty"`
+	LeaderId      string    `json:"leader_id"`
+	MemberCount   int       `json:"member_count"`
+
+	// MyRole 0 非成员 / 1 猫王 / 2 猫蜜 / 3 成员 / 4 共建成员
+	MyRole       *int       `json:"my_role,omitempty"`
+	Name         string     `json:"name"`
+	OrgId        *string    `json:"org_id,omitempty"`
+	PlanExpireAt *time.Time `json:"plan_expire_at,omitempty"`
+
+	// PlanLevel 1 基础 / 2 进阶 / 3 高阶
+	PlanLevel  int     `json:"plan_level"`
+	RegionCode *string `json:"region_code,omitempty"`
+	Resources  *string `json:"resources,omitempty"`
+
+	// Status 0 正常 / 1 封禁 / 2 已解散
+	Status   int     `json:"status"`
+	Strength *string `json:"strength,omitempty"`
+}
+
+// CubeMember defines model for CubeMember.
+type CubeMember struct {
+	JoinedAt *time.Time `json:"joined_at,omitempty"`
+	Role     int        `json:"role"`
+	Status   int        `json:"status"`
+	UserId   string     `json:"user_id"`
+}
+
 // DetailData defines model for DetailData.
 type DetailData struct {
 	Badges    *[]Badge          `json:"badges,omitempty"`
@@ -543,6 +639,13 @@ type FollowItem struct {
 	FollowerId string     `json:"follower_id"`
 	Target     Target     `json:"target"`
 	Title      *string    `json:"title,omitempty"`
+}
+
+// InviteTicket defines model for InviteTicket.
+type InviteTicket struct {
+	Code        string    `json:"code"`
+	ExpireAt    time.Time `json:"expire_at"`
+	NeedConfirm bool      `json:"need_confirm"`
 }
 
 // LoginData defines model for LoginData.
@@ -770,6 +873,11 @@ type Unauthorized = Error
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Error
 
+// AggregateContactParams defines parameters for AggregateContact.
+type AggregateContactParams struct {
+	Ref string `form:"ref" json:"ref"`
+}
+
 // AggregateDetailParams defines parameters for AggregateDetail.
 type AggregateDetailParams struct {
 	Ref string `form:"ref" json:"ref"`
@@ -813,7 +921,10 @@ type WechatLoginJSONBody struct {
 
 	// EncryptedData 手机号加密数据（旧版 getPhoneNumber，兼容保留）
 	EncryptedData *string `json:"encrypted_data,omitempty"`
-	Iv            *string `json:"iv,omitempty"`
+
+	// IdentityType 注册身份（1个人/2组织），仅注册新用户时生效；登录老用户忽略，缺省 1
+	IdentityType *WechatLoginJSONBodyIdentityType `json:"identity_type,omitempty"`
+	Iv           *string                          `json:"iv,omitempty"`
 
 	// PhoneCode 手机号快速验证 code（getPhoneNumber 事件返回）
 	PhoneCode *string `json:"phone_code,omitempty"`
@@ -823,6 +934,9 @@ type WechatLoginJSONBody struct {
 type WechatLoginParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
+
+// WechatLoginJSONBodyIdentityType defines parameters for WechatLogin.
+type WechatLoginJSONBodyIdentityType int
 
 // UpdateMyCardParams defines parameters for UpdateMyCard.
 type UpdateMyCardParams struct {
@@ -851,6 +965,21 @@ type ListMyContentsParams struct {
 
 // ListMyContentsParamsKind defines parameters for ListMyContents.
 type ListMyContentsParamsKind string
+
+// JoinCubeJSONBody defines parameters for JoinCube.
+type JoinCubeJSONBody struct {
+	Code string `json:"code"`
+}
+
+// RemoveCubeMemberJSONBody defines parameters for RemoveCubeMember.
+type RemoveCubeMemberJSONBody struct {
+	Reason *string `json:"reason,omitempty"`
+}
+
+// TransferCubeJSONBody defines parameters for TransferCube.
+type TransferCubeJSONBody struct {
+	ToUserId string `json:"to_user_id"`
+}
 
 // ListDictParams defines parameters for ListDict.
 type ListDictParams struct {
@@ -999,6 +1128,18 @@ type SubmitCertJSONRequestBody = CertifyInput
 // PublishContentJSONRequestBody defines body for PublishContent for application/json ContentType.
 type PublishContentJSONRequestBody = ContentPublishInput
 
+// CreateCubeJSONRequestBody defines body for CreateCube for application/json ContentType.
+type CreateCubeJSONRequestBody = CubeCreateInput
+
+// JoinCubeJSONRequestBody defines body for JoinCube for application/json ContentType.
+type JoinCubeJSONRequestBody JoinCubeJSONBody
+
+// RemoveCubeMemberJSONRequestBody defines body for RemoveCubeMember for application/json ContentType.
+type RemoveCubeMemberJSONRequestBody RemoveCubeMemberJSONBody
+
+// TransferCubeJSONRequestBody defines body for TransferCube for application/json ContentType.
+type TransferCubeJSONRequestBody TransferCubeJSONBody
+
 // FavoriteTargetJSONRequestBody defines body for FavoriteTarget for application/json ContentType.
 type FavoriteTargetJSONRequestBody = TargetRefInput
 
@@ -1034,7 +1175,10 @@ type MarkSessionReadJSONRequestBody MarkSessionReadJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// AggregateDetail 详情页聚合（名片+Badges+会员等级+关注状态；内容类含归属人名片）
+	// AggregateContact 揭示联系方式（手机号，会员权益；非会员 120007）
+	// (GET /aggregate/contact)
+	AggregateContact(w http.ResponseWriter, r *http.Request, params AggregateContactParams)
+	// AggregateDetail 详情页聚合（名片+Badges+会员等级+关注状态；内容类含归属人名片）；游客可看（登录态可选）
 	// (GET /aggregate/detail)
 	AggregateDetail(w http.ResponseWriter, r *http.Request, params AggregateDetailParams)
 	// PhoneLogin 手机号 + 短信验证码登录（备选通道，注册/登录一体化）
@@ -1085,6 +1229,36 @@ type ServerInterface interface {
 	// SubmitContent 提交审核（发布门槛：已实名；审核结论驱动状态机
 	// (POST /contents/{id}/submit)
 	SubmitContent(w http.ResponseWriter, r *http.Request, id string)
+	// ListMyCubes 我参与的猫立方
+	// (GET /cubes)
+	ListMyCubes(w http.ResponseWriter, r *http.Request)
+	// CreateCube 创建猫立方（已实名个人；创建者=猫王，必配猫蜜）
+	// (POST /cubes)
+	CreateCube(w http.ResponseWriter, r *http.Request)
+	// JoinCube 凭邀请码加入猫立方（已实名、未被移除过）
+	// (POST /cubes/join)
+	JoinCube(w http.ResponseWriter, r *http.Request)
+	// GetCube 猫立方详情（含我的角色）
+	// (GET /cubes/{id})
+	GetCube(w http.ResponseWriter, r *http.Request, id string)
+	// DissolveCube 解散猫立方（猫王）
+	// (POST /cubes/{id}/dissolve)
+	DissolveCube(w http.ResponseWriter, r *http.Request, id string)
+	// InviteCube 生成邀请码（猫王/猫蜜；7 天有效）
+	// (POST /cubes/{id}/invites)
+	InviteCube(w http.ResponseWriter, r *http.Request, id string)
+	// LeaveCube 主动退出（猫王须先转让）
+	// (POST /cubes/{id}/leave)
+	LeaveCube(w http.ResponseWriter, r *http.Request, id string)
+	// ListCubeMembers 成员列表
+	// (GET /cubes/{id}/members)
+	ListCubeMembers(w http.ResponseWriter, r *http.Request, id string)
+	// RemoveCubeMember 移除成员（猫王/猫蜜；被移除者不可自行重进）
+	// (POST /cubes/{id}/members/{uid}/remove)
+	RemoveCubeMember(w http.ResponseWriter, r *http.Request, id string, uid string)
+	// TransferCube 转让猫王（仅猫王；目标须为成员）
+	// (POST /cubes/{id}/transfer)
+	TransferCube(w http.ResponseWriter, r *http.Request, id string)
 	// ListDict 查询字典维度（行业/区域/合作需求/合作供给/领域/主体类型）
 	// (GET /dict/{dimension})
 	ListDict(w http.ResponseWriter, r *http.Request, dimension ListDictParamsDimension, params ListDictParams)
@@ -1197,6 +1371,39 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// AggregateContact operation middleware
+func (siw *ServerInterfaceWrapper) AggregateContact(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AggregateContactParams
+
+	// ------------- Required query parameter "ref" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "ref", r.URL.Query(), &params.Ref, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "ref"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ref", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AggregateContact(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // AggregateDetail operation middleware
 func (siw *ServerInterfaceWrapper) AggregateDetail(w http.ResponseWriter, r *http.Request) {
@@ -1730,6 +1937,239 @@ func (siw *ServerInterfaceWrapper) SubmitContent(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SubmitContent(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMyCubes operation middleware
+func (siw *ServerInterfaceWrapper) ListMyCubes(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMyCubes(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCube operation middleware
+func (siw *ServerInterfaceWrapper) CreateCube(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCube(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// JoinCube operation middleware
+func (siw *ServerInterfaceWrapper) JoinCube(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.JoinCube(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCube operation middleware
+func (siw *ServerInterfaceWrapper) GetCube(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCube(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DissolveCube operation middleware
+func (siw *ServerInterfaceWrapper) DissolveCube(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DissolveCube(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// InviteCube operation middleware
+func (siw *ServerInterfaceWrapper) InviteCube(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InviteCube(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LeaveCube operation middleware
+func (siw *ServerInterfaceWrapper) LeaveCube(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LeaveCube(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCubeMembers operation middleware
+func (siw *ServerInterfaceWrapper) ListCubeMembers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCubeMembers(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveCubeMember operation middleware
+func (siw *ServerInterfaceWrapper) RemoveCubeMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "uid" -------------
+	var uid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "uid", r.PathValue("uid"), &uid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveCubeMember(w, r, id, uid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransferCube operation middleware
+func (siw *ServerInterfaceWrapper) TransferCube(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransferCube(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2953,6 +3393,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/feed", wrapper.Feed)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/feed/refresh", wrapper.FeedRefresh)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/aggregate/detail", wrapper.AggregateDetail)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/aggregate/contact", wrapper.AggregateContact)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/matches", wrapper.ListMatches)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/matches/{ref}/explain", wrapper.ExplainMatch)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/sessions", wrapper.ListSessions)
@@ -2968,6 +3409,16 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/membership/sub-accounts/{subUserID}", wrapper.RemoveSubAccount)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/dict/{dimension}", wrapper.ListDict)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/media/uploads", wrapper.CreateUpload)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes", wrapper.ListMyCubes)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes", wrapper.CreateCube)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/join", wrapper.JoinCube)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes/{id}", wrapper.GetCube)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/invites", wrapper.InviteCube)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes/{id}/members", wrapper.ListCubeMembers)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/members/{uid}/remove", wrapper.RemoveCubeMember)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/leave", wrapper.LeaveCube)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/transfer", wrapper.TransferCube)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/dissolve", wrapper.DissolveCube)
 
 	return m
 }

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/cube.CubeDissolved.v1.json",
+  "title": "cube.CubeDissolved.v1",
+  "description": "cube 领域事件。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "cube.CubeDissolved.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["cube_id","name","user_id"],
+      "additionalProperties": false,
+      "properties": { "cube_id": { "type": "string" },"name": { "type": "string" },"user_id": { "type": "string" } }
+    }
+  },
+  "additionalProperties": false
+}
