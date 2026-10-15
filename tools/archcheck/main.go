@@ -20,6 +20,7 @@ import (
 var rank = map[string]int{
 	"dict": -1, "media": -1, "entityref": -1,
 	"identity": 0, "trust": 0, "ai": 0,
+	"ops": 1, // 运维（死信重放）
 	"profile": 1, "msg": 1, "trade": 1, "social": 1,
 	"verify": 2, "content": 2,
 	"membership": 3, "cube": 3,

@@ -3357,3 +3357,42 @@ func TestIntegrationMediaOrphanPurge(t *testing.T) {
 		t.Fatalf("孤儿文件应被清理: %d", cnt)
 	}
 }
+
+// 死信查询与重放（p1 §6.2）：标记死信 → 后台列出 → 重放复位。
+func TestIntegrationDeadLetterReplay(t *testing.T) {
+	h := newTestApp(t)
+	_, tok := loginUser(t, h)
+	ctx := context.Background()
+	// 造一条死信
+	eid := "deadletter-test-" + randPhone()
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO sys_outbox (event_id, topic, payload, occurred_at, status, retry_count)
+		VALUES ($1,'demo.DeadLetter.v1','{}'::jsonb,now(),9,9)`, eid); err != nil {
+		t.Fatal(err)
+	}
+	_, env := h.do(http.MethodGet, "/api/admin/v1/dead-letters", tok, nil)
+	var list struct {
+		Items []struct {
+			EventID string `json:"event_id"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &list)
+	found := false
+	for _, it := range list.Items {
+		if it.EventID == eid {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("死信应可列出: %+v", list.Items)
+	}
+	// 重放：状态复位 retry_count=0
+	if s, e := h.do(http.MethodPost, "/api/admin/v1/dead-letters/"+eid+"/replay", tok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("重放失败: %d %+v", s, e)
+	}
+	var status, retry int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT status, retry_count FROM sys_outbox WHERE event_id=$1`, eid).Scan(&status, &retry)
+	if status != 0 || retry != 0 {
+		t.Fatalf("重放应复位 status=0/retry=0: %d/%d", status, retry)
+	}
+}

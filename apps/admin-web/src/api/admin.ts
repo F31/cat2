@@ -55,6 +55,13 @@ export type ReviewTask = Req<
 
 export type ReviewMetrics = Req<'SLAMetric', 'pending' | 'overdue' | 'avg_review_seconds'>
 
+export interface DeadLetter {
+  event_id: string
+  topic: string
+  space_id: number
+  occurred_at: string
+}
+
 export interface NoticeTemplate {
   code: string
   module: string
@@ -130,5 +137,12 @@ export const adminApi = {
 
   noticeTemplates() {
     return call<{ items: NoticeTemplate[] }>('GET', '/admin/v1/notice-templates')
+  },
+
+  deadLetters() {
+    return call<{ items: DeadLetter[] }>('GET', '/admin/v1/dead-letters')
+  },
+  replayDeadLetter(eventId: string) {
+    return call<{ replayed: boolean }>('POST', `/admin/v1/dead-letters/${eventId}/replay`)
   },
 }

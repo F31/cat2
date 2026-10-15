@@ -52,7 +52,7 @@
 ## 6. kernel：事件、调度、状态机
 
 - [x] 6.1 `kernel/eventbus`：`sys_outbox` 表（event_id、topic、payload、status、retry_count）；业务表与 outbox **同事务写入**；worker 角色轮询投递，至少一次
-- [ ] 6.2 订阅方幂等表（事件 ID 去重）与失败重试已实现；死信后台重放管理接口待补
+- [x] 6.2 订阅方幂等表（事件 ID 去重）与失败重试已实现；死信后台管理：`GET /api/admin/v1/dead-letters`（按时间倒序）与 `POST .../{eventID}/replay`（复位 status=0/retry=0），admin-web「死信队列」页；ops 模块（R1）+ archcheck 阶梯登记
 - [x] 6.3 `kernel/scheduler`：模块注册 `SchedulerJob`；PG 咨询锁保证全局单活；批量、幂等、可重入（`sys_job` 表）
 - [x] 6.4 `kernel/statemachine`：声明式 `StateMachineDef{from,event,to,actor,guard}` 引擎；非法转移在引擎层拒绝；统一写状态日志并发布事件
 - [ ] 6.5 到期转态示范：以一张带 `expires_at` 部分索引的样例表跑通「每分钟批量扫描、分批、幂等」链路（供后续模块复用）

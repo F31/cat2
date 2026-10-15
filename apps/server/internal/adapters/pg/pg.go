@@ -169,7 +169,7 @@ func (o *Outbox) MarkDead(ctx context.Context, id string) error {
 
 func (o *Outbox) ListDead(ctx context.Context) ([]eventbus.Event, error) {
 	rows, err := o.pool.Query(ctx,
-		`SELECT event_id, topic, payload, space_id, occurred_at FROM sys_outbox WHERE status=9 ORDER BY occurred_at LIMIT 100`)
+		`SELECT event_id, topic, payload, space_id, occurred_at FROM sys_outbox WHERE status=9 ORDER BY occurred_at DESC LIMIT 100`)
 	if err != nil {
 		return nil, err
 	}

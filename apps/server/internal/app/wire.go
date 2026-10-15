@@ -10,6 +10,7 @@ import (
 	"hash/crc32"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"catcube/internal/adapters/local"
@@ -39,6 +40,7 @@ import (
 	"catcube/internal/modules/membership"
 	"catcube/internal/modules/msg"
 	"catcube/internal/modules/notice"
+	"catcube/internal/modules/ops"
 	"catcube/internal/modules/profile"
 	"catcube/internal/modules/social"
 	"catcube/internal/modules/trade"
@@ -181,9 +183,11 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	noticeMod := notice.New(notice.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Circle: circleMod.Facade(),
 	})
+	opsMod := ops.New(ops.Deps{Pool: pool, Identity: identityMod.Facade(), Outbox: outbox, Bus: bus})
 	mods := []module.Module{
 		dictMod,
 		mediaMod,
+		opsMod,
 		identityMod,
 		trustMod,
 		profileMod,
@@ -314,6 +318,9 @@ func RunMigrations(ctx context.Context, pool *db.Pool, mods []module.Module) err
 	for _, m := range mods {
 		if mm, ok := m.(migrator); ok {
 			sql := mm.Migrations()
+			if strings.TrimSpace(sql) == "" {
+				continue // 无自有表（如 ops）
+			}
 			version := int(crc32.ChecksumIEEE([]byte(sql)) & 0x7fffffff) // 收敛到 int4 正区间
 			sources = append(sources, migrate.Source{
 				Module:     m.Name(),

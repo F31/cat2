@@ -13,6 +13,7 @@ const MENU = [
   { key: '/orders', label: '订单' },
   { key: '/members', label: '会员' },
   { key: '/templates', label: '通知模板' },
+  { key: '/dead-letters', label: '死信队列' },
 ]
 
 export default function AdminLayout() {
