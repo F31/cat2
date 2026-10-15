@@ -12,6 +12,7 @@ const MENU = [
   { key: '/reviews', label: '审核队列' },
   { key: '/orders', label: '订单' },
   { key: '/members', label: '会员' },
+  { key: '/templates', label: '通知模板' },
 ]
 
 export default function AdminLayout() {

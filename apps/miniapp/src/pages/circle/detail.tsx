@@ -139,6 +139,9 @@ export default function CircleDetail() {
               发布需求 / 动态
             </Button>
           </View>
+          <Button className="btn-secondary" onClick={() => Taro.navigateTo({ url: `/pages/circle/settings?id=${id}` })}>
+            圈设置
+          </Button>
         </>
       )}
     </View>

@@ -55,6 +55,16 @@ export type ReviewTask = Req<
 
 export type ReviewMetrics = Req<'SLAMetric', 'pending' | 'overdue' | 'avg_review_seconds'>
 
+export interface NoticeTemplate {
+  code: string
+  module: string
+  title_tpl: string
+  content_tpl: string
+  channels: string[]
+  merge_rule?: string
+  closeable: boolean
+}
+
 export const adminApi = {
   // 开发态登录：微信登录适配器以手机号为 code。
   login(phone: string) {
@@ -116,5 +126,9 @@ export const adminApi = {
   },
   reviewMetrics() {
     return call<ReviewMetrics>('GET', '/admin/v1/review-metrics')
+  },
+
+  noticeTemplates() {
+    return call<{ items: NoticeTemplate[] }>('GET', '/admin/v1/notice-templates')
   },
 }

@@ -18,7 +18,7 @@ export default defineAppConfig({
     { root: 'pages/auth', pages: ['enter'] },
     { root: 'pages/verify', pages: ['index'] },
     { root: 'pages/cube', pages: ['create', 'detail', 'project', 'task', 'report', 'plan'] },
-    { root: 'pages/circle', pages: ['create', 'detail', 'publish'] },
+    { root: 'pages/circle', pages: ['create', 'detail', 'publish', 'settings'] },
   ],
   window: {
     backgroundTextStyle: 'light',

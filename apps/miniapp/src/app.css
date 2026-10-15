@@ -215,6 +215,13 @@ page {
   margin-left: 16px;
 }
 
+/* 危险操作按钮 */
+.btn-danger {
+  background: #c62828;
+  color: #ffffff;
+  margin-top: 20px;
+}
+
 /* 上传器 */
 .uploader {
   display: flex;

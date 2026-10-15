@@ -70,7 +70,7 @@
 - [x] 7.5 同圈同日合并：`ntc_digest` upsert 计数（`ON CONFLICT DO UPDATE` 无竞态）+ `notice.digest` 日结 Job 汇总发送给圈成员（经 circle Facade，不读其表）
 - [x] 7.6 站内信兜底：模板默认含 inapp；资金/审核类 `closeable=false` 不可关闭（`SetPreference` 忽略并恒开）；短信仅资金场景（退款/限制）
 - [x] 7.7 接口：`GET /notices`（含未读数）、`POST /notices/{id}/read`、`GET/PUT /notice-preferences`、`POST /subscribe-quota/apply`
-- [x] 7.8 admin：`GET /api/admin/v1/notice-templates` 模板只读列表（Admin 路由）；编辑页与菜单声明随 p4
+- [x] 7.8 admin：`GET /api/admin/v1/notice-templates` + admin-web「通知模板」页（只读列表：模块/渠道/合并/可关闭）；编辑随 p4
 
 ## 8. msg 群聊补全
 
@@ -81,7 +81,7 @@
 ## 9. 小程序协作页面
 
 - [x] 9.1 猫立方页面：`pages/cube/{index,create,detail,project,task,report,plan}`（空态创建/输入邀请码、创建含猫蜜、详情四模块入口、项目分工待办+研究记录+报备按状态、任务四态操作、成员列表、订阅三档/分摊认筹/退出/进度）；集体沟通对话复用消息群聊会话页（§8）
-- [x] 9.2 圈子页面：`pages/circle/{index,create,detail,publish}`（我的圈子进行中/已结束分区、创建常设/临时、详情四区块、发布需求/动态/公告、邀请分享）；圈设置（解散/转常设）接口已备（`/dissolve`、`/convert`）
+- [x] 9.2 圈子页面：`pages/circle/{index,create,detail,publish,settings}`（我的圈子进行中/已结束分区、创建常设/临时、详情四区块、发布需求/动态/公告、邀请分享）；圈设置页（转常设/解散二次确认+成员数提示）
 - [x] 9.3 非成员（含未登录）圈详情：`circleDetail` 游客可读，前端仅渲染「关于本圈」+「申请加入」+「邀请/分享」，其余区块按 `joined` 裁剪
 - [x] 9.4 群聊会话页：复用 `pages/msg/chat`（会话列表返回群聊 `title` 与末条预览，点开即群聊）
 - [x] 9.5 空态：统一 `StateView`（猫立方为空含创建/邀请码引导、我的圈子为空、报备/任务/需求为空）
