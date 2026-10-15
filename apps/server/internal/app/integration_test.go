@@ -3012,3 +3012,63 @@ func TestIntegrationCubeGroupChat(t *testing.T) {
 		t.Fatalf("移除后群成员应同步移除: %d", memberCount)
 	}
 }
+
+// bff 协作聚合（p3 §10）：猫立方首页（列表+待办+未读）与圈详情（非成员裁剪）。
+func TestIntegrationBFFCollaboration(t *testing.T) {
+	h := newTestApp(t)
+	aPhone, bPhone := randPhone(), randPhone()
+	_, aTok := loginPhone(t, h, aPhone)
+	bID, bTok := loginPhone(t, h, bPhone)
+	for _, tok := range []string{aTok, bTok} {
+		if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+			"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+		}); s != http.StatusOK || env.Code != 0 {
+			t.Fatalf("实名失败: %d %+v", s, env)
+		}
+	}
+	_, env := h.do(http.MethodPost, "/api/mp/v1/cubes", aTok, map[string]any{
+		"name": "聚合立方", "honey_user_id": fmt.Sprintf("%d", bID),
+	})
+	var cube struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cube)
+	// 建一个任务（待办）→ 首页待办数 ≥1
+	_, _ = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/tasks", cube.ID), aTok, map[string]any{
+		"title": "聚合待办", "assignee_id": fmt.Sprintf("%d", bID),
+	})
+
+	_, env = h.do(http.MethodGet, "/api/mp/v1/aggregate/cube-home", aTok, nil)
+	var home struct {
+		Cubes []struct {
+			ID int64 `json:"id,string"`
+		} `json:"cubes"`
+		TodoCount int `json:"todo_count"`
+		Unread    int `json:"unread"`
+	}
+	_ = json.Unmarshal(env.Data, &home)
+	if len(home.Cubes) != 1 || home.TodoCount < 1 {
+		t.Fatalf("猫立方首页聚合不符: %+v", home)
+	}
+
+	// 圈详情聚合：游客可看（非成员裁剪）
+	_, env = h.do(http.MethodPost, "/api/mp/v1/circles", aTok, map[string]any{"name": "聚合圈", "type": 1})
+	var cir struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cir)
+	status, env := h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/aggregate/circle-detail?ref=circle:%d", cir.ID), "", nil)
+	var detail struct {
+		Circle struct {
+			Name   string `json:"name"`
+			Joined bool   `json:"joined"`
+		} `json:"circle"`
+		MemberCount int  `json:"member_count"`
+		Joined      bool `json:"joined"`
+	}
+	_ = json.Unmarshal(env.Data, &detail)
+	if status != http.StatusOK || env.Code != 0 || detail.Circle.Name != "聚合圈" || detail.Joined {
+		t.Fatalf("圈详情聚合不符: %d %+v", status, detail)
+	}
+	_ = bTok
+}

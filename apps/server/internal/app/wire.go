@@ -248,6 +248,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		Identity: identityMod.Facade(), Discovery: discoveryMod.Facade(), Profile: profileMod.Facade(),
 		Social: socialMod.Facade(), Msg: msgMod.Facade(), Verify: verifyMod.Facade(),
 		Membership: membershipMod.Facade(), Content: contentMod.Facade(),
+		Cube: cubeMod.Facade(), Circle: circleMod.Facade(),
 	}).Register(a.Mux)
 
 	// 跨模块扩展点装配（装配根唯一 import 所有模块）：审核对象提供者

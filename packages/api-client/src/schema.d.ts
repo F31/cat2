@@ -551,6 +551,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/aggregate/cube-home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 猫立方首页聚合（立方列表+待办数+未读单次返回） */
+        get: operations["aggregateCubeHome"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/aggregate/circle-detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 圈详情聚合（非成员裁剪：圈信息+成员数+圈主+加入状态；游客可看） */
+        get: operations["aggregateCircleDetail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/aggregate/detail": {
         parameters: {
             query?: never;
@@ -3310,6 +3344,63 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    aggregateCubeHome: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 聚合数据 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            cubes?: components["schemas"]["Cube"][];
+                            todo_count?: number;
+                            unread?: number;
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    aggregateCircleDetail: {
+        parameters: {
+            query: {
+                ref: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 聚合数据 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            circle?: components["schemas"]["CircleDetail"];
+                            owner?: components["schemas"]["Card"];
+                            member_count?: number;
+                            joined?: boolean;
+                        };
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     aggregateDetail: {

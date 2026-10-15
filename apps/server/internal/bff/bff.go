@@ -9,7 +9,9 @@ import (
 	"strconv"
 	"strings"
 
+	circlecontract "catcube/internal/modules/circle/contract"
 	contentcontract "catcube/internal/modules/content/contract"
+	cubecontract "catcube/internal/modules/cube/contract"
 	discoverycontract "catcube/internal/modules/discovery/contract"
 	idcontract "catcube/internal/modules/identity/contract"
 	membershipcontract "catcube/internal/modules/membership/contract"
@@ -30,6 +32,8 @@ type Deps struct {
 	Verify     verifycontract.Facade
 	Membership membershipcontract.Facade
 	Content    contentcontract.Facade
+	Cube       cubecontract.Facade
+	Circle     circlecontract.Facade
 }
 
 // Aggregator 只读聚合器。
@@ -45,6 +49,74 @@ func (a *Aggregator) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/mp/v1/aggregate/detail", a.optionalAuth(a.handleDetail))
 	// 联系方式揭示：会员权益（手机号），非会员 120007 由前端引导开通。
 	mux.HandleFunc("GET /api/mp/v1/aggregate/contact", a.auth(a.handleContact))
+	// 猫立方首页聚合（立方列表+待办数+未读单次返回）
+	mux.HandleFunc("GET /api/mp/v1/aggregate/cube-home", a.auth(a.handleCubeHome))
+	// 圈详情聚合（非成员裁剪视图：圈信息+成员数+圈主+加入状态）
+	mux.HandleFunc("GET /api/mp/v1/aggregate/circle-detail", a.optionalAuth(a.handleCircleDetail))
+}
+
+// CubeHomeData 猫立方首页聚合。
+type CubeHomeData struct {
+	Cubes     []cubecontract.CubeBrief `json:"cubes"`
+	TodoCount int                      `json:"todo_count"`
+	Unread    int                      `json:"unread"`
+}
+
+// handleCubeHome 猫立方首页：立方列表 + 待办数 + 未读（单次聚合）。
+func (a *Aggregator) handleCubeHome(w http.ResponseWriter, req *http.Request) {
+	uid := userIDFrom(req.Context())
+	cubes, err := a.deps.Cube.ListMine(req.Context(), uid)
+	if err != nil {
+		writeErrCode(w, http.StatusInternalServerError, 9, "服务错误")
+		return
+	}
+	todo := 0
+	for _, c := range cubes {
+		if ts, err := a.deps.Cube.ListTasks(req.Context(), c.ID, 0); err == nil {
+			for _, t := range ts {
+				if t.Status == 0 || t.Status == 1 {
+					todo++ // 待办/进行中
+				}
+			}
+		}
+	}
+	unread := 0
+	if sessions, err := a.deps.Msg.Sessions(req.Context(), uid); err == nil {
+		for _, s := range sessions {
+			unread += s.Unread
+		}
+	}
+	writeData(w, CubeHomeData{Cubes: cubes, TodoCount: todo, Unread: unread})
+}
+
+// CircleDetailData 圈详情聚合（非成员裁剪）。
+type CircleDetailData struct {
+	Circle      circlecontract.CircleDetail `json:"circle"`
+	Owner       *profilecontract.Card       `json:"owner,omitempty"`
+	MemberCount int                         `json:"member_count"`
+	Joined      bool                        `json:"joined"`
+}
+
+// handleCircleDetail 圈详情聚合：圈信息 + 圈主名片 + 成员数 + 加入状态。
+func (a *Aggregator) handleCircleDetail(w http.ResponseWriter, req *http.Request) {
+	idStr := strings.TrimPrefix(req.URL.Query().Get("ref"), "circle:")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		writeErr(w, 1, "参数错误")
+		return
+	}
+	uid := userIDFrom(req.Context())
+	d, err := a.deps.Circle.Detail(req.Context(), uid, id)
+	if err != nil {
+		writeErrCode(w, http.StatusNotFound, 140001, "圈子不存在或不可见")
+		return
+	}
+	out := CircleDetailData{Circle: d, MemberCount: d.MemberCount, Joined: d.Joined}
+	// 非成员裁剪：仅「关于本圈」+加入状态，不返回动态/需求/成员明细
+	if card, err := a.deps.Profile.CardOf(req.Context(), d.OwnerUserID); err == nil {
+		out.Owner = &card
+	}
+	writeData(w, out)
 }
 
 // FeedData 首屏聚合：卡片流 + 画像进度 + 未读数。

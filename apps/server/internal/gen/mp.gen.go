@@ -1234,6 +1234,11 @@ type Unauthorized = Error
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Error
 
+// AggregateCircleDetailParams defines parameters for AggregateCircleDetail.
+type AggregateCircleDetailParams struct {
+	Ref string `form:"ref" json:"ref"`
+}
+
 // AggregateContactParams defines parameters for AggregateContact.
 type AggregateContactParams struct {
 	Ref string `form:"ref" json:"ref"`
@@ -1730,9 +1735,15 @@ type ApplySubscribeQuotaJSONRequestBody ApplySubscribeQuotaJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// AggregateCircleDetail 圈详情聚合（非成员裁剪：圈信息+成员数+圈主+加入状态；游客可看）
+	// (GET /aggregate/circle-detail)
+	AggregateCircleDetail(w http.ResponseWriter, r *http.Request, params AggregateCircleDetailParams)
 	// AggregateContact 揭示联系方式（手机号，会员权益；非会员 120007）
 	// (GET /aggregate/contact)
 	AggregateContact(w http.ResponseWriter, r *http.Request, params AggregateContactParams)
+	// AggregateCubeHome 猫立方首页聚合（立方列表+待办数+未读单次返回）
+	// (GET /aggregate/cube-home)
+	AggregateCubeHome(w http.ResponseWriter, r *http.Request)
 	// AggregateDetail 详情页聚合（名片+Badges+会员等级+关注状态；内容类含归属人名片）；游客可看（登录态可选）
 	// (GET /aggregate/detail)
 	AggregateDetail(w http.ResponseWriter, r *http.Request, params AggregateDetailParams)
@@ -2071,6 +2082,39 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// AggregateCircleDetail operation middleware
+func (siw *ServerInterfaceWrapper) AggregateCircleDetail(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AggregateCircleDetailParams
+
+	// ------------- Required query parameter "ref" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "ref", r.URL.Query(), &params.Ref, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "ref"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ref", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AggregateCircleDetail(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AggregateContact operation middleware
 func (siw *ServerInterfaceWrapper) AggregateContact(w http.ResponseWriter, r *http.Request) {
 
@@ -2095,6 +2139,20 @@ func (siw *ServerInterfaceWrapper) AggregateContact(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AggregateContact(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AggregateCubeHome operation middleware
+func (siw *ServerInterfaceWrapper) AggregateCubeHome(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AggregateCubeHome(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5456,6 +5514,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/search", wrapper.Search)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/feed", wrapper.Feed)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/feed/refresh", wrapper.FeedRefresh)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/aggregate/cube-home", wrapper.AggregateCubeHome)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/aggregate/circle-detail", wrapper.AggregateCircleDetail)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/aggregate/detail", wrapper.AggregateDetail)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/aggregate/contact", wrapper.AggregateContact)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/matches", wrapper.ListMatches)

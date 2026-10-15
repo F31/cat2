@@ -892,6 +892,58 @@ paths:
                     properties:
                       data: { $ref: '#/components/schemas/FeedData' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /aggregate/cube-home:
+    get:
+      tags: [bff]
+      summary: 猫立方首页聚合（立方列表+待办数+未读单次返回）
+      operationId: aggregateCubeHome
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 聚合数据
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          cubes: { type: array, items: { $ref: '#/components/schemas/Cube' } }
+                          todo_count: { type: integer }
+                          unread: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /aggregate/circle-detail:
+    get:
+      tags: [bff]
+      summary: 圈详情聚合（非成员裁剪：圈信息+成员数+圈主+加入状态；游客可看）
+      operationId: aggregateCircleDetail
+      security: []
+      parameters:
+        - name: ref
+          in: query
+          required: true
+          schema: { type: string, description: '如 circle:123' }
+      responses:
+        '200':
+          description: 聚合数据
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          circle: { $ref: '#/components/schemas/CircleDetail' }
+                          owner: { $ref: '#/components/schemas/Card' }
+                          member_count: { type: integer }
+                          joined: { type: boolean }
+        '404': { $ref: '#/components/responses/NotFound' }
   /aggregate/detail:
     get:
       tags: [bff]
