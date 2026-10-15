@@ -21,6 +21,7 @@ import (
 
 	"catcube/internal/kernel/config"
 	"catcube/internal/kernel/obs"
+	"catcube/internal/modules/circle"
 	"catcube/internal/modules/cube"
 	"catcube/internal/modules/discovery"
 	"catcube/internal/modules/membership"
@@ -2616,4 +2617,127 @@ func TestIntegrationCubeProjectLink(t *testing.T) {
 	if !found {
 		t.Fatalf("平台下架应显示 taken_down 且不删除: %+v", projects.Items)
 	}
+}
+
+// 圈子生命周期与圈内发布（p3 §5/§6-publish）：建圈/邀请加入/申请/到期结束/转常设/解散/配额/续期。
+func TestIntegrationCircleLifecycle(t *testing.T) {
+	h := newTestApp(t)
+	aPhone, bPhone := randPhone(), randPhone()
+	_, aTok := loginPhone(t, h, aPhone)
+	bID, bTok := loginPhone(t, h, bPhone)
+	for _, tok := range []string{aTok, bTok} {
+		if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+			"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+		}); s != http.StatusOK || env.Code != 0 {
+			t.Fatalf("实名失败: %d %+v", s, env)
+		}
+	}
+	// 建临时圈（30 天）
+	_, env := h.do(http.MethodPost, "/api/mp/v1/circles", aTok, map[string]any{
+		"name": "华东制造业圈", "type": 2, "duration_days": 30, "region_code": "310000",
+	})
+	var cobj struct {
+		ID     int64 `json:"id,string"`
+		Status int16 `json:"status"`
+	}
+	_ = json.Unmarshal(env.Data, &cobj)
+	if cobj.ID == 0 || cobj.Status != 0 {
+		t.Fatalf("建圈失败: %+v", env)
+	}
+	// 配额：当日再建被拒 140005/429
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/circles", aTok, map[string]any{"name": "第二圈", "type": 2, "duration_days": 7}); s != http.StatusTooManyRequests || e.Code != 140005 {
+		t.Fatalf("建圈配额应 140005/429: %d %+v", s, e)
+	}
+	// 邀请链接加入
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/invite", cobj.ID), aTok, nil)
+	var inv struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(env.Data, &inv)
+	if inv.Code == "" {
+		t.Fatalf("邀请码生成失败: %+v", env)
+	}
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/circles/join", bTok, map[string]any{"code": inv.Code}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("邀请加入失败: %d %+v", s, e)
+	}
+	// 成员数 2
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/circles/%d", cobj.ID), bTok, nil)
+	var detail struct {
+		MemberCount int   `json:"member_count"`
+		MyRole      int16 `json:"my_role"`
+		Joined      bool  `json:"joined"`
+	}
+	_ = json.Unmarshal(env.Data, &detail)
+	if detail.MemberCount != 2 || detail.MyRole != 2 || !detail.Joined {
+		t.Fatalf("成员/角色不符: %+v", detail)
+	}
+
+	// 发布需求（普通成员，仅本圈）+ 续期
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/demands", cobj.ID), bTok, map[string]any{
+		"title": "寻找钣金供应商", "content": "月需求 500 件", "contact_phone": "13900000000", "scope": 1,
+	})
+	var dem struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &dem)
+	if dem.ID == 0 {
+		t.Fatalf("发布需求失败: %+v", env)
+	}
+	// 每日发布额度：再发 2 条后第 4 条被拒
+	for i := 0; i < 2; i++ {
+		if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/demands", cobj.ID), bTok, map[string]any{
+			"title": fmt.Sprintf("需求%d", i), "content": "内容",
+		}); s != http.StatusOK || e.Code != 0 {
+			t.Fatalf("发布需求失败: %d %+v", s, e)
+		}
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/demands", cobj.ID), bTok, map[string]any{
+		"title": "第四条", "content": "内容",
+	}); s != http.StatusTooManyRequests || e.Code != 140008 {
+		t.Fatalf("每日发布额度应 140008/429: %d %+v", s, e)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/demands/%d/renew", dem.ID), bTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("续期失败: %d %+v", s, e)
+	}
+
+	// 到期 → EndDue 转已结束 → 圈主转常设
+	if _, err := h.app.Pool.Exec(context.Background(),
+		`UPDATE cir_circle SET end_at=now()-interval '1 hour' WHERE id=$1`, cobj.ID); err != nil {
+		t.Fatal(err)
+	}
+	var cm *circle.Module
+	for _, mod := range h.app.Modules {
+		if v, ok := mod.(*circle.Module); ok {
+			cm = v
+		}
+	}
+	if cm == nil {
+		t.Fatal("circle 模块未装载")
+	}
+	if err := cm.EndDue(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/circles/%d", cobj.ID), aTok, nil)
+	_ = json.Unmarshal(env.Data, &detail)
+	status := circleStatus(t, h, cobj.ID, aTok)
+	if status != 1 {
+		t.Fatalf("到期应转已结束(status=1): %d", status)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/convert", cobj.ID), aTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("转常设失败: %d %+v", s, e)
+	}
+	if status = circleStatus(t, h, cobj.ID, aTok); status != 0 {
+		t.Fatalf("转常设后应进行中(status=0): %d", status)
+	}
+	_ = bID
+}
+
+func circleStatus(t *testing.T, h *testApp, circleID int64, tok string) int16 {
+	t.Helper()
+	_, env := h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/circles/%d", circleID), tok, nil)
+	var d struct {
+		Status int16 `json:"status"`
+	}
+	_ = json.Unmarshal(env.Data, &d)
+	return d.Status
 }

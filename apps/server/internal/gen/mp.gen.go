@@ -14,6 +14,30 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for CircleCreateInputDurationDays.
+const (
+	N180 CircleCreateInputDurationDays = 180
+	N30  CircleCreateInputDurationDays = 30
+	N7   CircleCreateInputDurationDays = 7
+	N90  CircleCreateInputDurationDays = 90
+)
+
+// Valid indicates whether the value is a known member of the CircleCreateInputDurationDays enum.
+func (e CircleCreateInputDurationDays) Valid() bool {
+	switch e {
+	case N180:
+		return true
+	case N30:
+		return true
+	case N7:
+		return true
+	case N90:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CompletionMissing.
 const (
 	CompletionMissingIndustry CompletionMissing = "industry"
@@ -408,6 +432,107 @@ type CertifyInput struct {
 	MaterialFileIds *[]string          `json:"material_file_ids,omitempty"`
 	RealName        *string            `json:"real_name,omitempty"`
 	TargetOrgId     *string            `json:"target_org_id,omitempty"`
+}
+
+// Circle defines model for Circle.
+type Circle struct {
+	EndAt       *time.Time `json:"end_at,omitempty"`
+	Id          string     `json:"id"`
+	MemberCount int        `json:"member_count"`
+	Name        string     `json:"name"`
+	OwnerUserId string     `json:"owner_user_id"`
+
+	// Status 0 进行中 / 1 已结束 / 2 已解散
+	Status int `json:"status"`
+
+	// Type 1 常设 / 2 临时
+	Type int `json:"type"`
+}
+
+// CircleCreateInput defines model for CircleCreateInput.
+type CircleCreateInput struct {
+	CoverFileId   *string                        `json:"cover_file_id,omitempty"`
+	DurationDays  *CircleCreateInputDurationDays `json:"duration_days,omitempty"`
+	IndustryCodes *[]string                      `json:"industry_codes,omitempty"`
+	Intro         *string                        `json:"intro,omitempty"`
+	Name          string                         `json:"name"`
+	OrgId         *string                        `json:"org_id,omitempty"`
+	RegionCode    *string                        `json:"region_code,omitempty"`
+
+	// Type 1 常设 / 2 临时
+	Type int `json:"type"`
+}
+
+// CircleCreateInputDurationDays defines model for CircleCreateInput.DurationDays.
+type CircleCreateInputDurationDays int
+
+// CircleDemand defines model for CircleDemand.
+type CircleDemand struct {
+	AuthorId string `json:"author_id"`
+	CircleId string `json:"circle_id"`
+
+	// ContactPhone 会员可见
+	ContactPhone *string `json:"contact_phone,omitempty"`
+
+	// Content ≤500字
+	Content       string     `json:"content"`
+	CreatedAt     *time.Time `json:"created_at,omitempty"`
+	DemandType    *string    `json:"demand_type,omitempty"`
+	ExpireAt      *time.Time `json:"expire_at,omitempty"`
+	Id            string     `json:"id"`
+	IndustryCodes *[]string  `json:"industry_codes,omitempty"`
+	RegionCode    *string    `json:"region_code,omitempty"`
+
+	// Scope 1 仅本圈 / 2 全平台（VIP）
+	Scope *int `json:"scope,omitempty"`
+
+	// Status 0 有效 / 1 已过期 / 2 已删除
+	Status int `json:"status"`
+
+	// Title ≤30字
+	Title string `json:"title"`
+}
+
+// CircleDemandInput defines model for CircleDemandInput.
+type CircleDemandInput struct {
+	ContactPhone *string `json:"contact_phone,omitempty"`
+	Content      string  `json:"content"`
+
+	// Days 有效期天数（默认 30）
+	Days          *int      `json:"days,omitempty"`
+	DemandType    *string   `json:"demand_type,omitempty"`
+	IndustryCodes *[]string `json:"industry_codes,omitempty"`
+	RegionCode    *string   `json:"region_code,omitempty"`
+
+	// Scope 1 仅本圈 / 2 全平台（会员）
+	Scope *int   `json:"scope,omitempty"`
+	Title string `json:"title"`
+}
+
+// CircleDetail defines model for CircleDetail.
+type CircleDetail struct {
+	CoverFileId   *string    `json:"cover_file_id,omitempty"`
+	EndAt         *time.Time `json:"end_at,omitempty"`
+	Id            string     `json:"id"`
+	IndustryCodes *[]string  `json:"industry_codes,omitempty"`
+	Intro         *string    `json:"intro,omitempty"`
+	Joined        *bool      `json:"joined,omitempty"`
+	MemberCount   int        `json:"member_count"`
+
+	// MyRole 0 非成员 / 1 圈主 / 2 成员
+	MyRole      *int   `json:"my_role,omitempty"`
+	Name        string `json:"name"`
+	OwnerUserId string `json:"owner_user_id"`
+
+	// Recommendable 新圈 7 天内不进推荐流
+	Recommendable *bool   `json:"recommendable,omitempty"`
+	RegionCode    *string `json:"region_code,omitempty"`
+
+	// Status 0 进行中 / 1 已结束 / 2 已解散
+	Status int `json:"status"`
+
+	// Type 1 常设 / 2 临时
+	Type int `json:"type"`
 }
 
 // Completion defines model for Completion.
@@ -1108,6 +1233,23 @@ type SubmitCertParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// JoinCircleJSONBody defines parameters for JoinCircle.
+type JoinCircleJSONBody struct {
+	Code string `json:"code"`
+}
+
+// ListCircleDemandsParams defines parameters for ListCircleDemands.
+type ListCircleDemandsParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// PublishCircleFeedJSONBody defines parameters for PublishCircleFeed.
+type PublishCircleFeedJSONBody struct {
+	ImageFileIds   *[]string `json:"image_file_ids,omitempty"`
+	IsAnnouncement *bool     `json:"is_announcement,omitempty"`
+	Text           *string   `json:"text,omitempty"`
+}
+
 // PublishContentParams defines parameters for PublishContent.
 type PublishContentParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
@@ -1354,6 +1496,18 @@ type UpdateMyCardJSONRequestBody = CardUpdate
 // SubmitCertJSONRequestBody defines body for SubmitCert for application/json ContentType.
 type SubmitCertJSONRequestBody = CertifyInput
 
+// CreateCircleJSONRequestBody defines body for CreateCircle for application/json ContentType.
+type CreateCircleJSONRequestBody = CircleCreateInput
+
+// JoinCircleJSONRequestBody defines body for JoinCircle for application/json ContentType.
+type JoinCircleJSONRequestBody JoinCircleJSONBody
+
+// PublishCircleDemandJSONRequestBody defines body for PublishCircleDemand for application/json ContentType.
+type PublishCircleDemandJSONRequestBody = CircleDemandInput
+
+// PublishCircleFeedJSONRequestBody defines body for PublishCircleFeed for application/json ContentType.
+type PublishCircleFeedJSONRequestBody PublishCircleFeedJSONBody
+
 // PublishContentJSONRequestBody defines body for PublishContent for application/json ContentType.
 type PublishContentJSONRequestBody = ContentPublishInput
 
@@ -1482,6 +1636,45 @@ type ServerInterface interface {
 	// GetMyCerts 我的认证记录
 	// (GET /certs/mine)
 	GetMyCerts(w http.ResponseWriter, r *http.Request)
+	// ListMyCircles 我的圈子（我加入的/我创建的）
+	// (GET /circles)
+	ListMyCircles(w http.ResponseWriter, r *http.Request)
+	// CreateCircle 建圈（已实名；临时 7/30/90/180 天；配额 1/日、同时最多 3 个）
+	// (POST /circles)
+	CreateCircle(w http.ResponseWriter, r *http.Request)
+	// RenewCircleDemand 需求到期续期 30 天（作者）
+	// (POST /circles/demands/{did}/renew)
+	RenewCircleDemand(w http.ResponseWriter, r *http.Request, did string)
+	// JoinCircle 凭邀请链接/二维码加入（=授权凭证直接加入）
+	// (POST /circles/join)
+	JoinCircle(w http.ResponseWriter, r *http.Request)
+	// GetCircle 圈详情（游客可看；非成员仅见关于本圈由前端裁剪）
+	// (GET /circles/{id})
+	GetCircle(w http.ResponseWriter, r *http.Request, id string)
+	// ApplyCircle 申请加入（圈主审）
+	// (POST /circles/{id}/apply)
+	ApplyCircle(w http.ResponseWriter, r *http.Request, id string)
+	// ConvertCircle 已结束转常设（圈主）
+	// (POST /circles/{id}/convert)
+	ConvertCircle(w http.ResponseWriter, r *http.Request, id string)
+	// ListCircleDemands 圈内需求列表（生效在前；联系方式会员可见）
+	// (GET /circles/{id}/demands)
+	ListCircleDemands(w http.ResponseWriter, r *http.Request, id string, params ListCircleDemandsParams)
+	// PublishCircleDemand 发布需求（每人每日跨圈合计 3 条；VIP 可选全平台）
+	// (POST /circles/{id}/demands)
+	PublishCircleDemand(w http.ResponseWriter, r *http.Request, id string)
+	// DissolveCircle 圈主解散（永久删除，通知全员）
+	// (POST /circles/{id}/dissolve)
+	DissolveCircle(w http.ResponseWriter, r *http.Request, id string)
+	// PublishCircleFeed 圈内动态/公告（公告仅圈主、每圈每日 ≤3 条不占个人额度）
+	// (POST /circles/{id}/feeds)
+	PublishCircleFeed(w http.ResponseWriter, r *http.Request, id string)
+	// InviteCircle 生成/重置邀请链接（有效期=圈剩余存续期；可重置旧链作废）
+	// (POST /circles/{id}/invite)
+	InviteCircle(w http.ResponseWriter, r *http.Request, id string)
+	// ListCircleMembers 成员列表
+	// (GET /circles/{id}/members)
+	ListCircleMembers(w http.ResponseWriter, r *http.Request, id string)
 	// PublishContent 创建内容（草稿=审核中；kind 区分四类，Fields 按 ContentKind schema 校验）
 	// (POST /contents)
 	PublishContent(w http.ResponseWriter, r *http.Request, params PublishContentParams)
@@ -2127,6 +2320,324 @@ func (siw *ServerInterfaceWrapper) GetMyCerts(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMyCerts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMyCircles operation middleware
+func (siw *ServerInterfaceWrapper) ListMyCircles(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMyCircles(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCircle operation middleware
+func (siw *ServerInterfaceWrapper) CreateCircle(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCircle(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenewCircleDemand operation middleware
+func (siw *ServerInterfaceWrapper) RenewCircleDemand(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "did" -------------
+	var did string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "did", r.PathValue("did"), &did, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "did", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenewCircleDemand(w, r, did)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// JoinCircle operation middleware
+func (siw *ServerInterfaceWrapper) JoinCircle(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.JoinCircle(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCircle operation middleware
+func (siw *ServerInterfaceWrapper) GetCircle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCircle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyCircle operation middleware
+func (siw *ServerInterfaceWrapper) ApplyCircle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyCircle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConvertCircle operation middleware
+func (siw *ServerInterfaceWrapper) ConvertCircle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConvertCircle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCircleDemands operation middleware
+func (siw *ServerInterfaceWrapper) ListCircleDemands(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCircleDemandsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCircleDemands(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PublishCircleDemand operation middleware
+func (siw *ServerInterfaceWrapper) PublishCircleDemand(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PublishCircleDemand(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DissolveCircle operation middleware
+func (siw *ServerInterfaceWrapper) DissolveCircle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DissolveCircle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PublishCircleFeed operation middleware
+func (siw *ServerInterfaceWrapper) PublishCircleFeed(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PublishCircleFeed(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// InviteCircle operation middleware
+func (siw *ServerInterfaceWrapper) InviteCircle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InviteCircle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCircleMembers operation middleware
+func (siw *ServerInterfaceWrapper) ListCircleMembers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCircleMembers(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4611,6 +5122,19 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/link-requests", wrapper.RequestCubeLink)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/link-requests/{reqID}/decide", wrapper.DecideCubeLink)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/projects/{pid}/publish", wrapper.PublishCubeProject)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles", wrapper.ListMyCircles)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles", wrapper.CreateCircle)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/join", wrapper.JoinCircle)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/{id}", wrapper.GetCircle)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/apply", wrapper.ApplyCircle)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/invite", wrapper.InviteCircle)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/{id}/members", wrapper.ListCircleMembers)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/dissolve", wrapper.DissolveCircle)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/convert", wrapper.ConvertCircle)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/{id}/demands", wrapper.ListCircleDemands)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/demands", wrapper.PublishCircleDemand)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/demands/{did}/renew", wrapper.RenewCircleDemand)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/feeds", wrapper.PublishCircleFeed)
 
 	return m
 }

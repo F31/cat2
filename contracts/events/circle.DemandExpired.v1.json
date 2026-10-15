@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/circle.DemandExpired.v1.json",
+  "title": "circle.DemandExpired.v1",
+  "description": "circle 圈子领域事件。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "circle.DemandExpired.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["circle_id","demand_id","author_id"],
+      "properties": { "circle_id": { "type": "string" },"demand_id": { "type": "string" },"author_id": { "type": "string" } }
+    }
+  },
+  "additionalProperties": false
+}

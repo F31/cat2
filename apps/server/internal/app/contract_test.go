@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	circlecontract "catcube/internal/modules/circle/contract"
 	contentcontract "catcube/internal/modules/content/contract"
 	cubecontract "catcube/internal/modules/cube/contract"
 	idcontract "catcube/internal/modules/identity/contract"
@@ -41,6 +42,9 @@ func emittedTopics() []string {
 		cubecontract.EventTaskAssigned, cubecontract.EventTaskSubmitted, cubecontract.EventTaskConfirmed,
 		cubecontract.EventReportSubmitted, cubecontract.EventReportConfirmed, cubecontract.EventReportRejected,
 		tradecontract.EventApportionFormed, tradecontract.EventApportionFailed,
+		// p3 circle
+		circlecontract.EventCircleCreated, circlecontract.EventCircleEnded, circlecontract.EventCircleDissolved,
+		circlecontract.EventMemberJoined, circlecontract.EventDemandPublished, circlecontract.EventDemandExpired,
 	}
 }
 
@@ -58,6 +62,8 @@ func TestOpenAPIDeclaresP3Paths(t *testing.T) {
 		"/cubes/plans:", "/cubes/{id}/plan:", "/cubes/{id}/apportion:",
 		"/cubes/{id}/apportion/pledge:", "/cubes/{id}/apportion/exit:", "/cube-apportions/{groupID}:",
 		"/cubes/{id}/link-requests:", "/cubes/{id}/link-requests/{reqID}/decide:", "/cubes/{id}/projects/{pid}/publish:",
+		"/circles:", "/circles/{id}:", "/circles/{id}/apply:", "/circles/{id}/invite:", "/circles/join:",
+		"/circles/{id}/dissolve:", "/circles/{id}/demands:", "/circles/{id}/feeds:",
 	}
 	for _, p := range paths {
 		if !strings.Contains(text, "\n  "+p) {

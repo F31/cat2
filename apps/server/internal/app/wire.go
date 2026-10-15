@@ -30,6 +30,7 @@ import (
 	"catcube/internal/kernel/scheduler"
 	"catcube/internal/kernel/sensitive"
 	"catcube/internal/kernel/settings"
+	"catcube/internal/modules/circle"
 	"catcube/internal/modules/content"
 	contentcontract "catcube/internal/modules/content/contract"
 	"catcube/internal/modules/cube"
@@ -170,6 +171,10 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		Audit: auditRec, Encryptor: encryptor, Trade: tradeMod.Facade(), Settings: settingsReg,
 		Content: contentMod.Facade(),
 	})
+	circleMod := circle.New(circle.Deps{
+		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine,
+		Encryptor: encryptor, Entities: entityReg,
+	})
 	mods := []module.Module{
 		dictMod,
 		mediaMod,
@@ -182,6 +187,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		tradeMod,
 		membershipMod,
 		cubeMod,
+		circleMod,
 		msgMod,
 		discoveryMod,
 	}

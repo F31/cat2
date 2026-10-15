@@ -1308,6 +1308,195 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/circles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 我的圈子（我加入的/我创建的） */
+        get: operations["listMyCircles"];
+        put?: never;
+        /** 建圈（已实名；临时 7/30/90/180 天；配额 1/日、同时最多 3 个） */
+        post: operations["createCircle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/circles/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 凭邀请链接/二维码加入（=授权凭证直接加入） */
+        post: operations["joinCircle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/circles/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 圈详情（游客可看；非成员仅见关于本圈由前端裁剪） */
+        get: operations["getCircle"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/circles/{id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 申请加入（圈主审） */
+        post: operations["applyCircle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/circles/{id}/invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 生成/重置邀请链接（有效期=圈剩余存续期；可重置旧链作废） */
+        post: operations["inviteCircle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/circles/{id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 成员列表 */
+        get: operations["listCircleMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/circles/{id}/dissolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 圈主解散（永久删除，通知全员） */
+        post: operations["dissolveCircle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/circles/{id}/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 已结束转常设（圈主） */
+        post: operations["convertCircle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/circles/{id}/demands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 圈内需求列表（生效在前；联系方式会员可见） */
+        get: operations["listCircleDemands"];
+        put?: never;
+        /** 发布需求（每人每日跨圈合计 3 条；VIP 可选全平台） */
+        post: operations["publishCircleDemand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/circles/demands/{did}/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 需求到期续期 30 天（作者） */
+        post: operations["renewCircleDemand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/circles/{id}/feeds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 圈内动态/公告（公告仅圈主、每圈每日 ≤3 条不占个人额度） */
+        post: operations["publishCircleFeed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1464,6 +1653,75 @@ export interface components {
             amount_wan?: number;
             /** @description ≤200字 */
             note?: string;
+        };
+        Circle: {
+            id: string;
+            name: string;
+            /** @description 1 常设 / 2 临时 */
+            type: number;
+            /** @description 0 进行中 / 1 已结束 / 2 已解散 */
+            status: number;
+            owner_user_id: string;
+            member_count: number;
+            /** Format: date-time */
+            end_at?: string | null;
+        };
+        CircleDetail: components["schemas"]["Circle"] & {
+            intro?: string;
+            cover_file_id?: string;
+            region_code?: string;
+            industry_codes?: string[];
+            /** @description 0 非成员 / 1 圈主 / 2 成员 */
+            my_role?: number;
+            joined?: boolean;
+            /** @description 新圈 7 天内不进推荐流 */
+            recommendable?: boolean;
+        };
+        CircleCreateInput: {
+            name: string;
+            intro?: string;
+            cover_file_id?: string;
+            region_code?: string;
+            industry_codes?: string[];
+            /** @description 1 常设 / 2 临时 */
+            type: number;
+            /** @enum {integer} */
+            duration_days?: 7 | 30 | 90 | 180;
+            org_id?: string;
+        };
+        CircleDemand: {
+            id: string;
+            circle_id: string;
+            author_id: string;
+            /** @description ≤30字 */
+            title: string;
+            /** @description ≤500字 */
+            content: string;
+            demand_type?: string;
+            region_code?: string;
+            industry_codes?: string[];
+            /** Format: date-time */
+            expire_at?: string;
+            /** @description 1 仅本圈 / 2 全平台（VIP） */
+            scope?: number;
+            /** @description 0 有效 / 1 已过期 / 2 已删除 */
+            status: number;
+            /** @description 会员可见 */
+            contact_phone?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        CircleDemandInput: {
+            title: string;
+            content: string;
+            demand_type?: string;
+            region_code?: string;
+            industry_codes?: string[];
+            /** @description 有效期天数（默认 30） */
+            days?: number;
+            /** @description 1 仅本圈 / 2 全平台（会员） */
+            scope?: number;
+            contact_phone?: string;
         };
         CubeLinkReq: {
             id: string;
@@ -4425,6 +4683,363 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+        };
+    };
+    listMyCircles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 圈子列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["Circle"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    createCircle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CircleCreateInput"];
+            };
+        };
+        responses: {
+            /** @description 圈子摘要 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["Circle"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    joinCircle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 圈子摘要 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["Circle"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getCircle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 圈详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["CircleDetail"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    applyCircle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            applied?: boolean;
+                        };
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    inviteCircle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 邀请码 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            code?: string;
+                            /** Format: date-time */
+                            expire_at?: string;
+                        };
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listCircleMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成员 ID 列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: string[];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    dissolveCircle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            dissolved?: boolean;
+                        };
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    convertCircle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            converted?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    listCircleDemands: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 需求列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["CircleDemand"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    publishCircleDemand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CircleDemandInput"];
+            };
+        };
+        responses: {
+            /** @description 需求 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["CircleDemand"];
+                    };
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    renewCircleDemand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                did: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            renewed?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    publishCircleFeed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    text?: string;
+                    image_file_ids?: string[];
+                    is_announcement?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            id?: string;
+                        };
+                    };
+                };
+            };
         };
     };
 }

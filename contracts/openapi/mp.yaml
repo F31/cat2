@@ -2178,6 +2178,238 @@ paths:
                     properties:
                       data: { type: object, properties: { content_project_id: { type: string } } }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /circles:
+    post:
+      tags: [circle]
+      summary: 建圈（已实名；临时 7/30/90/180 天；配额 1/日、同时最多 3 个）
+      operationId: createCircle
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CircleCreateInput' }
+      responses:
+        '200':
+          description: 圈子摘要
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { $ref: '#/components/schemas/Circle' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+    get:
+      tags: [circle]
+      summary: 我的圈子（我加入的/我创建的）
+      operationId: listMyCircles
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 圈子列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { $ref: '#/components/schemas/Circle' } }
+  /circles/join:
+    post:
+      tags: [circle]
+      summary: 凭邀请链接/二维码加入（=授权凭证直接加入）
+      operationId: joinCircle
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties: { code: { type: string } }
+      responses:
+        '200':
+          description: 圈子摘要
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { $ref: '#/components/schemas/Circle' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /circles/{id}:
+    get:
+      tags: [circle]
+      summary: 圈详情（游客可看；非成员仅见关于本圈由前端裁剪）
+      operationId: getCircle
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 圈详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { $ref: '#/components/schemas/CircleDetail' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /circles/{id}/apply:
+    post:
+      tags: [circle]
+      summary: 申请加入（圈主审）
+      operationId: applyCircle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { applied: { type: boolean } } } } } ] } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /circles/{id}/invite:
+    post:
+      tags: [circle]
+      summary: 生成/重置邀请链接（有效期=圈剩余存续期；可重置旧链作废）
+      operationId: inviteCircle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 邀请码
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { type: object, properties: { code: { type: string }, expire_at: { type: string, format: date-time } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /circles/{id}/members:
+    get:
+      tags: [circle]
+      summary: 成员列表
+      operationId: listCircleMembers
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 成员 ID 列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { type: object, properties: { items: { type: array, items: { type: string } } } }
+  /circles/{id}/dissolve:
+    post:
+      tags: [circle]
+      summary: 圈主解散（永久删除，通知全员）
+      operationId: dissolveCircle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { dissolved: { type: boolean } } } } } ] } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /circles/{id}/convert:
+    post:
+      tags: [circle]
+      summary: 已结束转常设（圈主）
+      operationId: convertCircle
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { converted: { type: boolean } } } } } ] } } } }
+  /circles/{id}/demands:
+    get:
+      tags: [circle]
+      summary: 圈内需求列表（生效在前；联系方式会员可见）
+      operationId: listCircleDemands
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: 需求列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { $ref: '#/components/schemas/CircleDemand' } }
+    post:
+      tags: [circle]
+      summary: 发布需求（每人每日跨圈合计 3 条；VIP 可选全平台）
+      operationId: publishCircleDemand
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CircleDemandInput' }
+      responses:
+        '200':
+          description: 需求
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { $ref: '#/components/schemas/CircleDemand' } }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /circles/demands/{did}/renew:
+    post:
+      tags: [circle]
+      summary: 需求到期续期 30 天（作者）
+      operationId: renewCircleDemand
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: did, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { renewed: { type: boolean } } } } } ] } } } }
+  /circles/{id}/feeds:
+    post:
+      tags: [circle]
+      summary: 圈内动态/公告（公告仅圈主、每圈每日 ≤3 条不占个人额度）
+      operationId: publishCircleFeed
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+                image_file_ids: { type: array, items: { type: string } }
+                is_announcement: { type: boolean }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { id: { type: string } } } } } ] } } } }
 components:
   securitySchemes:
     bearerAuth:
@@ -2348,6 +2580,70 @@ components:
         related_item_ref: { type: string }
         amount_wan: { type: integer }
         note: { type: string, description: ≤200字 }
+    Circle:
+      type: object
+      required: [id, name, type, status, owner_user_id, member_count]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: integer, description: '1 常设 / 2 临时' }
+        status: { type: integer, description: '0 进行中 / 1 已结束 / 2 已解散' }
+        owner_user_id: { type: string }
+        member_count: { type: integer }
+        end_at: { type: string, format: date-time, nullable: true }
+    CircleDetail:
+      allOf:
+        - $ref: '#/components/schemas/Circle'
+        - type: object
+          properties:
+            intro: { type: string }
+            cover_file_id: { type: string }
+            region_code: { type: string }
+            industry_codes: { type: array, items: { type: string } }
+            my_role: { type: integer, description: '0 非成员 / 1 圈主 / 2 成员' }
+            joined: { type: boolean }
+            recommendable: { type: boolean, description: 新圈 7 天内不进推荐流 }
+    CircleCreateInput:
+      type: object
+      required: [name, type]
+      properties:
+        name: { type: string }
+        intro: { type: string }
+        cover_file_id: { type: string }
+        region_code: { type: string }
+        industry_codes: { type: array, items: { type: string } }
+        type: { type: integer, description: '1 常设 / 2 临时' }
+        duration_days: { type: integer, enum: [7, 30, 90, 180] }
+        org_id: { type: string }
+    CircleDemand:
+      type: object
+      required: [id, circle_id, author_id, title, content, status]
+      properties:
+        id: { type: string }
+        circle_id: { type: string }
+        author_id: { type: string }
+        title: { type: string, description: ≤30字 }
+        content: { type: string, description: ≤500字 }
+        demand_type: { type: string }
+        region_code: { type: string }
+        industry_codes: { type: array, items: { type: string } }
+        expire_at: { type: string, format: date-time }
+        scope: { type: integer, description: '1 仅本圈 / 2 全平台（VIP）' }
+        status: { type: integer, description: '0 有效 / 1 已过期 / 2 已删除' }
+        contact_phone: { type: string, description: 会员可见 }
+        created_at: { type: string, format: date-time }
+    CircleDemandInput:
+      type: object
+      required: [title, content]
+      properties:
+        title: { type: string }
+        content: { type: string }
+        demand_type: { type: string }
+        region_code: { type: string }
+        industry_codes: { type: array, items: { type: string } }
+        days: { type: integer, description: 有效期天数（默认 30） }
+        scope: { type: integer, description: '1 仅本圈 / 2 全平台（会员）' }
+        contact_phone: { type: string }
     CubeLinkReq:
       type: object
       required: [id, cube_id, content_project_id, initiator_id, target_role, status]
