@@ -23,14 +23,14 @@
 
 ## 3. cube：订阅与分摊
 
-- [ ] 3.1 订阅三档入 settings（档位名/可建数/成员上限/价格 ¥999 年/¥2999 年等全后台可配）；`GET /plans`、`POST /plans/change`（升降档）
-- [ ] 3.2 状态机 #13 订阅 + 到期回落 SchedulerJob
-- [ ] 3.3 分摊发起：猫王选档设人数 N（2≤N≤档上限）不设价，每人=档价÷N；默认 7 天截止；续费可重设名单
-- [ ] 3.4 trade 分摊：`trd_apportion_group`、`trd_pledge` 迁移；认筹支付成功在同一 trade 事务内锁 group 行计数，达 N 置「已成团」+订单「已支付」并关闭认筹入口（杜绝超额）
-- [ ] 3.5 开通：cube 注册 `OrderFulfiller(biz_type=cube_plan)`；`OrderPaid`/`ApportionFormed` → 履约开通订阅（幂等）
-- [ ] 3.6 成团成员自动成为立方成员（不受基础档 10 人限制，标「共建成员」）
-- [ ] 3.7 未成团：到期扫描 → 全部已付认筹逐笔幂等全额原路退回，全部完成才终结（`ApportionFailed`）；截止前可退出退款
-- [ ] 3.8 tests/trade：并发成团（N-1 与 N 同时支付）、重复回调、未成团退款幂等、履约重试
+- [x] 3.1 订阅三档入 settings（`cube.plan.*.price_fen/cube_limit/member_limit` 全后台可配）；`GET /cubes/plans`、`POST /cubes/{id}/plan`（升降档，降档校验成员上限）
+- [x] 3.2 订阅到期回落 SchedulerJob（`cube.plan_expire`，降回基础档，`ListExpiredPlans`）
+- [x] 3.3 分摊发起：猫王选档设人数 N（2≤N≤档上限）不设价，每人=档价÷N；默认 7 天截止；名单 `member_ids` 随快照（续费可重设）
+- [x] 3.4 trade 分摊：`trd_apportion_group`/`trd_pledge`；认筹支付成功在同一 trade 事务内 `SELECT ... FOR UPDATE` 锁 group 行计数，达 N 置「已成团」并关闭入口；超额笔提交后原路退回；并发测试证明不超额
+- [x] 3.5 开通：cube 注册 `OrderFulfiller(biz_type=cube_plan)`；订单支付履约 + 订阅 `trade.ApportionFormed` → 开通订阅（幂等）
+- [x] 3.6 成团成员自动成为立方成员（role=4 共建成员，`AddMember` 不受成员上限）
+- [x] 3.7 未成团：`trade.apportion_expire` 到期扫描逐笔幂等全额退回，全部完成才终结（`trade.ApportionFailed`）；截止前可退出退款（`/apportion/exit`）
+- [x] 3.8 tests：并发成团（3 笔同时支付→恰好 2 计入、超额退款）、未成团退款幂等（重复执行不重复退）；重复回调沿用 trade 幂等单测
 
 ## 4. cube：项目关联（引用 + 本地状态）
 

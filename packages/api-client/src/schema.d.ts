@@ -1154,6 +1154,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cubes/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 订阅三档（settings 后台可配） */
+        get: operations["listCubePlans"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 购买/升级订阅（生成 cube_plan 订单，履约在支付成功后） */
+        post: operations["changeCubePlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/apportion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 发起分摊（猫王设人数 N，不设价；每人=档价÷N） */
+        post: operations["initiateApportion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/apportion/pledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 认筹下单（支付成功计数强一致成团） */
+        post: operations["pledgeApportion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/apportion/exit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 截止前退出（原路退回） */
+        post: operations["exitApportion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/apportion/{groupID}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分摊进度（认筹进度/截止倒计时） */
+        get: operations["getApportion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1310,6 +1412,27 @@ export interface components {
             amount_wan?: number;
             /** @description ≤200字 */
             note?: string;
+        };
+        CubePlan: {
+            level: number;
+            name: string;
+            /** @description 0=不限 */
+            cube_limit: number;
+            /** @description 0=不限 */
+            member_limit: number;
+            price_fen: number;
+        };
+        CubeApportion: {
+            id: string;
+            cube_id: string;
+            /** @description 每人分摊额=档价÷N */
+            per_fen: number;
+            target_n: number;
+            pledged_count: number;
+            /** Format: date-time */
+            deadline?: string;
+            /** @description 0 进行中 / 1 已成团 / 2 未成团 / 3 已终结 */
+            status: number;
         };
         Envelope: {
             /** @description 0=成功；否则 MMNNNN 错误码 */
@@ -3933,6 +4056,188 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+        };
+    };
+    listCubePlans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 档位列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["CubePlan"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    changeCubePlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    level: number;
+                    years?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description 订单号与金额 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            order_id?: string;
+                            amount_fen?: number;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    initiateApportion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    level: number;
+                    /** @description 2≤N≤档成员上限 */
+                    n: number;
+                    /** @description 分摊名单（成团后自动成为共建成员） */
+                    member_ids?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description 分摊组 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["CubeApportion"];
+                    };
+                };
+            };
+        };
+    };
+    pledgeApportion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    group_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 订单号 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            order_id?: string;
+                        };
+                    };
+                };
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    exitApportion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    group_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            exited?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    getApportion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupID: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 分摊组 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["CubeApportion"];
+                    };
+                };
+            };
         };
     };
 }

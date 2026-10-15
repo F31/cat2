@@ -1922,6 +1922,157 @@ paths:
                   - type: object
                     properties: { data: { type: object, properties: { rejected: { type: boolean } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /cubes/plans:
+    get:
+      tags: [cube]
+      summary: 订阅三档（settings 后台可配）
+      operationId: listCubePlans
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 档位列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { $ref: '#/components/schemas/CubePlan' } }
+  /cubes/{id}/plan:
+    post:
+      tags: [cube]
+      summary: 购买/升级订阅（生成 cube_plan 订单，履约在支付成功后）
+      operationId: changeCubePlan
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [level]
+              properties: { level: { type: integer }, years: { type: integer } }
+      responses:
+        '200':
+          description: 订单号与金额
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties: { order_id: { type: string }, amount_fen: { type: integer } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /cubes/{id}/apportion:
+    post:
+      tags: [cube]
+      summary: 发起分摊（猫王设人数 N，不设价；每人=档价÷N）
+      operationId: initiateApportion
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [level, n]
+              properties:
+                level: { type: integer }
+                n: { type: integer, description: '2≤N≤档成员上限' }
+                member_ids: { type: array, items: { type: string }, description: 分摊名单（成团后自动成为共建成员） }
+      responses:
+        '200':
+          description: 分摊组
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { $ref: '#/components/schemas/CubeApportion' } }
+  /cubes/{id}/apportion/pledge:
+    post:
+      tags: [cube]
+      summary: 认筹下单（支付成功计数强一致成团）
+      operationId: pledgeApportion
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [group_id]
+              properties: { group_id: { type: string } }
+      responses:
+        '200':
+          description: 订单号
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { type: object, properties: { order_id: { type: string } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cubes/{id}/apportion/exit:
+    post:
+      tags: [cube]
+      summary: 截止前退出（原路退回）
+      operationId: exitApportion
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [group_id]
+              properties: { group_id: { type: string } }
+      responses:
+        '200':
+          description: 结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { type: object, properties: { exited: { type: boolean } } } }
+  /cube-apportions/{groupID}:
+    get:
+      tags: [cube]
+      summary: 分摊进度（认筹进度/截止倒计时）
+      operationId: getApportion
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: groupID, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 分摊组
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { $ref: '#/components/schemas/CubeApportion' } }
 components:
   securitySchemes:
     bearerAuth:
@@ -2092,6 +2243,26 @@ components:
         related_item_ref: { type: string }
         amount_wan: { type: integer }
         note: { type: string, description: ≤200字 }
+    CubePlan:
+      type: object
+      required: [level, name, cube_limit, member_limit, price_fen]
+      properties:
+        level: { type: integer }
+        name: { type: string }
+        cube_limit: { type: integer, description: 0=不限 }
+        member_limit: { type: integer, description: 0=不限 }
+        price_fen: { type: integer }
+    CubeApportion:
+      type: object
+      required: [id, cube_id, per_fen, target_n, pledged_count, status]
+      properties:
+        id: { type: string }
+        cube_id: { type: string }
+        per_fen: { type: integer, description: 每人分摊额=档价÷N }
+        target_n: { type: integer }
+        pledged_count: { type: integer }
+        deadline: { type: string, format: date-time }
+        status: { type: integer, description: '0 进行中 / 1 已成团 / 2 未成团 / 3 已终结' }
     Envelope:
       type: object
       required: [code, message, request_id]

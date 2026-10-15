@@ -219,4 +219,37 @@ type Facade interface {
 	ListReports(ctx context.Context, cubeID, projectID int64) ([]Report, error)
 	ConfirmReport(ctx context.Context, reportID, userID int64) error
 	RejectReport(ctx context.Context, reportID, userID int64, reason string) error
+
+	// ---- 订阅与分摊（§3）----
+	Plans(ctx context.Context) ([]Plan, error)
+	// ChangePlan 购买/升级订阅，返回订单号与金额（履约在支付成功后）。
+	ChangePlan(ctx context.Context, cubeID, userID int64, level int16, years int) (orderID int64, amountFen int64, err error)
+	InitiateApportion(ctx context.Context, cubeID, userID int64, level int16, n int, memberIDs []int64) (Apportion, error)
+	PledgeApportion(ctx context.Context, cubeID, groupID, userID int64) (orderID int64, err error)
+	ExitApportion(ctx context.Context, cubeID, groupID, userID int64) error
+	ApportionOf(ctx context.Context, groupID int64) (Apportion, error)
+	// FulfillOrder 供 trade OrderFulfiller 调用（biz_type=cube_plan）。
+	FulfillOrder(ctx context.Context, bizRef string, snapshot []byte) error
+}
+
+// ---- 订阅与分摊（§3）----
+
+// Plan 订阅档位（settings 后台可配）。
+type Plan struct {
+	Level       int16  `json:"level"`
+	Name        string `json:"name"`
+	CubeLimit   int    `json:"cube_limit"`
+	MemberLimit int    `json:"member_limit"`
+	PriceFen    int64  `json:"price_fen"`
+}
+
+// Apportion 分摊组。
+type Apportion struct {
+	ID           int64     `json:"id,string"`
+	CubeID       int64     `json:"cube_id,string"`
+	PerFen       int64     `json:"per_fen"`
+	TargetN      int       `json:"target_n"`
+	PledgedCount int       `json:"pledged_count"`
+	Deadline     time.Time `json:"deadline"`
+	Status       int16     `json:"status"`
 }

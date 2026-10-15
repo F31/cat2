@@ -4,6 +4,7 @@ package contract
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 )
 
@@ -81,4 +82,51 @@ type Facade interface {
 	Refund(ctx context.Context, operatorID, orderID int64, amountFen int64, reason string) (Refund, error)
 	// RegisterFulfiller 注册履约方（高阶模块启动时注册）。
 	RegisterFulfiller(f OrderFulfiller)
+	// CreateApportion 发起分摊（猫王设人数不设价；每人=per_fen）。
+	CreateApportion(ctx context.Context, in ApportionInput) (ApportionGroup, error)
+	// PledgeOrder 认筹下单（生成认筹订单；支付成功后计数强一致成团）。
+	PledgeOrder(ctx context.Context, groupID, buyerID int64, idempotencyKey string) (Order, error)
+	// ExitPledge 截止前退出（原路退回）。
+	ExitPledge(ctx context.Context, groupID, buyerID int64) (Refund, error)
+	// ApportionGroupOf 取分摊组。
+	ApportionGroupOf(ctx context.Context, groupID int64) (ApportionGroup, error)
+}
+
+// ---- 分摊认筹（强一致在 trade 事务内）----
+
+// 分摊组状态。
+const (
+	ApportionActive  int16 = 0 // 进行中
+	ApportionFormed  int16 = 1 // 已成团
+	ApportionFailed  int16 = 2 // 未成团
+	ApportionSettled int16 = 3 // 已终结（退款全部完成）
+)
+
+// ErrApportionClosed 分摊已结束/已成团（供调用方判别）。
+var ErrApportionClosed = errors.New("trade: 分摊已结束/已成团")
+
+// ApportionBizType 分摊订单业务类型。
+const ApportionBizType = "cube_apportion"
+
+// ApportionInput 发起分摊入参（不设价，每人=per_fen）。
+type ApportionInput struct {
+	CubePlanRef string
+	InitiatorID int64
+	PerFen      int64
+	TargetN     int
+	Deadline    time.Time
+	Snapshot    map[string]any
+}
+
+// ApportionGroup 分摊组。
+type ApportionGroup struct {
+	ID           int64     `json:"id,string"`
+	CubePlanRef  string    `json:"cube_plan_ref"`
+	InitiatorID  int64     `json:"initiator_id,string"`
+	TotalFen     int64     `json:"total_fen"`
+	PerFen       int64     `json:"per_fen"`
+	TargetN      int       `json:"target_n"`
+	PledgedCount int       `json:"pledged_count"`
+	Deadline     time.Time `json:"deadline"`
+	Status       int16     `json:"status"`
 }

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/trade.ApportionFormed.v1.json",
+  "title": "trade.ApportionFormed.v1",
+  "description": "trade 分摊认筹事件（供 cube 履约）。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "trade.ApportionFormed.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["group_id","cube_plan_ref","initiator_id"],
+      "properties": { "group_id": { "type": "string" }, "cube_plan_ref": { "type": "string" }, "initiator_id": { "type": "string" }, "target_n": { "type": "integer" }, "pledged_count": { "type": "integer" } }
+    }
+  },
+  "additionalProperties": false
+}

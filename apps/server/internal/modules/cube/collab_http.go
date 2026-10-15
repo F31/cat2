@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"catcube/internal/modules/cube/contract"
+	tradecontract "catcube/internal/modules/trade/contract"
 )
 
 // ---- contract.Facade 委托（§2）----
@@ -304,4 +306,153 @@ func atof(s string) int {
 		n = n*10 + int(c-'0')
 	}
 	return n
+}
+
+// ---- 订阅与分摊（§3）----
+
+func (m *Module) Plans(ctx context.Context) ([]contract.Plan, error) { return m.svc.Plans(ctx), nil }
+
+func (m *Module) ChangePlan(ctx context.Context, cubeID, userID int64, level int16, years int) (int64, int64, error) {
+	o, err := m.svc.ChangePlan(ctx, cubeID, userID, level, years)
+	if err != nil {
+		return 0, 0, err
+	}
+	return o.ID, o.AmountFen, nil
+}
+
+func (m *Module) InitiateApportion(ctx context.Context, cubeID, userID int64, level int16, n int, memberIDs []int64) (contract.Apportion, error) {
+	g, err := m.svc.InitiateApportion(ctx, cubeID, userID, level, n, memberIDs)
+	if err != nil {
+		return contract.Apportion{}, err
+	}
+	return toApportionDTO(cubeID, g.ID, g.PerFen, g.TargetN, g.PledgedCount, g.Deadline, g.Status), nil
+}
+
+func (m *Module) PledgeApportion(ctx context.Context, cubeID, groupID, userID int64) (int64, error) {
+	o, err := m.svc.PledgeApportion(ctx, cubeID, groupID, userID)
+	if err != nil {
+		return 0, err
+	}
+	return o.ID, nil
+}
+
+func (m *Module) ExitApportion(ctx context.Context, cubeID, groupID, userID int64) error {
+	_, err := m.svc.ExitApportion(ctx, cubeID, groupID, userID)
+	return err
+}
+
+func (m *Module) ApportionOf(ctx context.Context, groupID int64) (contract.Apportion, error) {
+	g, err := m.svc.ApportionOf(ctx, groupID)
+	if err != nil {
+		return contract.Apportion{}, err
+	}
+	cubeID, _ := strconv.ParseInt(g.CubePlanRef, 10, 64)
+	return toApportionDTO(cubeID, g.ID, g.PerFen, g.TargetN, g.PledgedCount, g.Deadline, g.Status), nil
+}
+
+func (m *Module) FulfillOrder(ctx context.Context, bizRef string, snapshot []byte) error {
+	return m.svc.Fulfill(ctx, tradecontract.Order{BizType: "cube_plan", BizRef: bizRef, PriceSnapshot: snapshot})
+}
+
+// BizType 实现 trade.OrderFulfiller。
+func (m *Module) BizType() string { return "cube_plan" }
+
+// Fulfill 实现 trade.OrderFulfiller（支付成功后开通订阅）。
+func (m *Module) Fulfill(ctx context.Context, order tradecontract.Order) error {
+	return m.svc.Fulfill(ctx, order)
+}
+
+func toApportionDTO(cubeID, id, perFen int64, targetN, pledged int, deadline time.Time, status int16) contract.Apportion {
+	return contract.Apportion{ID: id, CubeID: cubeID, PerFen: perFen, TargetN: targetN,
+		PledgedCount: pledged, Deadline: deadline, Status: status}
+}
+
+func (m *Module) handlePlans(w http.ResponseWriter, req *http.Request) {
+	writeData(w, map[string]any{"items": m.svc.Plans(req.Context())})
+}
+
+func (m *Module) handleChangePlan(w http.ResponseWriter, req *http.Request) {
+	cubeID := cubePathID(req, "id")
+	var body struct {
+		Level int16 `json:"level"`
+		Years int   `json:"years"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	o, err := m.svc.ChangePlan(req.Context(), cubeID, userIDFrom(req.Context()), body.Level, body.Years)
+	if err != nil {
+		writeCubeErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"order_id": strconv.FormatInt(o.ID, 10), "amount_fen": o.AmountFen})
+}
+
+func (m *Module) handleInitiateApportion(w http.ResponseWriter, req *http.Request) {
+	cubeID := cubePathID(req, "id")
+	var body struct {
+		Level     int16    `json:"level"`
+		N         int      `json:"n"`
+		MemberIDs []string `json:"member_ids"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	members := make([]int64, 0, len(body.MemberIDs))
+	for _, s := range body.MemberIDs {
+		if v, e := strconv.ParseInt(s, 10, 64); e == nil {
+			members = append(members, v)
+		}
+	}
+	ap, err := m.InitiateApportion(req.Context(), cubeID, userIDFrom(req.Context()), body.Level, body.N, members)
+	if err != nil {
+		writeCubeErr(w, err)
+		return
+	}
+	writeData(w, ap)
+}
+
+func (m *Module) handlePledgeApportion(w http.ResponseWriter, req *http.Request) {
+	cubeID := cubePathID(req, "id")
+	var body struct {
+		GroupID int64 `json:"group_id,string"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil || body.GroupID == 0 {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	orderID, err := m.PledgeApportion(req.Context(), cubeID, body.GroupID, userIDFrom(req.Context()))
+	if err != nil {
+		writeCubeErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"order_id": strconv.FormatInt(orderID, 10)})
+}
+
+func (m *Module) handleExitApportion(w http.ResponseWriter, req *http.Request) {
+	cubeID := cubePathID(req, "id")
+	var body struct {
+		GroupID int64 `json:"group_id,string"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil || body.GroupID == 0 {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	if err := m.ExitApportion(req.Context(), cubeID, body.GroupID, userIDFrom(req.Context())); err != nil {
+		writeCubeErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"exited": true})
+}
+
+func (m *Module) handleApportionDetail(w http.ResponseWriter, req *http.Request) {
+	groupID := cubePathID(req, "groupID")
+	ap, err := m.ApportionOf(req.Context(), groupID)
+	if err != nil {
+		writeCubeErr(w, err)
+		return
+	}
+	writeData(w, ap)
 }

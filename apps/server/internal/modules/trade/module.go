@@ -64,6 +64,7 @@ func (m *Module) Register(r *module.Registry) error {
 			return err
 		}},
 		module.JobDef{Name: "trade.recon", Interval: time.Hour, Run: m.svc.RunRecon},
+		module.JobDef{Name: "trade.apportion_expire", Interval: 5 * time.Minute, Run: m.svc.ExpireApportions},
 	)
 	return nil
 }
@@ -87,6 +88,24 @@ func (m *Module) Refund(ctx context.Context, operatorID, orderID, amountFen int6
 }
 func (m *Module) RegisterFulfiller(f contract.OrderFulfiller) { m.svc.RegisterFulfiller(f) }
 
+// ---- 分摊认筹 Facade ----
+
+func (m *Module) CreateApportion(ctx context.Context, in contract.ApportionInput) (contract.ApportionGroup, error) {
+	return m.svc.CreateApportion(ctx, in)
+}
+func (m *Module) PledgeOrder(ctx context.Context, groupID, buyerID int64, idemKey string) (contract.Order, error) {
+	return m.svc.PledgeOrder(ctx, groupID, buyerID, idemKey)
+}
+func (m *Module) ExitPledge(ctx context.Context, groupID, buyerID int64) (contract.Refund, error) {
+	return m.svc.ExitPledge(ctx, groupID, buyerID)
+}
+func (m *Module) ApportionGroupOf(ctx context.Context, groupID int64) (contract.ApportionGroup, error) {
+	return m.svc.ApportionGroupOf(ctx, groupID)
+}
+
+// ExpireApportions 手动触发未成团退款（运维入口；定时由 trade.apportion_expire Job 调用同一实现）。
+func (m *Module) ExpireApportions(ctx context.Context) error { return m.svc.ExpireApportions(ctx) }
+
 // ---- HTTP 层 ----
 
 // trade 错误码（contracts/errors/README.md 08 段）。
@@ -100,6 +119,7 @@ const (
 	codeNotPayable    = 80004 // 080004
 	codeNotifyInvalid = 80005 // 080005
 	codeRefundInvalid = 80006 // 080006
+	codeApportionBad  = 80007 // 080007 分摊已结束/已成团
 )
 
 func (m *Module) handleCreate(w http.ResponseWriter, req *http.Request) {
@@ -292,6 +312,10 @@ func writeTradeErr(w http.ResponseWriter, err error) {
 		writeErr(w, codeNotifyInvalid, "支付回调验签失败")
 	case errors.Is(err, domain.ErrPaymentNotFound):
 		writeErr(w, codeOrderNotFound, "支付单不存在")
+	case errors.Is(err, domain.ErrApportionClosed):
+		writeErr(w, codeApportionBad, err.Error())
+	case errors.Is(err, domain.ErrApportionInvalid):
+		writeErr(w, codeAmountInvalid, err.Error())
 	default:
 		writeErr(w, codeInternal, "服务错误")
 	}
@@ -307,7 +331,7 @@ func httpStatus(code int) int {
 		return http.StatusNotFound
 	case codeParamInvalid, codeAmountInvalid, codeNotifyInvalid:
 		return http.StatusBadRequest
-	case codeNotPayable:
+	case codeNotPayable, codeApportionBad:
 		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError

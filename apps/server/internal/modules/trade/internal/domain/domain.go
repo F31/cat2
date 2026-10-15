@@ -19,6 +19,8 @@ var (
 	ErrRefundAmount      = errors.New("trade: 退款金额非法")
 	ErrAlreadyFulfilled  = errors.New("trade: 订单已履约")
 	ErrFulfillNoProvider = errors.New("trade: 未注册履约方")
+	ErrApportionClosed   = errors.New("trade: 分摊已结束/已成团")
+	ErrApportionInvalid  = errors.New("trade: 分摊参数非法")
 )
 
 // 状态机 #15 状态。

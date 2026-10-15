@@ -43,3 +43,26 @@ func NewOrderEvent(id, topic string, p OrderPayload) eventbus.Event { return new
 func NewRefundSucceeded(id string, p RefundPayload) eventbus.Event {
 	return newEvent(id, EventRefundSucceeded, p)
 }
+
+// 分摊事件 Topic（认筹成团/未成团）。
+const (
+	EventApportionFormed = "trade.ApportionFormed.v1"
+	EventApportionFailed = "trade.ApportionFailed.v1"
+)
+
+// ApportionPayload 分摊事件载荷（供 cube 履约：读 biz_ref=立方 ID 与快照）。
+type ApportionPayload struct {
+	GroupID       int64           `json:"group_id,string"`
+	CubePlanRef   string          `json:"cube_plan_ref"`
+	InitiatorID   int64           `json:"initiator_id,string"`
+	TargetN       int             `json:"target_n"`
+	PledgedCount  int             `json:"pledged_count"`
+	PriceSnapshot json.RawMessage `json:"price_snapshot,omitempty"`
+}
+
+func NewApportionFormed(id string, p ApportionPayload) eventbus.Event {
+	return newEvent(id, EventApportionFormed, p)
+}
+func NewApportionFailed(id string, p ApportionPayload) eventbus.Event {
+	return newEvent(id, EventApportionFailed, p)
+}

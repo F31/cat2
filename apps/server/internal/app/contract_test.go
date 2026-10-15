@@ -40,7 +40,7 @@ func emittedTopics() []string {
 		cubecontract.EventProjectCreated, cubecontract.EventProjectClosed, cubecontract.EventProjectReopened,
 		cubecontract.EventTaskAssigned, cubecontract.EventTaskSubmitted, cubecontract.EventTaskConfirmed,
 		cubecontract.EventReportSubmitted, cubecontract.EventReportConfirmed, cubecontract.EventReportRejected,
-		// 其余（分摊 cube.ApportionFormed/Failed 随 §3 落地）
+		tradecontract.EventApportionFormed, tradecontract.EventApportionFailed,
 	}
 }
 
@@ -55,6 +55,8 @@ func TestOpenAPIDeclaresP3Paths(t *testing.T) {
 		"/cubes:", "/cubes/join:", "/cubes/{id}:", "/cubes/{id}/invites:",
 		"/cubes/{id}/members:", "/cubes/{id}/members/{uid}/remove:",
 		"/cubes/{id}/leave:", "/cubes/{id}/transfer:", "/cubes/{id}/dissolve:",
+		"/cubes/plans:", "/cubes/{id}/plan:", "/cubes/{id}/apportion:",
+		"/cubes/{id}/apportion/pledge:", "/cubes/{id}/apportion/exit:", "/cube-apportions/{groupID}:",
 	}
 	for _, p := range paths {
 		if !strings.Contains(text, "\n  "+p) {

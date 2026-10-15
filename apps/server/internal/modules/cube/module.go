@@ -18,11 +18,13 @@ import (
 	"catcube/internal/kernel/module"
 	"catcube/internal/kernel/policy"
 	"catcube/internal/kernel/sensitive"
+	"catcube/internal/kernel/settings"
 	"catcube/internal/modules/cube/contract"
 	"catcube/internal/modules/cube/internal/app"
 	"catcube/internal/modules/cube/internal/domain"
 	"catcube/internal/modules/cube/internal/infra"
 	idcontract "catcube/internal/modules/identity/contract"
+	tradecontract "catcube/internal/modules/trade/contract"
 	"catcube/internal/shared/entityref"
 )
 
@@ -35,6 +37,8 @@ type Deps struct {
 	Entities  *entityref.Registry
 	Audit     *audit.Recorder
 	Encryptor *sensitive.Encryptor
+	Trade     tradecontract.Facade
+	Settings  *settings.Registry
 }
 
 // Module cube 模块。
@@ -66,12 +70,14 @@ const (
 	codeTaskTrans    = 130010
 	codeRejectReason = 130011
 	codeBadTier      = 130013
+	codeApportionBad = 130014
 )
 
 func (m *Module) Register(r *module.Registry) error {
 	m.svc = app.New(app.Options{
 		Repo: infra.NewStore(m.deps.Pool), Pool: m.deps.Pool, Bus: m.deps.Bus,
 		Policy: m.deps.Policy, Identity: m.deps.Identity, Encryptor: m.deps.Encryptor,
+		Trade: m.deps.Trade, Settings: m.deps.Settings,
 	})
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes", Handler: m.auth(m.handleCreate)},
@@ -101,10 +107,24 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cubes/{id}/reports", Handler: m.auth(m.handleListReports)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/reports/{rid}/confirm", Handler: m.auth(m.handleConfirmReport)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/reports/{rid}/reject", Handler: m.auth(m.handleRejectReport)},
+		// 订阅与分摊（§3）
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cubes/plans", Handler: m.handlePlans},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/plan", Handler: m.auth(m.handleChangePlan)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/apportion", Handler: m.auth(m.handleInitiateApportion)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/apportion/pledge", Handler: m.auth(m.handlePledgeApportion)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/apportion/exit", Handler: m.auth(m.handleExitApportion)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cube-apportions/{groupID}", Handler: m.auth(m.handleApportionDetail)},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/cubes", Handler: m.auth(m.handleAdminList), Admin: true},
 	)
 	r.StateMachines = append(r.StateMachines, domain.MachineCube, domain.MachineMember,
 		domain.MachineProject, domain.MachineTask, domain.MachineReport)
+	r.Settings = append(r.Settings, app.Schemas...)
+	// 订阅 trade.ApportionFormed：成团开通订阅 + 共建成员入立方
+	r.EventSubs = append(r.EventSubs, eventbus.Subscription{
+		Topic: "trade.ApportionFormed.v1", Handler: func(ctx context.Context, e eventbus.Event) error {
+			return m.svc.HandleApportionFormed(ctx, e.Payload)
+		},
+	})
 	r.CapProviders = append(r.CapProviders, capProvider{m})
 	r.Jobs = append(r.Jobs, module.JobDef{Name: "cube.plan_expire", Interval: 30 * time.Minute, Run: m.svc.ExpireDue})
 	if m.deps.Entities != nil {
@@ -455,6 +475,8 @@ func writeCubeErr(w http.ResponseWriter, err error) {
 		writeErr(w, codeTaskTrans, err.Error())
 	case errors.Is(err, domain.ErrRejectReason):
 		writeErr(w, codeRejectReason, err.Error())
+	case errors.Is(err, domain.ErrApportionClosed):
+		writeErr(w, codeApportionBad, err.Error())
 	case errors.Is(err, domain.ErrBadTier):
 		writeErr(w, codeBadTier, err.Error())
 	case errors.Is(err, domain.ErrInvalidInput):
@@ -474,7 +496,7 @@ func httpStatus(code int) int {
 		return http.StatusNotFound
 	case codeCubeLimit:
 		return http.StatusTooManyRequests
-	case codeMemberLimit, codeTaskTrans:
+	case codeMemberLimit, codeTaskTrans, codeApportionBad:
 		return http.StatusConflict
 	case codeParamInvalid, codeHoney, codeInviteBad, codeInvalidInput, codeBadTier, codeRejectReason:
 		return http.StatusBadRequest
@@ -496,3 +518,4 @@ func writeErr(w http.ResponseWriter, code int, message string) {
 
 var _ contract.Facade = (*Module)(nil)
 var _ entityref.Resolver = (*Module)(nil)
+var _ tradecontract.OrderFulfiller = (*Module)(nil)

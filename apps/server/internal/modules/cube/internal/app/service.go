@@ -12,10 +12,12 @@ import (
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/policy"
 	"catcube/internal/kernel/sensitive"
+	"catcube/internal/kernel/settings"
 	"catcube/internal/modules/cube/contract"
 	"catcube/internal/modules/cube/internal/domain"
 	"catcube/internal/modules/cube/internal/infra"
 	idcontract "catcube/internal/modules/identity/contract"
+	tradecontract "catcube/internal/modules/trade/contract"
 	"catcube/pkg/ids"
 )
 
@@ -66,6 +68,8 @@ type Options struct {
 	Policy    *policy.Engine
 	Identity  idcontract.Facade
 	Encryptor *sensitive.Encryptor
+	Trade     tradecontract.Facade
+	Settings  *settings.Registry
 }
 
 // Service cube 应用服务。
@@ -76,11 +80,13 @@ type Service struct {
 	policy   *policy.Engine
 	identity idcontract.Facade
 	enc      *sensitive.Encryptor
+	trade    tradecontract.Facade
+	settings *settings.Registry
 }
 
 func New(o Options) *Service {
 	return &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, policy: o.Policy,
-		identity: o.Identity, enc: o.Encryptor}
+		identity: o.Identity, enc: o.Encryptor, trade: o.Trade, settings: o.Settings}
 }
 
 const inviteTTL = 7 * 24 * time.Hour

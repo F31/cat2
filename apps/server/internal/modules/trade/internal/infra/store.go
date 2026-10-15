@@ -8,12 +8,20 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"catcube/internal/kernel/db"
 )
 
 // ErrNotFound 记录不存在。
 var ErrNotFound = errors.New("infra: 记录不存在")
+
+// Querier pgx 查询接口（Pool 与 Tx 均满足）。
+type Querier interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
 
 // Order 订单记录。
 type Order struct {
@@ -304,4 +312,169 @@ func boolToStatus(b bool) int16 {
 func MarshalSnapshot(v any) []byte {
 	b, _ := json.Marshal(v)
 	return b
+}
+
+// ---- 分摊认筹 ----
+
+// ApportionGroup 分摊组行。
+type ApportionGroup struct {
+	ID           int64
+	CubePlanRef  string
+	InitiatorID  int64
+	TotalFen     int64
+	PerFen       int64
+	TargetN      int
+	PledgedCount int
+	Deadline     time.Time
+	Status       int16
+	Snapshot     []byte
+}
+
+const apportionCols = `id, COALESCE(cube_plan_ref,''), initiator_id, total_fen, per_fen, target_n,
+	pledged_count, deadline, status, price_snapshot`
+
+func scanApportion(row pgx.Row) (ApportionGroup, error) {
+	var g ApportionGroup
+	err := row.Scan(&g.ID, &g.CubePlanRef, &g.InitiatorID, &g.TotalFen, &g.PerFen, &g.TargetN,
+		&g.PledgedCount, &g.Deadline, &g.Status, &g.Snapshot)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ApportionGroup{}, ErrNotFound
+	}
+	return g, err
+}
+
+// InsertApportion 新建分摊组。
+func (s *Store) InsertApportion(ctx context.Context, q Querier, g ApportionGroup) error {
+	_, err := q.Exec(ctx, `
+		INSERT INTO trd_apportion_group (id, cube_plan_ref, initiator_id, total_fen, per_fen, target_n, deadline, status, price_snapshot)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8)`,
+		g.ID, g.CubePlanRef, g.InitiatorID, g.TotalFen, g.PerFen, g.TargetN, g.Deadline, g.Snapshot)
+	return err
+}
+
+// GetApportion 取分摊组。
+func (s *Store) GetApportion(ctx context.Context, id int64) (ApportionGroup, error) {
+	return scanApportion(s.pool.QueryRow(ctx, `SELECT `+apportionCols+` FROM trd_apportion_group WHERE id=$1`, id))
+}
+
+// LockApportion 锁分摊组行（成团强一致）。
+func (s *Store) LockApportion(ctx context.Context, tx db.Tx, id int64) (ApportionGroup, error) {
+	return scanApportion(tx.QueryRow(ctx, `SELECT `+apportionCols+` FROM trd_apportion_group WHERE id=$1 FOR UPDATE`, id))
+}
+
+// SetApportionStatus 变更加分摊组状态。
+func (s *Store) SetApportionStatus(ctx context.Context, q Querier, id int64, status int16) error {
+	_, err := q.Exec(ctx, `UPDATE trd_apportion_group SET status=$2, updated_at=now() WHERE id=$1`, id, status)
+	return err
+}
+
+// IncrPledged 认筹计数（强一致，行已锁）。
+func (s *Store) IncrPledged(ctx context.Context, q Querier, id int64) error {
+	_, err := q.Exec(ctx, `UPDATE trd_apportion_group SET pledged_count=pledged_count+1, updated_at=now() WHERE id=$1`, id)
+	return err
+}
+
+// InsertPledge 认筹记录（支付成功后写入）；返回是否新插入（重复认筹不计数）。
+func (s *Store) InsertPledge(ctx context.Context, q Querier, id, groupID, userID, amountFen, paymentID int64) (bool, error) {
+	tag, err := q.Exec(ctx, `INSERT INTO trd_pledge (id, group_id, user_id, amount_fen, payment_id, status)
+		VALUES ($1,$2,$3,$4,$5,0) ON CONFLICT (group_id, user_id) DO NOTHING`,
+		id, groupID, userID, amountFen, nullID(paymentID))
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// ListPendingRefunds 未成团组中待退款的认筹（幂等逐笔）。
+func (s *Store) ListPendingRefunds(ctx context.Context, groupID int64) ([]Pledge, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, group_id, user_id, amount_fen, COALESCE(payment_id,0), status FROM trd_pledge
+		 WHERE group_id=$1 AND status=0 ORDER BY id`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Pledge
+	for rows.Next() {
+		var p Pledge
+		if err := rows.Scan(&p.ID, &p.GroupID, &p.UserID, &p.AmountFen, &p.PaymentID, &p.Status); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// Pledge 认筹行。
+type Pledge struct {
+	ID        int64
+	GroupID   int64
+	UserID    int64
+	AmountFen int64
+	PaymentID int64
+	Status    int16
+}
+
+// GetPledge 取认筹。
+func (s *Store) GetPledge(ctx context.Context, groupID, userID int64) (Pledge, error) {
+	var p Pledge
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, group_id, user_id, amount_fen, COALESCE(payment_id,0), status
+		 FROM trd_pledge WHERE group_id=$1 AND user_id=$2`, groupID, userID).
+		Scan(&p.ID, &p.GroupID, &p.UserID, &p.AmountFen, &p.PaymentID, &p.Status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Pledge{}, ErrNotFound
+	}
+	return p, err
+}
+
+// MarkPledgeRefunded 标记认筹已退款。
+func (s *Store) MarkPledgeRefunded(ctx context.Context, q Querier, id int64) error {
+	_, err := q.Exec(ctx, `UPDATE trd_pledge SET status=1, refunded_at=now() WHERE id=$1 AND status=0`, id)
+	return err
+}
+
+// ListExpiredApportions 到期未成团的分摊组。
+func (s *Store) ListExpiredApportions(ctx context.Context, limit int) ([]int64, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT id FROM trd_apportion_group WHERE status=0 AND deadline<now() ORDER BY deadline LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// CountUnsettledPledges 未退款认筹数（全部退款完成才终结）。
+func (s *Store) CountUnsettledPledges(ctx context.Context, groupID int64) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `SELECT count(1) FROM trd_pledge WHERE group_id=$1 AND status=0`, groupID).Scan(&n)
+	return n, err
+}
+
+// GetPaymentByID 按支付单 ID。
+func (s *Store) GetPaymentByID(ctx context.Context, id int64) (Payment, error) {
+	var p Payment
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, order_id, out_trade_no, channel, amount_fen, status, paid_at FROM trd_payment WHERE id=$1`, id).
+		Scan(&p.ID, &p.OrderID, &p.OutTradeNo, &p.Channel, &p.AmountFen, &p.Status, &p.PaidAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return p, ErrNotFound
+	}
+	return p, err
+}
+
+func nullID(v int64) any {
+	if v == 0 {
+		return nil
+	}
+	return v
 }

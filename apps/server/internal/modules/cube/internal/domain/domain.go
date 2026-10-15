@@ -21,12 +21,12 @@ const (
 
 // 事件。
 const (
-	EventBan       = "ban"
-	EventUnban     = "unban"
-	EventDissolve  = "dissolve"
-	EventLeave     = "leave"
-	EventRemove    = "remove"
-	EventRejoin    = "rejoin"
+	EventBan      = "ban"
+	EventUnban    = "unban"
+	EventDissolve = "dissolve"
+	EventLeave    = "leave"
+	EventRemove   = "remove"
+	EventRejoin   = "rejoin"
 )
 
 // MachineCube 状态机 #5 猫立方：正常→封禁→已解散（封禁可解封）。
@@ -56,8 +56,8 @@ var MachineMember = statemachine.Def{
 
 // 项目（#7）状态。
 const (
-	ProjectActive  = "active"
-	ProjectClosed  = "closed"
+	ProjectActive = "active"
+	ProjectClosed = "closed"
 
 	EventClose  = "close"
 	EventReopen = "reopen"
@@ -65,23 +65,23 @@ const (
 
 // 任务（#8）四态。
 const (
-	TaskTodo       = "todo"
-	TaskDoing      = "doing"
-	TaskReviewing  = "reviewing"
-	TaskDone       = "done"
+	TaskTodo      = "todo"
+	TaskDoing     = "doing"
+	TaskReviewing = "reviewing"
+	TaskDone      = "done"
 
-	EventStart   = "start"
-	EventSubmit  = "submit"
-	EventApprove = "approve"
-	EventReject  = "reject"
+	EventStart      = "start"
+	EventSubmit     = "submit"
+	EventApprove    = "approve"
+	EventReject     = "reject"
 	EventReopenTask = "reopen"
 )
 
 // 报备（#9）状态。
 const (
-	ReportPending  = "pending"
+	ReportPending   = "pending"
 	ReportConfirmed = "confirmed"
-	ReportRejected = "rejected"
+	ReportRejected  = "rejected"
 
 	EventConfirmReport = "confirm"
 	EventRejectReport  = "reject"
@@ -153,20 +153,21 @@ func ValidTier(level int16) bool {
 }
 
 var (
-	ErrNotRealname   = errors.New("cube: 需先完成实名认证")
-	ErrHoneyRequired = errors.New("cube: 须指定 1 名猫蜜（不可为自己）")
-	ErrInviteInvalid = errors.New("cube: 邀请码无效或已过期")
-	ErrRemoved       = errors.New("cube: 已被移除，须重新受邀加入")
-	ErrCubeLimit     = errors.New("cube: 已达可加入立方数上限")
-	ErrMemberLimit   = errors.New("cube: 单立方成员数已达上限")
-	ErrInvalidInput  = errors.New("cube: 参数校验失败")
-	ErrNoPermission  = errors.New("cube: 无权操作该猫立方")
-	ErrNotFound      = errors.New("cube: 猫立方不存在")
-	ErrBadTier       = errors.New("cube: 订阅档位非法")
-	ErrTaskTransition = errors.New("cube: 任务非法转移（状态机拒绝）")
-	ErrRejectReason   = errors.New("cube: 驳回须填写原因")
-	ErrReportConflict = errors.New("cube: 报备重复（提示不拦截）")
-	ErrProjectClosed  = errors.New("cube: 项目已关闭")
+	ErrNotRealname     = errors.New("cube: 需先完成实名认证")
+	ErrHoneyRequired   = errors.New("cube: 须指定 1 名猫蜜（不可为自己）")
+	ErrInviteInvalid   = errors.New("cube: 邀请码无效或已过期")
+	ErrRemoved         = errors.New("cube: 已被移除，须重新受邀加入")
+	ErrCubeLimit       = errors.New("cube: 已达可加入立方数上限")
+	ErrMemberLimit     = errors.New("cube: 单立方成员数已达上限")
+	ErrInvalidInput    = errors.New("cube: 参数校验失败")
+	ErrNoPermission    = errors.New("cube: 无权操作该猫立方")
+	ErrNotFound        = errors.New("cube: 猫立方不存在")
+	ErrBadTier         = errors.New("cube: 订阅档位非法")
+	ErrTaskTransition  = errors.New("cube: 任务非法转移（状态机拒绝）")
+	ErrRejectReason    = errors.New("cube: 驳回须填写原因")
+	ErrReportConflict  = errors.New("cube: 报备重复（提示不拦截）")
+	ErrProjectClosed   = errors.New("cube: 项目已关闭")
+	ErrApportionClosed = errors.New("cube: 认筹已结束/已成团")
 )
 
 // ValidateTaskTitle 任务标题校验。

@@ -15,11 +15,13 @@ import (
 	neturl "net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"catcube/internal/kernel/config"
 	"catcube/internal/kernel/obs"
+	"catcube/internal/modules/cube"
 	"catcube/internal/modules/discovery"
 	"catcube/internal/modules/membership"
 	"catcube/internal/modules/msg"
@@ -2145,5 +2147,368 @@ func TestIntegrationDiscoveryFlow(t *testing.T) {
 	// 越权：explain 目标不存在（合法 ref 但无文档）→ 160003/404
 	if status, env := h.do(http.MethodGet, "/api/mp/v1/matches/user:99999999/explain", aTok, nil); status != http.StatusNotFound || env.Code != 160003 {
 		t.Fatalf("无候选应 160003/404: %d %+v", status, env)
+	}
+}
+
+// 猫立方订阅与分摊（p3 §3）：直接购买履约 + 分摊成团（原子计数）+ 共建成员。
+func TestIntegrationCubePlanApportion(t *testing.T) {
+	h := newTestApp(t)
+	aPhone, bPhone, cPhone := randPhone(), randPhone(), randPhone()
+	_, aTok := loginPhone(t, h, aPhone)
+	bID, bTok := loginPhone(t, h, bPhone)
+	_, cTok := loginPhone(t, h, cPhone)
+	for _, tok := range []string{aTok, bTok, cTok} {
+		if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+			"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+		}); s != http.StatusOK || env.Code != 0 {
+			t.Fatalf("实名失败: %d %+v", s, env)
+		}
+	}
+	_, env := h.do(http.MethodPost, "/api/mp/v1/cubes", aTok, map[string]any{
+		"name": "协作一号", "honey_user_id": fmt.Sprintf("%d", bID),
+	})
+	var cube struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cube)
+
+	// 三档（settings 默认）
+	_, env = h.do(http.MethodGet, "/api/mp/v1/cubes/plans", aTok, nil)
+	var plans struct {
+		Items []struct {
+			Level    int16 `json:"level"`
+			PriceFen int64 `json:"price_fen"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &plans)
+	if len(plans.Items) != 3 || plans.Items[1].PriceFen != 99900 {
+		t.Fatalf("三档不符: %+v", plans.Items)
+	}
+
+	// 直接购买进阶档 → 支付 → 履约开通
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/plan", cube.ID), aTok, map[string]any{"level": 2, "years": 1})
+	var planOrder struct {
+		OrderID   int64 `json:"order_id,string"`
+		AmountFen int64 `json:"amount_fen"`
+	}
+	_ = json.Unmarshal(env.Data, &planOrder)
+	if planOrder.OrderID == 0 || planOrder.AmountFen != 99900 {
+		t.Fatalf("订阅下单失败: %+v", env)
+	}
+	payOrderAndNotify(t, h, aTok, planOrder.OrderID)
+	fulfillCubeOrder(t, h, planOrder.OrderID)
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/cubes/%d", cube.ID), aTok, nil)
+	var detail struct {
+		PlanLevel    int16  `json:"plan_level"`
+		PlanExpireAt string `json:"plan_expire_at"`
+	}
+	_ = json.Unmarshal(env.Data, &detail)
+	if detail.PlanLevel != 2 || detail.PlanExpireAt == "" {
+		t.Fatalf("购买后应进阶档: %+v", detail)
+	}
+
+	// 分摊：进阶档价 99900 / N=2 = 49950；B、C 认筹（非成员亦可）
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/apportion", cube.ID), aTok, map[string]any{
+		"level": 2, "n": 2, "member_ids": []string{fmt.Sprintf("%d", bID)},
+	})
+	var group struct {
+		ID     int64 `json:"id,string"`
+		PerFen int64 `json:"per_fen"`
+	}
+	_ = json.Unmarshal(env.Data, &group)
+	if group.ID == 0 || group.PerFen != 49950 {
+		t.Fatalf("发起分摊失败: %+v", env)
+	}
+
+	// B 认筹 → 支付（计数 1，未成团）
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/apportion/pledge", cube.ID), bTok, map[string]any{"group_id": fmt.Sprintf("%d", group.ID)})
+	var bPledge struct {
+		OrderID int64 `json:"order_id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &bPledge)
+	payOrderAndNotify(t, h, bTok, bPledge.OrderID)
+	if got := apportionCount(t, h, cube.ID, group.ID, aTok); got != 1 {
+		t.Fatalf("B 认筹后计数应 1: %d", got)
+	}
+
+	// C 认筹 → 支付（达 N=2 成团）
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/apportion/pledge", cube.ID), cTok, map[string]any{"group_id": fmt.Sprintf("%d", group.ID)})
+	var cPledge struct {
+		OrderID int64 `json:"order_id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cPledge)
+	payOrderAndNotify(t, h, cTok, cPledge.OrderID)
+	relayAll(t, h) // 投递 trade.ApportionFormed → cube 开通 + 共建成员
+
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/cube-apportions/%d", group.ID), aTok, nil)
+	var ap struct {
+		PledgedCount int   `json:"pledged_count"`
+		Status       int16 `json:"status"`
+	}
+	_ = json.Unmarshal(env.Data, &ap)
+	if ap.PledgedCount != 2 || ap.Status != 1 {
+		t.Fatalf("应成团(计数2/状态1): %+v", ap)
+	}
+	// 超出第 3 笔被拒（已成团）
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/apportion/pledge", cube.ID), bTok,
+		map[string]any{"group_id": fmt.Sprintf("%d", group.ID)}); s != http.StatusConflict {
+		t.Fatalf("已成团后认筹应 409: %d %+v", s, e)
+	}
+	// B 成为共建成员（role=4）
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/cubes/%d/members", cube.ID), aTok, nil)
+	var members struct {
+		Items []struct {
+			UserID int64 `json:"user_id,string"`
+			Role   int16 `json:"role"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &members)
+	found := false
+	for _, m := range members.Items {
+		if m.UserID == bID && m.Role == 4 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("B 应为共建成员(role=4): %+v", members.Items)
+	}
+}
+
+// payOrderAndNotify 下单支付并回调（开发态验签直接通过）。
+func payOrderAndNotify(t *testing.T, h *testApp, tok string, orderID int64) {
+	t.Helper()
+	_, env := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/orders/%d/pay", orderID), tok, nil)
+	var pp struct {
+		OutTradeNo string `json:"out_trade_no"`
+		AmountFen  int64  `json:"amount_fen"`
+	}
+	_ = json.Unmarshal(env.Data, &pp)
+	if pp.OutTradeNo == "" {
+		t.Fatalf("支付参数缺失: %+v", env)
+	}
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/pay/notify", "", map[string]any{
+		"out_trade_no": pp.OutTradeNo, "amount_fen": pp.AmountFen, "sign": "ok",
+	}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("支付回调失败: %d %+v", s, e)
+	}
+}
+
+// fulfillCubeOrder 触发 cube 履约（测试不启 scheduler）。
+func fulfillCubeOrder(t *testing.T, h *testApp, orderID int64) {
+	t.Helper()
+	ctx := context.Background()
+	var tm *trade.Module
+	var cm *cube.Module
+	for _, m := range h.app.Modules {
+		switch v := m.(type) {
+		case *trade.Module:
+			tm = v
+		case *cube.Module:
+			cm = v
+		}
+	}
+	if tm == nil || cm == nil {
+		t.Fatal("trade/cube 模块未装载")
+	}
+	order, err := tm.Facade().GetOrder(ctx, orderID)
+	if err != nil {
+		t.Fatalf("查询订单失败: %v", err)
+	}
+	if err := cm.Fulfill(ctx, order); err != nil {
+		t.Fatalf("立方履约失败: %v", err)
+	}
+}
+
+func apportionCount(t *testing.T, h *testApp, cubeID, groupID int64, tok string) int {
+	t.Helper()
+	_, env := h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/cube-apportions/%d", groupID), tok, nil)
+	var ap struct {
+		PledgedCount int `json:"pledged_count"`
+	}
+	_ = json.Unmarshal(env.Data, &ap)
+	return ap.PledgedCount
+}
+
+// 分摊并发成团（p3 §3 / 11.2）：N 与超额同时支付，只有前 N 笔计入，超额被退款。
+func TestIntegrationApportionConcurrency(t *testing.T) {
+	h := newTestApp(t)
+	aPhone := randPhone()
+	_, aTok := loginPhone(t, h, aPhone)
+	others := make([]string, 0, 3)
+	phones := make([]string, 0, 3)
+	for i := 0; i < 3; i++ {
+		ph := randPhone()
+		phones = append(phones, ph)
+		_, tok := loginPhone(t, h, ph)
+		others = append(others, tok)
+	}
+	all := append([]string{aTok}, others...)
+	for _, tok := range all {
+		if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+			"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+		}); s != http.StatusOK || env.Code != 0 {
+			t.Fatalf("实名失败: %d %+v", s, env)
+		}
+	}
+	_, env := h.do(http.MethodPost, "/api/mp/v1/cubes", aTok, map[string]any{
+		"name": "并发协作", "honey_user_id": fmt.Sprintf("%d", otherID(t, h, others[0])),
+	})
+	var cube struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cube)
+
+	// N=2，价 99900 → per 49950
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/apportion", cube.ID), aTok, map[string]any{
+		"level": 2, "n": 2,
+	})
+	var group struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &group)
+
+	// 三人各自认筹
+	orders := make([]int64, 0, 3)
+	toks := make([]string, 0, 3)
+	for _, tok := range others {
+		_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/apportion/pledge", cube.ID), tok,
+			map[string]any{"group_id": fmt.Sprintf("%d", group.ID)})
+		var po struct {
+			OrderID int64 `json:"order_id,string"`
+		}
+		_ = json.Unmarshal(env.Data, &po)
+		orders = append(orders, po.OrderID)
+		toks = append(toks, tok)
+	}
+
+	// 并发支付回调
+	var wg sync.WaitGroup
+	for i := range orders {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, env := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/orders/%d/pay", orders[i]), toks[i], nil)
+			var pp struct {
+				OutTradeNo string `json:"out_trade_no"`
+				AmountFen  int64  `json:"amount_fen"`
+			}
+			_ = json.Unmarshal(env.Data, &pp)
+			_, _ = h.do(http.MethodPost, "/api/mp/v1/pay/notify", "", map[string]any{
+				"out_trade_no": pp.OutTradeNo, "amount_fen": pp.AmountFen, "sign": "ok",
+			})
+		}(i)
+	}
+	wg.Wait()
+
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/cube-apportions/%d", group.ID), aTok, nil)
+	var ap struct {
+		PledgedCount int   `json:"pledged_count"`
+		Status       int16 `json:"status"`
+	}
+	_ = json.Unmarshal(env.Data, &ap)
+	if ap.PledgedCount != 2 || ap.Status != 1 {
+		t.Fatalf("并发成团应计数=2/状态=1（不超额）: %+v", ap)
+	}
+	// 超额一笔应产生退款（原路退回）
+	var refunds int
+	_ = h.app.Pool.QueryRow(context.Background(),
+		`SELECT count(1) FROM trd_refund WHERE reason = $1`,
+		fmt.Sprintf("apportion:%d:over", group.ID)).Scan(&refunds)
+	if refunds != 1 {
+		t.Fatalf("超额认筹应退款 1 笔，实际 %d", refunds)
+	}
+	_ = phones
+}
+
+// otherID 取令牌对应用户 ID（/users/me 返回 id）。
+func otherID(t *testing.T, h *testApp, tok string) int64 {
+	t.Helper()
+	_, env := h.do(http.MethodGet, "/api/mp/v1/users/me", tok, nil)
+	var me struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &me)
+	if me.ID == 0 {
+		t.Fatalf("取用户 ID 失败: %+v", env)
+	}
+	return me.ID
+}
+
+// 未成团退款幂等（p3 §3 / 11.2）：到期扫描逐笔原路退回，全部完成才终结。
+func TestIntegrationApportionFailedRefund(t *testing.T) {
+	h := newTestApp(t)
+	aPhone, bPhone := randPhone(), randPhone()
+	_, aTok := loginPhone(t, h, aPhone)
+	bID, bTok := loginPhone(t, h, bPhone)
+	for _, tok := range []string{aTok, bTok} {
+		if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+			"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+		}); s != http.StatusOK || env.Code != 0 {
+			t.Fatalf("实名失败: %d %+v", s, env)
+		}
+	}
+	_, env := h.do(http.MethodPost, "/api/mp/v1/cubes", aTok, map[string]any{
+		"name": "退款协作", "honey_user_id": fmt.Sprintf("%d", bID),
+	})
+	var cube struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cube)
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/apportion", cube.ID), aTok, map[string]any{"level": 2, "n": 3})
+	var group struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &group)
+
+	// B 认筹并支付（1/3）
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/apportion/pledge", cube.ID), bTok, map[string]any{"group_id": fmt.Sprintf("%d", group.ID)})
+	var pledge struct {
+		OrderID int64 `json:"order_id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &pledge)
+	payOrderAndNotify(t, h, bTok, pledge.OrderID)
+
+	// 令其到期
+	if _, err := h.app.Pool.Exec(context.Background(),
+		`UPDATE trd_apportion_group SET deadline=now()-interval '1 hour' WHERE id=$1`, group.ID); err != nil {
+		t.Fatal(err)
+	}
+	// 手动触发到期扫描（测试不启 scheduler）
+	var tm *trade.Module
+	for _, m := range h.app.Modules {
+		if v, ok := m.(*trade.Module); ok {
+			tm = v
+		}
+	}
+	if err := tm.ExpireApportions(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// 认筹已退
+	var pledgeStatus int16
+	if err := h.app.Pool.QueryRow(context.Background(),
+		`SELECT status FROM trd_pledge WHERE group_id=$1 AND user_id=$2`, group.ID, bID).Scan(&pledgeStatus); err != nil {
+		t.Fatal(err)
+	}
+	if pledgeStatus != 1 {
+		t.Fatalf("未成团认筹应已退款: status=%d", pledgeStatus)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/cube-apportions/%d", group.ID), aTok, nil)
+	var ap struct {
+		Status int16 `json:"status"`
+	}
+	_ = json.Unmarshal(env.Data, &ap)
+	if ap.Status != 3 {
+		t.Fatalf("全部退款后应终结(status=3): %+v", ap)
+	}
+	// 幂等：再次执行不报错、不重复退款
+	if err := tm.ExpireApportions(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var refunds int
+	_ = h.app.Pool.QueryRow(context.Background(),
+		`SELECT count(1) FROM trd_refund WHERE reason LIKE $1`,
+		fmt.Sprintf("apportion:%d:pledge:%%", group.ID)).Scan(&refunds)
+	if refunds != 1 {
+		t.Fatalf("退款应幂等（1 笔），实际 %d", refunds)
 	}
 }

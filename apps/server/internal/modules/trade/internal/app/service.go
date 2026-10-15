@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -40,6 +42,19 @@ type Repo interface {
 	UpdateFulfillment(ctx context.Context, orderID int64, ok bool, lastErr string) error
 	UpsertRecon(ctx context.Context, date, channel string, orderCount int, amountFen int64, diff bool, detail []byte) error
 	ResetFulfillment(ctx context.Context, orderID int64) (bool, error)
+	// 分摊认筹
+	InsertApportion(ctx context.Context, q infra.Querier, g infra.ApportionGroup) error
+	GetApportion(ctx context.Context, id int64) (infra.ApportionGroup, error)
+	LockApportion(ctx context.Context, tx db.Tx, id int64) (infra.ApportionGroup, error)
+	SetApportionStatus(ctx context.Context, q infra.Querier, id int64, status int16) error
+	IncrPledged(ctx context.Context, q infra.Querier, id int64) error
+	InsertPledge(ctx context.Context, q infra.Querier, id, groupID, userID, amountFen, paymentID int64) (bool, error)
+	ListPendingRefunds(ctx context.Context, groupID int64) ([]infra.Pledge, error)
+	GetPledge(ctx context.Context, groupID, userID int64) (infra.Pledge, error)
+	MarkPledgeRefunded(ctx context.Context, q infra.Querier, id int64) error
+	ListExpiredApportions(ctx context.Context, limit int) ([]int64, error)
+	CountUnsettledPledges(ctx context.Context, groupID int64) (int, error)
+	GetPaymentByID(ctx context.Context, id int64) (infra.Payment, error)
 }
 
 // Options 构造参数。
@@ -166,6 +181,7 @@ func (s *Service) HandleNotify(ctx context.Context, headers map[string]string, b
 		// 订单已关闭/已支付：仅补齐支付单状态，不再发 OrderPaid
 		return contract.NotifyResult{OrderID: o.ID, AlreadyPaid: o.Status == contract.StatusPaid}, nil
 	}
+	var overRefund bool
 	err = s.pool.InTx(ctx, func(tx db.Tx) error {
 		if err := s.repo.MarkPaymentPaid(ctx, tx, p.ID, body); err != nil {
 			return err
@@ -176,6 +192,25 @@ func (s *Service) HandleNotify(ctx context.Context, headers map[string]string, b
 		if err := s.repo.MarkOrderPaid(ctx, tx, o.ID); err != nil {
 			return err
 		}
+		// 分摊认筹：同事务锁组行计数，达 N 即时成团（强一致，杜绝超额）
+		if o.BizType == contract.ApportionBizType {
+			over, formed, serr := s.settleApportion(ctx, tx, o, p)
+			if serr != nil {
+				return serr
+			}
+			if emitErr := s.emit(ctx, tx, contract.EventOrderPaid, o); emitErr != nil {
+				return emitErr
+			}
+			if over {
+				overRefund = true
+				return nil
+			}
+			if formed {
+				groupID, _ := strconv.ParseInt(o.BizRef, 10, 64)
+				return s.emitApportionFormed(ctx, tx, groupID)
+			}
+			return nil
+		}
 		if err := s.repo.InsertFulfillment(ctx, tx, o.ID, o.BizType); err != nil {
 			return err
 		}
@@ -183,6 +218,12 @@ func (s *Service) HandleNotify(ctx context.Context, headers map[string]string, b
 	})
 	if err != nil {
 		return contract.NotifyResult{}, err
+	}
+	// 超额认筹：提交后原路退回（幂等键=支付单+原因）
+	if overRefund {
+		if _, rerr := s.Refund(ctx, 0, o.ID, o.AmountFen, fmt.Sprintf("apportion:%s:over", o.BizRef)); rerr != nil {
+			slog.Warn("trade 超额认筹退款失败", "order", o.ID, "err", rerr)
+		}
 	}
 	return contract.NotifyResult{OrderID: o.ID, AlreadyPaid: false}, nil
 }

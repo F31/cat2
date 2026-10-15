@@ -167,7 +167,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	})
 	cubeMod := cube.New(cube.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine, Entities: entityReg,
-		Audit: auditRec, Encryptor: encryptor,
+		Audit: auditRec, Encryptor: encryptor, Trade: tradeMod.Facade(), Settings: settingsReg,
 	})
 	mods := []module.Module{
 		dictMod,
@@ -211,6 +211,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 
 	// 履约能力注册（装配根唯一装配扩展点）：会员开通/续期由 trade 支付成功回调触发
 	tradeMod.RegisterFulfiller(membershipMod)
+	tradeMod.RegisterFulfiller(cubeMod)
 
 	// 敏感词库加载（后台可维护）：启动后周期刷新，保证机检词库生效
 	_ = trustMod.LoadWords(context.Background())
