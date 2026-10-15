@@ -3072,3 +3072,242 @@ func TestIntegrationBFFCollaboration(t *testing.T) {
 	}
 	_ = bTok
 }
+
+// 配额门禁（p3 §11.3）：立方成员上限（基础档 10）、公告每日上限（3）。
+func TestIntegrationQuotaGuards(t *testing.T) {
+	h := newTestApp(t)
+	aPhone := randPhone()
+	_, aTok := loginPhone(t, h, aPhone)
+	cert := func(tok string) {
+		if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+			"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+		}); s != http.StatusOK || env.Code != 0 {
+			t.Fatalf("实名失败: %d %+v", s, env)
+		}
+	}
+	cert(aTok)
+	// 基础档成员上限 10：创建=2（猫王+猫蜜）→ 再入 8 → 第 11 名被拒
+	honeyPhone := randPhone()
+	honeyID, honeyTok := loginPhone(t, h, honeyPhone)
+	cert(honeyTok)
+	_, env := h.do(http.MethodPost, "/api/mp/v1/cubes", aTok, map[string]any{
+		"name": "限额立方", "honey_user_id": fmt.Sprintf("%d", honeyID),
+	})
+	var cube struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cube)
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/invites", cube.ID), aTok, nil)
+	var ticket struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(env.Data, &ticket)
+	joined := 0
+	for i := 0; i < 9; i++ {
+		ph := randPhone()
+		_, tok := loginPhone(t, h, ph)
+		cert(tok)
+		s, e := h.do(http.MethodPost, "/api/mp/v1/cubes/join", tok, map[string]any{"code": ticket.Code})
+		if s == http.StatusOK && e.Code == 0 {
+			joined++
+		} else if e.Code == 130008 {
+			break
+		}
+	}
+	if joined != 8 {
+		t.Fatalf("基础档可入 8（合计 10 人），实际 %d", joined)
+	}
+	// 第 11 名
+	ph := randPhone()
+	_, tok := loginPhone(t, h, ph)
+	cert(tok)
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/cubes/join", tok, map[string]any{"code": ticket.Code}); s != http.StatusConflict || e.Code != 130008 {
+		t.Fatalf("成员上限应 130008/409: %d %+v", s, e)
+	}
+
+	// 公告每日上限 3（圈主）
+	_, env = h.do(http.MethodPost, "/api/mp/v1/circles", aTok, map[string]any{"name": "公告圈", "type": 1})
+	var cir struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cir)
+	for i := 0; i < 3; i++ {
+		if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/feeds", cir.ID), aTok,
+			map[string]any{"text": "公告", "is_announcement": true}); s != http.StatusOK || e.Code != 0 {
+			t.Fatalf("公告发布失败: %d %+v", s, e)
+		}
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/feeds", cir.ID), aTok,
+		map[string]any{"text": "第四条公告", "is_announcement": true}); s != http.StatusTooManyRequests || e.Code != 140009 {
+		t.Fatalf("公告上限应 140009/429: %d %+v", s, e)
+	}
+}
+
+// 通知额度消耗与降级（p3 §11.4）：申请 1 条订阅额度 → 首条订阅、次条降级站内。
+func TestIntegrationNoticeQuotaDegrade(t *testing.T) {
+	h := newTestApp(t)
+	aPhone := randPhone()
+	_, aTok := loginPhone(t, h, aPhone)
+	if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", aTok, map[string]any{
+		"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+	}); s != http.StatusOK || env.Code != 0 {
+		t.Fatalf("实名失败: %d %+v", s, env)
+	}
+	// 申请 1 条「内容已通过审核」订阅额度
+	_, _ = h.do(http.MethodPost, "/api/mp/v1/subscribe-quota/apply", aTok, map[string]any{
+		"template_code": "content.ContentPublished.v1", "n": 1,
+	})
+	// 两次发布并提交 → 两条 ContentPublished 事件
+	for i := 0; i < 2; i++ {
+		_, env := h.do(http.MethodPost, "/api/mp/v1/contents", aTok, map[string]any{
+			"kind": "project", "title": fmt.Sprintf("内容%d", i),
+			"tagset": map[string]any{"region": "310000", "industry": []string{"A01"}},
+			"fields": map[string]any{"amount_wan": 100, "intro": "简介", "core_strength": "优势", "contact_phone": "13800000000"},
+		})
+		var item struct {
+			ID int64 `json:"id,string"`
+		}
+		_ = json.Unmarshal(env.Data, &item)
+		_, _ = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/contents/%d/submit", item.ID), aTok, nil)
+	}
+	relayAll(t, h)
+	_, env := h.do(http.MethodGet, "/api/mp/v1/notices?limit=50", aTok, nil)
+	var list struct {
+		Items []struct {
+			TemplateCode string `json:"template_code"`
+			Channel      string `json:"channel"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &list)
+	subscribeCnt, inappCnt := 0, 0
+	for _, n := range list.Items {
+		if n.TemplateCode != "content.ContentPublished.v1" {
+			continue
+		}
+		if n.Channel == "subscribe" {
+			subscribeCnt++
+		} else if n.Channel == "inapp" {
+			inappCnt++
+		}
+	}
+	if subscribeCnt != 1 || inappCnt != 1 {
+		t.Fatalf("订阅额度应用后应 1 订阅 1 降级站内: sub=%d inapp=%d", subscribeCnt, inappCnt)
+	}
+}
+
+// 退出标准（p3 §12.3/12.4）：猫立方核心链路与圈子生命周期端到端。
+func TestIntegrationP3ExitCriteria(t *testing.T) {
+	h := newTestApp(t)
+	aPhone, bPhone := randPhone(), randPhone()
+	aID, aTok := loginPhone(t, h, aPhone)
+	bID, bTok := loginPhone(t, h, bPhone)
+	for _, tok := range []string{aTok, bTok} {
+		if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+			"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+		}); s != http.StatusOK || env.Code != 0 {
+			t.Fatalf("实名失败: %d %+v", s, env)
+		}
+	}
+	// 1) 建立方（A 猫王，B 猫蜜）
+	_, env := h.do(http.MethodPost, "/api/mp/v1/cubes", aTok, map[string]any{
+		"name": "闭环立方", "honey_user_id": fmt.Sprintf("%d", bID),
+	})
+	var cube struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cube)
+	// 2) 邀请加入（第三名成员 C）
+	cPhone := randPhone()
+	cID, cTok := loginPhone(t, h, cPhone)
+	if _, e := h.do(http.MethodPost, "/api/mp/v1/certs", cTok, map[string]any{
+		"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+	}); e.Code != 0 {
+		t.Fatalf("C 实名失败: %+v", e)
+	}
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/invites", cube.ID), aTok, nil)
+	var ticket struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(env.Data, &ticket)
+	if _, e := h.do(http.MethodPost, "/api/mp/v1/cubes/join", cTok, map[string]any{"code": ticket.Code}); e.Code != 0 {
+		t.Fatalf("C 加入失败: %+v", e)
+	}
+	// 3) 建项目
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/projects", cube.ID), aTok, map[string]any{
+		"type": 1, "name": "闭环项目",
+	})
+	var proj struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &proj)
+	// 4) 建任务并完成（B 负责，A 确认）
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/tasks", cube.ID), aTok, map[string]any{
+		"project_id": fmt.Sprintf("%d", proj.ID), "title": "闭环任务", "assignee_id": fmt.Sprintf("%d", bID),
+	})
+	var task struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &task)
+	taskURL := func(a string) string {
+		return fmt.Sprintf("/api/mp/v1/cubes/%d/tasks/%d/%s", cube.ID, task.ID, a)
+	}
+	_, _ = h.do(http.MethodPost, taskURL("start"), bTok, nil)
+	_, _ = h.do(http.MethodPost, taskURL("submit"), bTok, map[string]any{"progress": 80})
+	_, _ = h.do(http.MethodPost, taskURL("confirm"), aTok, map[string]any{"approve": true})
+	// 5) 报备并确认
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/reports", cube.ID), bTok, map[string]any{
+		"project_id": fmt.Sprintf("%d", proj.ID), "customer_name": "闭环客户", "amount_wan": 200,
+	})
+	var rep struct {
+		Report struct {
+			ID int64 `json:"id,string"`
+		} `json:"report"`
+	}
+	_ = json.Unmarshal(env.Data, &rep)
+	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/reports/%d/confirm", cube.ID, rep.Report.ID), aTok, nil); e.Code != 0 {
+		t.Fatalf("报备确认失败: %+v", e)
+	}
+	// 6) 订阅（直接购买进阶档 → 支付 → 履约）
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/plan", cube.ID), aTok, map[string]any{"level": 2, "years": 1})
+	var po struct {
+		OrderID int64 `json:"order_id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &po)
+	payOrderAndNotify(t, h, aTok, po.OrderID)
+	fulfillCubeOrder(t, h, po.OrderID)
+	if level := cubePlanLevel(t, h, cube.ID, aTok); level != 2 {
+		t.Fatalf("订阅后应进阶档: %d", level)
+	}
+
+	// 圈子生命周期：建圈 → 申请加入 → 发布 → 解散
+	_, env = h.do(http.MethodPost, "/api/mp/v1/circles", aTok, map[string]any{"name": "闭环圈", "type": 1})
+	var cir struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cir)
+	_, cTok2 := loginPhone(t, h, cPhone) // 加入立方已递增 authz_ver，重新登录取新令牌
+	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/apply", cir.ID), cTok2, nil); e.Code != 0 {
+		t.Fatalf("申请加入失败: %+v", e)
+	}
+	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/feeds", cir.ID), cTok2, map[string]any{"text": "圈内动态"}); e.Code != 0 {
+		t.Fatalf("圈内发布失败: %+v", e)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/dissolve", cir.ID), aTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("解散失败: %d %+v", s, e)
+	}
+	if status := circleStatus(t, h, cir.ID, aTok); status != 2 {
+		t.Fatalf("解散后应已解散(status=2): %d", status)
+	}
+	_ = aID
+	_ = cID
+}
+
+func cubePlanLevel(t *testing.T, h *testApp, cubeID int64, tok string) int16 {
+	t.Helper()
+	_, env := h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/cubes/%d", cubeID), tok, nil)
+	var d struct {
+		PlanLevel int16 `json:"plan_level"`
+	}
+	_ = json.Unmarshal(env.Data, &d)
+	return d.PlanLevel
+}

@@ -121,6 +121,26 @@ var MachineReport = statemachine.Def{
 	},
 }
 
+// 订阅（#13）状态。
+const (
+	PlanActive  = "active"
+	PlanExpired = "expired"
+
+	EventPlanExpire = "expire"
+	EventPlanRenew  = "renew"
+)
+
+// MachinePlan 状态机 #13 订阅：生效中→已到期（续费可回生效中）。
+var MachinePlan = statemachine.Def{
+	Name:   "cube.plan",
+	States: []string{PlanActive, PlanExpired},
+	Transitions: []statemachine.Transition{
+		{From: PlanActive, Event: EventPlanExpire, To: PlanExpired, Actor: "system"},
+		{From: PlanExpired, Event: EventPlanRenew, To: PlanActive, Actor: "*"},
+		{From: PlanActive, Event: EventPlanRenew, To: PlanActive, Actor: "*"},
+	},
+}
+
 // 档位定义（默认值，实际以 settings 为准，后台可配）。
 type PlanTier struct {
 	Level       int16

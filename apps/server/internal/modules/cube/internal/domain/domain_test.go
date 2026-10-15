@@ -74,3 +74,49 @@ func TestCanJoinRemoved(t *testing.T) {
 		t.Fatalf("生效成员应可（幂等）: %v", err)
 	}
 }
+
+// 状态机 #7 立方内项目 / #13 订阅。
+func TestMachineProjectAndPlan(t *testing.T) {
+	eng := statemachine.NewEngine(nil)
+	ctx := context.Background()
+	if _, err := eng.Apply(ctx, MachineProject, 1, ProjectActive, EventClose, "leader"); err != nil {
+		t.Fatalf("项目关闭应允许: %v", err)
+	}
+	if _, err := eng.Apply(ctx, MachineProject, 1, ProjectClosed, EventReopen, "leader"); err != nil {
+		t.Fatalf("项目重开应允许: %v", err)
+	}
+	if _, err := eng.Apply(ctx, MachinePlan, 1, PlanActive, EventPlanExpire, "system"); err != nil {
+		t.Fatalf("订阅到期应允许: %v", err)
+	}
+	if _, err := eng.Apply(ctx, MachinePlan, 1, PlanExpired, EventPlanRenew, "user"); err != nil {
+		t.Fatalf("续费应允许: %v", err)
+	}
+}
+
+// 任务四态完整转移表（含驳回退回、逾期不自动通过由系统无事件保证）。
+func TestMachineTaskTable(t *testing.T) {
+	eng := statemachine.NewEngine(nil)
+	ctx := context.Background()
+	valid := []struct{ from, event, actor string }{
+		{TaskTodo, EventStart, "assignee"},
+		{TaskDoing, EventSubmit, "assignee"},
+		{TaskReviewing, EventApprove, "confirmer"},
+		{TaskReviewing, EventReject, "confirmer"},
+		{TaskDone, EventReopenTask, "leader"},
+	}
+	for _, c := range valid {
+		if _, err := eng.Apply(ctx, MachineTask, 1, c.from, c.event, c.actor); err != nil {
+			t.Fatalf("应允许 %s--%s-->: %v", c.from, c.event, err)
+		}
+	}
+	invalid := []struct{ from, event, actor string }{
+		{TaskTodo, EventApprove, "confirmer"},   // 越过进行中/待确认
+		{TaskDone, EventSubmit, "assignee"},     // 已完成不可再提交
+		{TaskDone, "no_such_event", "system"},       // 无「逾期自动通过」事件
+	}
+	for _, c := range invalid {
+		if _, err := eng.Apply(ctx, MachineTask, 1, c.from, c.event, c.actor); err == nil {
+			t.Fatalf("应拒绝 %s--%s--> (%s)", c.from, c.event, c.actor)
+		}
+	}
+}

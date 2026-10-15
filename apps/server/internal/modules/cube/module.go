@@ -127,7 +127,7 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/cubes", Handler: m.auth(m.handleAdminList), Admin: true},
 	)
 	r.StateMachines = append(r.StateMachines, domain.MachineCube, domain.MachineMember,
-		domain.MachineProject, domain.MachineTask, domain.MachineReport)
+		domain.MachineProject, domain.MachineTask, domain.MachineReport, domain.MachinePlan)
 	r.Settings = append(r.Settings, app.Schemas...)
 	// 订阅 trade.ApportionFormed：成团开通订阅 + 共建成员入立方
 	r.EventSubs = append(r.EventSubs, eventbus.Subscription{
