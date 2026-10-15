@@ -94,7 +94,8 @@ type LoginResult struct {
 }
 
 // WeChatLogin 微信登录注册一体化：code2session → 手机号 → 盲索引查/建 → 会话。
-func (s *Service) WeChatLogin(ctx context.Context, code, phoneCode, device, ip string) (LoginResult, error) {
+// identityType 仅在注册新用户时生效（1个人/2组织；0=默认个人），老用户忽略。
+func (s *Service) WeChatLogin(ctx context.Context, code, phoneCode, device, ip string, identityType int16) (LoginResult, error) {
 	if code == "" {
 		return LoginResult{}, fmt.Errorf("identity: 缺少微信 code")
 	}
@@ -119,7 +120,10 @@ func (s *Service) WeChatLogin(ctx context.Context, code, phoneCode, device, ip s
 	switch {
 	case err == infra.ErrNotFound:
 		isNew = true
-		if u, err = s.register(ctx, openID, phone, hmac); err != nil {
+		if identityType == 0 {
+			identityType = 1
+		}
+		if u, err = s.register(ctx, openID, phone, hmac, identityType); err != nil {
 			return LoginResult{}, err
 		}
 	case err != nil:
@@ -146,7 +150,7 @@ func (s *Service) WeChatLogin(ctx context.Context, code, phoneCode, device, ip s
 }
 
 // register 新建用户并发布 UserRegistered（同事务）。
-func (s *Service) register(ctx context.Context, openID, phone string, hmac []byte) (infra.User, error) {
+func (s *Service) register(ctx context.Context, openID, phone string, hmac []byte, identityType int16) (infra.User, error) {
 	var phoneEnc []byte
 	if s.enc != nil {
 		v, err := s.enc.Encrypt([]byte(phone))
@@ -157,7 +161,7 @@ func (s *Service) register(ctx context.Context, openID, phone string, hmac []byt
 	} else {
 		phoneEnc = []byte(phone) // 未配置密钥（开发）：明文占位，启动时已告警
 	}
-	u := infra.User{OpenID: openID, PhoneEnc: phoneEnc, PhoneHMAC: hmac, Nickname: "猫平方用户", AuthzVer: 1}
+	u := infra.User{OpenID: openID, PhoneEnc: phoneEnc, PhoneHMAC: hmac, Nickname: "猫平方用户", AuthzVer: 1, IdentityType: identityType}
 	err := s.pool.InTx(ctx, func(tx db.Tx) error {
 		id, err := s.repo.CreateUser(ctx, tx, u)
 		if err != nil {
@@ -295,7 +299,7 @@ func (s *Service) SMSLogin(ctx context.Context, phone, code, device, ip string) 
 	switch {
 	case err == infra.ErrNotFound:
 		isNew = true
-		if u, err = s.register(ctx, "", phone, hmac); err != nil {
+		if u, err = s.register(ctx, "", phone, hmac, 1); err != nil {
 			return LoginResult{}, err
 		}
 	case err != nil:

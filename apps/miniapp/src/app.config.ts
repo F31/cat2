@@ -15,6 +15,7 @@ export default defineAppConfig({
     { root: 'pages/card', pages: ['edit'] },
     { root: 'pages/msg', pages: ['chat'] },
     { root: 'pages/social', pages: ['favorites', 'follows'] },
+    { root: 'pages/auth', pages: ['enter'] },
   ],
   window: {
     backgroundTextStyle: 'light',

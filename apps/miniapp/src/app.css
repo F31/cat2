@@ -187,6 +187,103 @@ page {
   color: #ffffff;
 }
 
+/* 登录引导页 */
+.auth-enter {
+  padding: 80px 40px;
+  box-sizing: border-box;
+}
+.auth-enter__logo {
+  text-align: center;
+  margin-bottom: 60px;
+}
+.auth-enter__title {
+  display: block;
+  font-size: 56px;
+  font-weight: 700;
+  color: #d4411e;
+}
+.auth-enter__sub {
+  display: block;
+  margin-top: 14px;
+  color: #999;
+  font-size: 24px;
+}
+.auth-enter__label {
+  display: block;
+  color: #666;
+  font-size: 26px;
+  margin-bottom: 16px;
+}
+.auth-enter__identity {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 40px;
+}
+.auth-enter__card {
+  flex: 1;
+  background: #ffffff;
+  border: 2px solid #f0f0f0;
+  border-radius: 16px;
+  padding: 24px;
+}
+.auth-enter__card--active {
+  border-color: #d4411e;
+  background: #fff7f4;
+}
+.auth-enter__card-title {
+  display: block;
+  font-size: 28px;
+  font-weight: 600;
+}
+.auth-enter__card-sub {
+  display: block;
+  margin-top: 10px;
+  color: #999;
+  font-size: 22px;
+}
+.auth-enter__link {
+  color: #d4411e;
+}
+.auth-enter__btn {
+  margin-top: 20px;
+}
+.auth-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.auth-modal {
+  width: 80%;
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 40px 32px;
+}
+.auth-modal__title {
+  display: block;
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 24px;
+}
+.auth-modal__row {
+  display: block;
+  color: #666;
+  font-size: 24px;
+  margin-bottom: 12px;
+}
+.auth-modal__actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 32px;
+}
+.auth-modal__btn {
+  flex: 1;
+  margin-top: 0;
+}
+
 /* 会话 */
 .session-list {
   background: #ffffff;

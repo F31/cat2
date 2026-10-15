@@ -109,10 +109,14 @@ func (s *Store) SetStatus(ctx context.Context, userID int64, status int16) error
 // CreateUser 新建用户（与事件同事务，tx 由调用方提供）。
 func (s *Store) CreateUser(ctx context.Context, tx db.Tx, u User) (int64, error) {
 	id := int64(ids.New())
+	identityType := u.IdentityType
+	if identityType == 0 {
+		identityType = 1
+	}
 	_, err := tx.Exec(ctx, `
 		INSERT INTO idn_user (id, wechat_openid, phone_enc, phone_hmac, nickname, status, identity_type, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,1,now(),now())`,
-		id, u.OpenID, u.PhoneEnc, u.PhoneHMAC, u.Nickname, domain.StatusActive)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,now(),now())`,
+		id, u.OpenID, u.PhoneEnc, u.PhoneHMAC, u.Nickname, domain.StatusActive, identityType)
 	return id, err
 }
 

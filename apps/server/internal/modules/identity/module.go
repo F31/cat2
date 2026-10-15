@@ -208,6 +208,7 @@ type loginReq struct {
 	IV            string `json:"iv"`
 	PhoneCode     string `json:"phone_code"`
 	Device        string `json:"device"`
+	IdentityType  int16  `json:"identity_type"` // 注册时生效：1个人/2组织；登录老用户忽略
 }
 
 type tokensResp struct {
@@ -226,7 +227,11 @@ func (m *Module) handleWechatLogin(w http.ResponseWriter, req *http.Request) {
 	if phoneCode == "" {
 		phoneCode = body.EncryptedData // 兼容旧字段名
 	}
-	res, err := m.svc.WeChatLogin(req.Context(), body.Code, phoneCode, body.Device, clientIP(req))
+	if body.IdentityType < 0 || body.IdentityType > 2 {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	res, err := m.svc.WeChatLogin(req.Context(), body.Code, phoneCode, body.Device, clientIP(req), body.IdentityType)
 	if err != nil {
 		writeLoginErr(w, err)
 		return

@@ -236,8 +236,13 @@ export function createClient(opts: ClientOptions) {
 
   return {
     // ---- 认证 ----
-    wechatLogin(code: string, phoneCode?: string, device?: string) {
-      return call<LoginResult>('POST', '/auth/wechat', { code, phone_code: phoneCode, device })
+    wechatLogin(code: string, phoneCode?: string, device?: string, identityType?: 1 | 2) {
+      return call<LoginResult>('POST', '/auth/wechat', {
+        code,
+        phone_code: phoneCode,
+        device,
+        identity_type: identityType,
+      })
     },
     smsCode(phone: string) {
       return call<{ sent: boolean }>('POST', '/auth/phone/code', { phone })

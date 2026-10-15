@@ -46,6 +46,10 @@ paths:
                 encrypted_data: { type: string, description: 手机号加密数据（旧版 getPhoneNumber，兼容保留） }
                 iv: { type: string }
                 device: { type: string, description: 设备标识（会话审计） }
+                identity_type:
+                  type: integer
+                  enum: [1, 2]
+                  description: 注册身份（1个人/2组织），仅注册新用户时生效；登录老用户忽略，缺省 1
       responses:
         '200':
           description: 登录成功
