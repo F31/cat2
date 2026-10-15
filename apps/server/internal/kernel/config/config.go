@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"os"
 	"strconv"
 	"strings"
@@ -87,6 +88,16 @@ func split(s string) []string {
 		return nil
 	}
 	return strings.Split(s, ",")
+}
+
+// BlindKeyBytes 解码盲索引密钥（缺失时用开发默认，与装配根一致）。
+func (c Config) BlindKeyBytes() []byte {
+	if len(c.BlindKey) == 64 {
+		if b, err := hex.DecodeString(c.BlindKey); err == nil {
+			return b
+		}
+	}
+	return []byte("catcube-dev-blind-key-32bytes")
 }
 
 // HasModule 是否启用某模块（空列表=全部启用）。

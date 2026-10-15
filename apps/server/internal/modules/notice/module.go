@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"catcube/internal/kernel/db"
@@ -31,8 +32,25 @@ type Deps struct {
 
 // Module notice 模块。
 type Module struct {
-	deps Deps
-	svc  *app.Service
+	deps  Deps
+	svc   *app.Service
+	fault atomic.Value // func(eventbus.Event) error（降级演练：模拟通知通道故障）
+}
+
+// SetFault 注入故障（演练/测试）：非 nil 时通知处理前先返回该错误，业务不受影响、
+// 事件保持积压，故障解除后可重放补齐（p6 §4.5）。传 nil 解除。
+func (m *Module) SetFault(f func(eventbus.Event) error) { m.fault.Store(faultFn(f)) }
+
+type faultFn func(eventbus.Event) error
+
+// handleEvent 订阅包装：故障注入 → 正常处理。
+func (m *Module) handleEvent(ctx context.Context, e eventbus.Event) error {
+	if v := m.fault.Load(); v != nil {
+		if f, ok := v.(faultFn); ok && f != nil {
+			return f(e)
+		}
+	}
+	return m.svc.Handle(ctx, e)
 }
 
 func New(deps Deps) *Module { return &Module{deps: deps} }
@@ -64,7 +82,7 @@ func (m *Module) Register(r *module.Registry) error {
 	)
 	// 订阅全部业务事件（事件驱动触达）
 	for _, topic := range app.Topics() {
-		r.EventSubs = append(r.EventSubs, eventbus.Subscription{Topic: topic, Handler: m.svc.Handle})
+		r.EventSubs = append(r.EventSubs, eventbus.Subscription{Topic: topic, Handler: m.handleEvent})
 	}
 	r.Jobs = append(r.Jobs,
 		module.JobDef{Name: "notice.seed_templates", Interval: 10 * time.Minute, Run: m.svc.Register},

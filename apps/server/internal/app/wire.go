@@ -41,6 +41,7 @@ import (
 	"catcube/internal/modules/cube"
 	"catcube/internal/modules/discovery"
 	"catcube/internal/modules/identity"
+	idcontract "catcube/internal/modules/identity/contract"
 	"catcube/internal/modules/membership"
 	"catcube/internal/modules/msg"
 	"catcube/internal/modules/notice"
@@ -248,7 +249,11 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 			return nil, fmt.Errorf("wire: 模块 %s 注册失败: %w", m.Name(), err)
 		}
 		for _, rt := range reg.Routes {
-			a.Mux.HandleFunc(rt.Method+" "+rt.Path, rt.Handler)
+			h := rt.Handler
+			if rt.Admin {
+				h = requireAdmin(identityMod.Facade(), rt.Handler) // 后台路由硬门槛（非管理员拒绝）
+			}
+			a.Mux.HandleFunc(rt.Method+" "+rt.Path, h)
 		}
 		bus.Register(reg.EventSubs)
 		policyEngine.RegisterProviders(reg.CapProviders)
@@ -345,7 +350,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 
 	// 后台菜单声明（p1 §9.9/§11.7）：模块 → AdminSection 声明式；p4 扩为菜单级/操作级权限点
 	adminMenus := adminSectionsFor(ordered)
-	a.Mux.HandleFunc("GET /api/admin/v1/menus", func(w http.ResponseWriter, req *http.Request) {
+	menusHandler := func(w http.ResponseWriter, req *http.Request) {
 		token := ""
 		if h := req.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 			token = strings.TrimPrefix(h, "Bearer ")
@@ -360,7 +365,8 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "ok", "data": map[string]any{"items": adminMenus}})
-	})
+	}
+	a.Mux.HandleFunc("GET /api/admin/v1/menus", requireAdmin(identityMod.Facade(), menusHandler))
 
 	// 指标导出（Prometheus 文本格式）
 	a.Mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
@@ -398,6 +404,52 @@ func toSchedulerJobs(jobs []module.JobDef) []scheduler.Job {
 		out[i] = scheduler.Job{Name: j.Name, Interval: j.Interval, Run: j.Run}
 	}
 	return out
+}
+
+// requireAdmin 后台路由守卫：先认证令牌，再校验平台管理员（p6 §1.1）。
+// 未登录→401；非管理员→403。
+func requireAdmin(id idcontract.Facade, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		token := ""
+		if h := req.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
+			token = strings.TrimPrefix(h, "Bearer ")
+		}
+		if token == "" {
+			http.Error(w, `{"code":2,"message":"未登录"}`, http.StatusUnauthorized)
+			return
+		}
+		uid, _, err := id.Authenticate(req.Context(), token)
+		if err != nil {
+			http.Error(w, `{"code":2,"message":"登录已失效"}`, http.StatusUnauthorized)
+			return
+		}
+		admin, err := id.IsAdmin(req.Context(), uid)
+		if err != nil || !admin {
+			http.Error(w, `{"code":3,"message":"无后台权限"}`, http.StatusForbidden)
+			return
+		}
+		next(w, req)
+	}
+}
+
+// EnsureAdmins 按手机号授予平台管理员（运维引导：首个管理员/自助恢复）。
+func EnsureAdmins(ctx context.Context, pool *db.Pool, blindKey []byte, phones []string) (int, error) {
+	n := 0
+	for _, p := range phones {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		hmac := sensitive.BlindIndex(blindKey, p)
+		tag, err := pool.Exec(ctx, `
+			UPDATE idn_user SET admin_role=1, authz_ver=authz_ver+1, updated_at=now()
+			WHERE phone_hmac = $1`, hmac)
+		if err != nil {
+			return n, err
+		}
+		n += int(tag.RowsAffected())
+	}
+	return n, nil
 }
 
 // SeedDict 幂等导入字典种子（seed 子命令）。

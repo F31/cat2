@@ -82,6 +82,21 @@ func main() {
 		}
 	case "jobs":
 		fmt.Println("jobs：单跑一次定时任务（待实现）")
+	case "grant-admin":
+		// 运维引导：将手机号设为平台管理员（用于首个后台账号/自助恢复）
+		a, err := app.Wire(ctx, cfg)
+		if err != nil {
+			fatal(err)
+		}
+		if err := app.RunMigrations(ctx, a.Pool, a.Modules); err != nil {
+			fatal(err)
+		}
+		phones := os.Args[2:]
+		n, err := app.EnsureAdmins(ctx, a.Pool, cfg.BlindKeyBytes(), phones)
+		if err != nil {
+			fatal(err)
+		}
+		fmt.Printf("已授予 %d 个账号平台管理员（目标 %d 个手机号）\n", n, len(phones))
 	case "seed":
 		dir := "../../contracts/seeds/dict"
 		if len(os.Args) > 2 {

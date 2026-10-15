@@ -2,7 +2,7 @@
 
 ## 1. 安全测试
 
-- [ ] 1.1 越权测试：权限矩阵全部 denied 路径自动化（游客/注册/会员/各后台角色 × 关键资源）
+- [x] 1.1 越权矩阵自动化：`TestIntegrationPermissionMatrixFull`（游客/未实名/非会员/非管理员 × 17 条关键路径，断言 401/403 与错误码）；**修复后台越权漏洞**：`Route.Admin` 此前未强制，现由装配根 `requireAdmin` 统一硬门槛（非管理员 403），`/admin/v1/menus` 同步收紧；`idn_user.admin_role` + `IsAdmin/GrantAdmin` + `catcube grant-admin <手机号>` 运维引导（五角色细化仍归 p4）
 - [ ] 1.2 渗透测试（外部或工具）：OWASP Top 10 覆盖
 - [x] 1.3 支付回放：回调审计留痕（`trade:pay:notify:{invalid_sign,amount_mismatch,out_of_order,duplicate,ok}`，伪造/金额不符=Denied）；`ErrNotifyAmount`/`ErrNotifyOutOfOrder` 分类；集成测试 `TestIntegrationPayReplayAndForgery`（伪造/金额不符/正常/重复幂等/乱序）
 - [ ] 1.4 依赖漏洞扫描与 SAST 接入 CI
@@ -29,7 +29,7 @@
 - [x] 4.2 搜索降级：`adapters/pg.Search.Query` 先 pg_trgm，失败（扩展缺失/超时）自动回退 ILIKE 简单检索并告警；`NewSearchSimple` 强制降级态；集成测试 `TestSearchSimpleFallback`
 - [x] 4.3 内容安全超时：`trust.Review` 返回 `OutcomePending`（机检不可用→建机检重试任务，内容保持「审核中」不放行）；content 提交按结论三态处理；`moderation.DevClient`（`[FAULT]` 模拟超时）+ 集成测试 `TestIntegrationModerationTimeoutGate`
 - [x] 4.4 Redis 不可用回退：`adapters/redis`（标准库 RESP 客户端）+ `Fallback` 主备缓存（Redis 失败读写回退进程内 + 降级回调告警），`CATCUBE_REDIS_ADDR` 装配；单测（正常/降级往返）+ 集成测试（cube-home 聚合缓存）
-- [ ] 4.5 notice 故障 → 业务不受影响，事件积压后重放无丢失
+- [x] 4.5 notice 降级：`notice.SetFault` 故障注入（演练/测试）→ 事件保持 Outbox 重试、业务动作照常成功；故障解除后重放补齐站内信且无新死信；集成测试 `TestIntegrationNoticeFailureDoesNotBlockBusiness`
 - [x] 4.6 Outbox 监控：`eventbus.Bus.ReportStats` + `pg.Outbox.Stats`（积压/最老年龄/死信）→ 指标 `catcube_outbox_*` 与阈值告警（`CATCUBE_ALERT_OUTBOX_*`，`kernel.outbox_monitor` 任务）；`GET /metrics` 导出；死信后台重放（`/dead-letters/{id}/replay`）；集成测试 `TestIntegrationOutboxBacklogAlert`/`TestIntegrationMetricsEndpoint`
 - [x] 4.7 履约兜底：`trd_fulfillment` 重试超阈/死信计数 → `catcube_fulfillment_stuck` 指标与 `fulfillment_retry_exceeded` 告警（阈值 `CATCUBE_ALERT_FULFILL_RETRY`）；后台 `/fulfillments/{orderID}/retry` 手动补偿（保持原排队次序）；集成测试 `TestIntegrationFulfillmentAlertAndManualCompensation`
 

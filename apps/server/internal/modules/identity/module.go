@@ -110,6 +110,26 @@ func (m *Module) onMembershipChange(ctx context.Context, e eventbus.Event) error
 
 func (m *Module) Migrations() string { return migrations }
 
+// IsAdmin 是否平台管理员。
+func (m *Module) IsAdmin(ctx context.Context, userID int64) (bool, error) {
+	var role int16
+	err := m.deps.Pool.QueryRow(ctx, `SELECT admin_role FROM idn_user WHERE id=$1`, userID).Scan(&role)
+	if err != nil {
+		return false, nil
+	}
+	return role > 0, nil
+}
+
+// GrantAdmin 授予/取消平台管理员。
+func (m *Module) GrantAdmin(ctx context.Context, userID int64, admin bool) error {
+	r := 0
+	if admin {
+		r = 1
+	}
+	_, err := m.deps.Pool.Exec(ctx, `UPDATE idn_user SET admin_role=$2, authz_ver=authz_ver+1, updated_at=now() WHERE id=$1`, userID, r)
+	return err
+}
+
 // Facade 对外契约。
 func (m *Module) Facade() contract.Facade { return m }
 

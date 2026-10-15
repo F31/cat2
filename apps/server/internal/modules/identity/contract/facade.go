@@ -22,6 +22,10 @@ type Tokens struct {
 
 // Facade identity 对外接口。
 type Facade interface {
+	// IsAdmin 是否平台管理员（后台路由硬门槛；p4 细化五角色）。
+	IsAdmin(ctx context.Context, userID int64) (bool, error)
+	// GrantAdmin 授予/取消平台管理员（运维引导）。
+	GrantAdmin(ctx context.Context, userID int64, admin bool) error
 	// Authenticate 校验 Access Token，返回用户 ID 与授权版本。
 	Authenticate(ctx context.Context, accessToken string) (userID int64, authzVer int, err error)
 	SessionOf(ctx context.Context, userID int64) (activeSessions int, err error)

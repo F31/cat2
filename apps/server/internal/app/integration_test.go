@@ -23,13 +23,16 @@ import (
 
 	"catcube/internal/bff"
 	"catcube/internal/kernel/config"
+	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/expiry"
 	"catcube/internal/kernel/obs"
 	"catcube/internal/modules/circle"
 	"catcube/internal/modules/cube"
 	"catcube/internal/modules/discovery"
+	"catcube/internal/modules/identity"
 	"catcube/internal/modules/membership"
 	"catcube/internal/modules/msg"
+	"catcube/internal/modules/notice"
 	"catcube/internal/modules/trade"
 	"catcube/internal/modules/trust"
 	"catcube/internal/shared/media"
@@ -440,6 +443,7 @@ func TestIntegrationTrustReportFlow(t *testing.T) {
 	offenderID, offender := login(offenderPhone)
 	certify(offender)
 	_, reporter := login(randPhone())
+	_, admTok := loginAdmin(t, h)
 
 	// 发布 3 条内容
 	var itemIDs []int64
@@ -471,7 +475,7 @@ func TestIntegrationTrustReportFlow(t *testing.T) {
 	}
 
 	// 取审核队列并按任务复核属实
-	_, env := h.do(http.MethodGet, "/api/admin/v1/review-tasks?limit=200", reporter, nil)
+	_, env := h.do(http.MethodGet, "/api/admin/v1/review-tasks?limit=200", admTok, nil)
 	var queue struct {
 		Items []struct {
 			ID          int64  `json:"id,string"`
@@ -496,7 +500,7 @@ func TestIntegrationTrustReportFlow(t *testing.T) {
 		if tk.Source != 2 {
 			continue
 		}
-		status, env := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/review-tasks/%d/resolve", tk.ID), reporter,
+		status, env := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/review-tasks/%d/resolve", tk.ID), admTok,
 			map[string]any{"confirmed": true, "reason": "举报属实"})
 		if status != http.StatusOK || env.Code != 0 {
 			t.Fatalf("复核失败: %d %+v", status, env)
@@ -554,7 +558,7 @@ func TestIntegrationTrustReportFlow(t *testing.T) {
 // 后台下架与退款落审计。
 func TestIntegrationAdminOpsAudited(t *testing.T) {
 	h := newTestApp(t)
-	_, adminTok := loginUser(t, h)
+	_, adminTok := loginAdmin(t, h)
 
 	// 下架已展示内容
 	_, ownerTok := loginUser(t, h)
@@ -832,7 +836,8 @@ func TestIntegrationTradeFlow(t *testing.T) {
 	}
 
 	// 后台退款（幂等）
-	_, env = h.do(http.MethodPost, "/api/admin/v1/refunds", token, map[string]any{
+	_, admTok := loginAdmin(t, h)
+	_, env = h.do(http.MethodPost, "/api/admin/v1/refunds", admTok, map[string]any{
 		"order_id": fmt.Sprintf("%d", order.ID), "amount_fen": 9900, "reason": "重复支付原路退回",
 	})
 	var refund struct {
@@ -842,7 +847,7 @@ func TestIntegrationTradeFlow(t *testing.T) {
 	if refund.ID == 0 {
 		t.Fatalf("退款失败: %+v", env)
 	}
-	_, env = h.do(http.MethodPost, "/api/admin/v1/refunds", token, map[string]any{
+	_, env = h.do(http.MethodPost, "/api/admin/v1/refunds", admTok, map[string]any{
 		"order_id": fmt.Sprintf("%d", order.ID), "amount_fen": 9900, "reason": "重复支付原路退回",
 	})
 	var refund2 struct {
@@ -1130,7 +1135,7 @@ func TestIntegrationPermissionMatrix(t *testing.T) {
 // 后台基础管理（11.1）：用户列表/封禁解封、内容列表、会员列表。
 func TestIntegrationAdminFlow(t *testing.T) {
 	h := newTestApp(t)
-	adminID, adminTok := loginUser(t, h)
+	adminID, adminTok := loginAdmin(t, h)
 	victimID, victimTok := loginUser(t, h)
 
 	// 用户列表包含目标
@@ -1457,6 +1462,41 @@ func TestIntegrationCubeSpaces(t *testing.T) {
 }
 
 // loginPhone 以指定手机号登录（开发态 code=手机号），返回 (user_id, token)。
+// loginAdmin 登录并授予平台管理员（后台路由硬门槛），返回 uid 与管理员令牌。
+func loginAdmin(t *testing.T, h *testApp) (int64, string) {
+	t.Helper()
+	uid, _ := loginUser(t, h)
+	var im *identity.Module
+	for _, m := range h.app.Modules {
+		if v, ok := m.(*identity.Module); ok {
+			im = v
+		}
+	}
+	if im == nil {
+		t.Fatal("identity 模块未装载")
+	}
+	if err := im.GrantAdmin(context.Background(), uid, true); err != nil {
+		t.Fatal(err)
+	}
+	// 授权版本变更后旧令牌失效：重新登录取新令牌
+	phone := randPhone()
+	_, env := h.do(http.MethodPost, "/api/mp/v1/auth/wechat", "", map[string]string{"code": "wx-admin-" + phone, "phone_code": phone})
+	var l struct {
+		UserID int64 `json:"user_id,string"`
+		Tokens struct {
+			AccessToken string `json:"access_token"`
+		} `json:"tokens"`
+	}
+	_ = json.Unmarshal(env.Data, &l)
+	_ = im.GrantAdmin(context.Background(), l.UserID, true)
+	_, env = h.do(http.MethodPost, "/api/mp/v1/auth/wechat", "", map[string]string{"code": "wx-admin-" + phone, "phone_code": phone})
+	_ = json.Unmarshal(env.Data, &l)
+	if l.Tokens.AccessToken == "" {
+		t.Fatalf("管理员登录失败: %+v", env)
+	}
+	return l.UserID, l.Tokens.AccessToken
+}
+
 func loginPhone(t *testing.T, h *testApp, phone string) (int64, string) {
 	t.Helper()
 	_, env := h.do(http.MethodPost, "/api/mp/v1/auth/wechat", "", map[string]string{"code": "wx-" + phone, "phone_code": phone})
@@ -1591,7 +1631,7 @@ func TestIntegrationCubeCollab(t *testing.T) {
 func TestIntegrationAdminBanAudited(t *testing.T) {
 	h := newTestApp(t)
 	victimID, victimTok := loginUser(t, h)
-	_, adminTok := loginUser(t, h)
+	_, adminTok := loginAdmin(t, h)
 
 	status, env := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/users/%d/ban", victimID), adminTok,
 		map[string]any{"reason": "违规刷单"})
@@ -1817,7 +1857,7 @@ func TestIntegrationMessageModeration(t *testing.T) {
 	relayAll(t, h)
 
 	// 会员激活会使旧 access token 的 authz_ver 失效，用新登录的令牌查审核队列。
-	_, adminTok := loginUser(t, h)
+	_, adminTok := loginAdmin(t, h)
 	qstatus, env := h.do(http.MethodGet, "/api/admin/v1/review-tasks", adminTok, nil)
 	if qstatus != http.StatusOK || env.Code != 0 {
 		t.Fatalf("审核队列接口异常: %d %+v", qstatus, env)
@@ -2620,7 +2660,8 @@ func TestIntegrationCubeProjectLink(t *testing.T) {
 		t.Fatalf("发布到平台应回写内容 ID: %+v", env)
 	}
 	// 平台下架 → 立方项目卡片显示 taken_down（不删除）
-	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/contents/%d/takedown", item.ID), dTok,
+	_, admToken := loginAdmin(t, h)
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/contents/%d/takedown", item.ID), admToken,
 		map[string]any{"reason": "违规"}); s != http.StatusOK || e.Code != 0 {
 		t.Fatalf("下架失败: %d %+v", s, e)
 	}
@@ -3372,7 +3413,7 @@ func TestIntegrationMediaOrphanPurge(t *testing.T) {
 // 死信查询与重放（p1 §6.2）：标记死信 → 后台列出 → 重放复位。
 func TestIntegrationDeadLetterReplay(t *testing.T) {
 	h := newTestApp(t)
-	_, tok := loginUser(t, h)
+	_, tok := loginAdmin(t, h)
 	ctx := context.Background()
 	// 造一条死信
 	eid := "deadletter-test-" + randPhone()
@@ -3454,7 +3495,7 @@ func TestIntegrationExpirySample(t *testing.T) {
 // 后台菜单声明（p1 §9.9/§11.7）：AdminSection 声明式返回，内容随启用模块。
 func TestIntegrationAdminMenus(t *testing.T) {
 	h := newTestApp(t)
-	_, tok := loginUser(t, h)
+	_, tok := loginAdmin(t, h)
 	_, env := h.do(http.MethodGet, "/api/admin/v1/menus", tok, nil)
 	var res struct {
 		Items []struct {
@@ -3486,8 +3527,9 @@ func TestIntegrationFeatureFlags(t *testing.T) {
 	h := newTestApp(t)
 	uid, tok := loginUser(t, h)
 	_, otherTok := loginUser(t, h)
+	_, admTok := loginAdmin(t, h)
 	// 后台配置：仅白名单命中当前用户
-	if s, e := h.do(http.MethodPut, "/api/admin/v1/feature-flags/demo.flag", tok, map[string]any{
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/feature-flags/demo.flag", admTok, map[string]any{
 		"enabled": true, "ratio": 0, "users": []int64{uid},
 	}); s != http.StatusOK || e.Code != 0 {
 		t.Fatalf("配置开关失败: %d %+v", s, e)
@@ -3509,14 +3551,14 @@ func TestIntegrationFeatureFlags(t *testing.T) {
 		t.Fatalf("非白名单用户不应命中: %+v", other.Flags)
 	}
 	// 关闭 → 全不命中
-	_, _ = h.do(http.MethodPut, "/api/admin/v1/feature-flags/demo.flag", tok, map[string]any{"enabled": false})
+	_, _ = h.do(http.MethodPut, "/api/admin/v1/feature-flags/demo.flag", admTok, map[string]any{"enabled": false})
 	_, env = h.do(http.MethodGet, "/api/mp/v1/flags", tok, nil)
 	_ = json.Unmarshal(env.Data, &mine)
 	if mine.Flags["demo.flag"] {
 		t.Fatal("关闭后不应命中")
 	}
 	// 后台列表可见
-	_, env = h.do(http.MethodGet, "/api/admin/v1/feature-flags", tok, nil)
+	_, env = h.do(http.MethodGet, "/api/admin/v1/feature-flags", admTok, nil)
 	var list struct {
 		Items []struct {
 			Key string `json:"key"`
@@ -3719,7 +3761,8 @@ func TestIntegrationFulfillmentAlertAndManualCompensation(t *testing.T) {
 		t.Fatal("履约重试超阈应触发告警")
 	}
 	// 后台手动补偿：复位后重试履约成功
-	if s, env := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/fulfillments/%d/retry", order.ID), tok, nil); s != http.StatusOK || env.Code != 0 {
+	_, admTok := loginAdmin(t, h)
+	if s, env := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/fulfillments/%d/retry", order.ID), admTok, nil); s != http.StatusOK || env.Code != 0 {
 		t.Fatalf("后台补偿失败: %d %+v", s, env)
 	}
 	if _, err := h.app.Sched.RunOnce(context.Background(), "trade.fulfill"); err != nil {
@@ -3951,4 +3994,113 @@ func TestIntegrationPayReplayAndForgery(t *testing.T) {
 	if auditCount("trade:pay:notify:out_of_order") == 0 {
 		t.Fatal("乱序回调应记审计")
 	}
+}
+
+// 通知故障降级（p6 §4.5）：notice 故障时业务不受影响、事件积压；故障解除后重放补齐无丢失。
+func TestIntegrationNoticeFailureDoesNotBlockBusiness(t *testing.T) {
+	h := newTestApp(t)
+	var nm *notice.Module
+	for _, m := range h.app.Modules {
+		if v, ok := m.(*notice.Module); ok {
+			nm = v
+		}
+	}
+	if nm == nil {
+		t.Fatal("notice 模块未装载")
+	}
+	phone := randPhone()
+	_, tok := loginPhone(t, h, phone)
+	// 通知故障：所有事件处理失败（积压重试）
+	nm.SetFault(func(eventbus.Event) error { return fmt.Errorf("notice: 模拟故障") })
+	// 业务动作仍成功：实名提交（该事件将由 notice 消费生成站内信）
+	if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+		"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+	}); s != http.StatusOK || env.Code != 0 {
+		t.Fatalf("notice 故障不应影响业务: %d %+v", s, env)
+	}
+	relayAll(t, h) // 投递失败 → 事件转重试（不会丢）
+	var pending int
+	_ = h.app.Pool.QueryRow(context.Background(),
+		`SELECT count(1) FROM sys_outbox WHERE status IN (0,1,2) AND topic LIKE 'verify.%'`).Scan(&pending)
+	if pending == 0 {
+		t.Fatal("notice 故障期间事件应保留在 Outbox 等待重试")
+	}
+	var dead int
+	_ = h.app.Pool.QueryRow(context.Background(), `SELECT count(1) FROM sys_outbox WHERE status=9`).Scan(&dead)
+	// 故障解除 → 重放补齐，站内信送达
+	nm.SetFault(nil)
+	relayAll(t, h)
+	_, env := h.do(http.MethodGet, "/api/mp/v1/notices?limit=50", tok, nil)
+	var list struct {
+		Items []struct {
+			TemplateCode string `json:"template_code"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &list)
+	found := false
+	for _, n := range list.Items {
+		if n.TemplateCode == "verify.CertificationApproved.v1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("故障解除后应补齐站内信（无丢失）: %+v", list.Items)
+	}
+	// 重放后应无新增死信（有限次数重试内恢复）
+	var deadAfter int
+	_ = h.app.Pool.QueryRow(context.Background(), `SELECT count(1) FROM sys_outbox WHERE status=9`).Scan(&deadAfter)
+	if deadAfter > dead {
+		t.Fatalf("重放不应产生新死信: before=%d after=%d", dead, deadAfter)
+	}
+}
+
+// 权限矩阵全量 denied 自动化（p6 §1.1）：游客 / 未实名 / 非会员 / 非管理员 × 关键资源。
+func TestIntegrationPermissionMatrixFull(t *testing.T) {
+	h := newTestApp(t)
+	uid, tok := loginUser(t, h)
+	target, _ := loginUser(t, h)
+	setCard(t, h, tok, "王五", "310000", []string{"A01"}, nil, nil)
+
+	type tc struct {
+		name     string
+		method   string
+		path     string
+		token    string
+		body     any
+		wantCode int // 0=只要求拒绝（401/403）
+	}
+	cases := []tc{
+		// 游客（无令牌）→ 401
+		{"游客下单", http.MethodPost, "/api/mp/v1/orders", "", map[string]any{"biz_type": "member", "amount_fen": 1}, 0},
+		{"游客发布内容", http.MethodPost, "/api/mp/v1/contents", "", map[string]any{"kind": "project", "title": "x"}, 0},
+		{"游客建立方", http.MethodPost, "/api/mp/v1/cubes", "", map[string]any{"name": "x", "honey_user_id": "1"}, 0},
+		{"游客建圈", http.MethodPost, "/api/mp/v1/circles", "", map[string]any{"name": "x"}, 0},
+		{"游客通知列表", http.MethodGet, "/api/mp/v1/notices", "", nil, 0},
+		{"游客个人资料", http.MethodGet, "/api/mp/v1/users/me", "", nil, 0},
+		{"游客发起单聊", http.MethodPost, "/api/mp/v1/sessions", "", map[string]any{"target_ref": "user:1"}, 0},
+		{"游客后台封禁", http.MethodPost, fmt.Sprintf("/api/admin/v1/users/%d/ban", target), "", map[string]any{"reason": "x"}, 0},
+		{"游客后台死信", http.MethodGet, "/api/admin/v1/dead-letters", "", nil, 0},
+		{"游客后台菜单", http.MethodGet, "/api/admin/v1/menus", "", nil, 0},
+		// 已登录但未实名/非会员
+		{"未实名建立方", http.MethodPost, "/api/mp/v1/cubes", tok, map[string]any{"name": "x", "honey_user_id": fmt.Sprintf("%d", target)}, 130003},
+		{"未实名建圈", http.MethodPost, "/api/mp/v1/circles", tok, map[string]any{"name": "x"}, 0},
+		{"非会员看联系方式", http.MethodGet, fmt.Sprintf("/api/mp/v1/aggregate/contact?ref=user:%d", target), tok, nil, 120007},
+		{"非会员发起单聊", http.MethodPost, "/api/mp/v1/sessions", tok, map[string]any{"target_ref": fmt.Sprintf("user:%d", target)}, 70004},
+		// 非管理员令牌访问后台 → 拒绝（401/403）
+		{"非管理员封禁", http.MethodPost, fmt.Sprintf("/api/admin/v1/users/%d/ban", target), tok, map[string]any{"reason": "x"}, 0},
+		{"非管理员用户列表", http.MethodGet, "/api/admin/v1/users", tok, nil, 0},
+		{"非管理员死信重放", http.MethodPost, fmt.Sprintf("/api/admin/v1/dead-letters/%s/replay", "x"), tok, nil, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			status, env := h.do(c.method, c.path, c.token, c.body)
+			if status != http.StatusUnauthorized && status != http.StatusForbidden {
+				t.Fatalf("%s 应拒绝（401/403），实际 %d code=%d", c.name, status, env.Code)
+			}
+			if c.wantCode != 0 && env.Code != c.wantCode {
+				t.Fatalf("%s 错误码应 %d，实际 %d（status=%d）", c.name, c.wantCode, env.Code, status)
+			}
+		})
+	}
+	_ = uid
 }
