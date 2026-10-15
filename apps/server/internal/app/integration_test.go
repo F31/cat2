@@ -28,6 +28,7 @@ import (
 	"catcube/internal/modules/msg"
 	"catcube/internal/modules/trade"
 	"catcube/internal/modules/trust"
+	"catcube/internal/shared/media"
 	"catcube/pkg/ids"
 )
 
@@ -459,7 +460,7 @@ func TestIntegrationTrustReportFlow(t *testing.T) {
 	}
 
 	// 取审核队列并按任务复核属实
-	_, env := h.do(http.MethodGet, "/api/admin/v1/review-tasks?limit=50", reporter, nil)
+	_, env := h.do(http.MethodGet, "/api/admin/v1/review-tasks?limit=200", reporter, nil)
 	var queue struct {
 		Items []struct {
 			ID          int64  `json:"id,string"`
@@ -1783,6 +1784,12 @@ func TestIntegrationMessageModeration(t *testing.T) {
 	}
 	if _, hit := trustMod.FilterSensitive("违禁词X"); !hit {
 		t.Fatal("敏感词库未加载")
+	}
+
+	// 清理历史运行累积的机检任务（共享测试库）
+	if _, err := h.app.Pool.Exec(context.Background(),
+		`DELETE FROM trs_review_task WHERE subject_type='msg.message' AND status=0`); err != nil {
+		t.Fatal(err)
 	}
 
 	// A → B 建会话并发含敏感词消息
@@ -3310,4 +3317,43 @@ func cubePlanLevel(t *testing.T, h *testApp, cubeID int64, tok string) int16 {
 	}
 	_ = json.Unmarshal(env.Data, &d)
 	return d.PlanLevel
+}
+
+// 媒体孤儿清理（p1 §12.4）：引用归零且超保留期 → 删对象与元数据。
+func TestIntegrationMediaOrphanPurge(t *testing.T) {
+	h := newTestApp(t)
+	_, tok := loginUser(t, h)
+	// 申请上传（生成一条 med_file）
+	_, env := h.do(http.MethodPost, "/api/mp/v1/media/uploads", tok, map[string]any{
+		"filename": "avatar.png", "content_type": "image/png", "size": 2048,
+	})
+	var ticket struct {
+		FileID string `json:"file_id"`
+	}
+	_ = json.Unmarshal(env.Data, &ticket)
+	if ticket.FileID == "" {
+		t.Fatalf("上传申请失败: %+v", env)
+	}
+	// 置为孤儿且超保留期
+	if _, err := h.app.Pool.Exec(context.Background(),
+		`UPDATE med_file SET status=0, created_at=now()-interval '8 days' WHERE id=$1`, ticket.FileID); err != nil {
+		t.Fatal(err)
+	}
+	var mediaMod *media.Module
+	for _, m := range h.app.Modules {
+		if v, ok := m.(*media.Module); ok {
+			mediaMod = v
+		}
+	}
+	if mediaMod == nil {
+		t.Fatal("media 模块未装载")
+	}
+	if err := mediaMod.PurgeOrphans(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var cnt int
+	_ = h.app.Pool.QueryRow(context.Background(), `SELECT count(1) FROM med_file WHERE id=$1`, ticket.FileID).Scan(&cnt)
+	if cnt != 0 {
+		t.Fatalf("孤儿文件应被清理: %d", cnt)
+	}
 }

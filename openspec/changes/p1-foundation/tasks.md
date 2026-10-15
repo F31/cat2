@@ -114,7 +114,7 @@
 - [x] 12.1 迁移：`med_file`（详细设计 4.2.7 全字段）
 - [x] 12.2 预签名直传：类型与大小校验（JPG/JPEG/PNG ≤5MB）已实现；OSS 预签名为骨架（供应商接入 TODO）；封面尺寸校验待补
 - [ ] 12.3 缩略图生成与 CDN 域名输出；`Url(fileId, 规格)`
-- [ ] 12.4 `Bind(ownerRef)`/`Unbind` 引用计数已实现；订阅实体删除事件回收与孤儿文件定时清理（SchedulerJob）待补
+- [x] 12.4 `Bind(ownerRef)`/`Unbind` 引用计数已实现；孤儿文件定时清理 `media.purge_orphans`（引用归零且超 7 天→删对象+删行，测试覆盖）；实体删除事件回收路径已备（`Unbind` 供各模块调用）
 - [x] 12.5 entityref 轻量包：`EntityRef{type,id}` 类型 + `EntityResolver` 注册表 + `Resolve/BatchResolve`（无独立表）
 
 ## 13. 测试框架

@@ -35,11 +35,49 @@ func (m *Module) Name() string        { return "media" }
 func (m *Module) Rank() module.Rank   { return module.RankShared }
 func (m *Module) DependsOn() []string { return nil }
 
-// Register 注册上传接口。
+// Register 注册上传接口与孤儿清理任务。
 func (m *Module) Register(r *module.Registry) error {
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/media/uploads", Handler: m.handleUpload},
 	)
+	// 孤儿文件定时清理（引用计数归零且超保留期 → 删对象 + 删行）
+	r.Jobs = append(r.Jobs, module.JobDef{Name: "media.purge_orphans", Interval: 6 * time.Hour, Run: m.PurgeOrphans})
+	return nil
+}
+
+// PurgeOrphans 清理孤儿文件（status=0 且超 7 天保留期）：先删对象存储，再删元数据。
+func (m *Module) PurgeOrphans(ctx context.Context) error {
+	rows, err := m.pool.Query(ctx, `
+		SELECT id, bucket, object_key FROM med_file
+		WHERE status=0 AND created_at < now() - interval '7 days' ORDER BY created_at LIMIT 200`)
+	if err != nil {
+		return err
+	}
+	type orphan struct {
+		id     int64
+		bucket string
+		key    string
+	}
+	var list []orphan
+	for rows.Next() {
+		var o orphan
+		if err := rows.Scan(&o.id, &o.bucket, &o.key); err != nil {
+			rows.Close()
+			return err
+		}
+		list = append(list, o)
+	}
+	rows.Close()
+	for _, o := range list {
+		if m.storage != nil {
+			if err := m.storage.Delete(ctx, o.bucket, o.key); err != nil {
+				continue // 对象删除失败保留元数据待下次重试
+			}
+		}
+		if _, err := m.pool.Exec(ctx, `DELETE FROM med_file WHERE id=$1 AND status=0`, o.id); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
