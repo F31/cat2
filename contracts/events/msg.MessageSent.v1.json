@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/msg.MessageSent.v1.json",
+  "title": "msg.MessageSent.v1",
+  "description": "消息事件：会话内产生新消息（供 notice 触达；消息内容为用户文本，不含证件号等敏感字段）。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "msg.MessageSent.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["message_id", "session_id", "session_kind", "sender_id", "msg_type", "seq"],
+      "additionalProperties": false,
+      "properties": {
+        "message_id": { "type": "string" },
+        "session_id": { "type": "string" },
+        "session_kind": { "type": "integer", "description": "1单聊/2群聊" },
+        "sender_id": { "type": "string" },
+        "msg_type": { "type": "integer", "description": "1文本/2图片" },
+        "seq": { "type": "integer" },
+        "content": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

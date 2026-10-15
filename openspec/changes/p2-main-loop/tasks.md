@@ -87,12 +87,12 @@
 
 ## 9. msg（R1，异步单聊）
 
-- [ ] 9.1 迁移：`msg_session`（(min_uid,max_uid) 唯一）、`msg_session_member`、`msg_message`（按月分区）、`msg_read_cursor`
-- [ ] 9.2 `POST /sessions`（EnsureSession 单聊，发起=会员权益经 policy）；`POST /sessions/{id}/messages`、`GET /sessions/{id}/messages?cursor=`、`POST /sessions/{id}/read`、`GET /sessions`
-- [ ] 9.3 未读数=会话最大序号−已读游标（SQL 幂等，免 Redis 计数器）；`unread_count` 冗余可重建
-- [ ] 9.4 增量同步协议：cursor 拉取；聊天记录留存 ≥6 个月，超期分区归档对象存储（保留可检索元数据）
-- [ ] 9.5 消息异步内容检测：注册 `ReviewSubjectProvider`（聊天），`MessageSent` 事件
-- [ ] 9.6 非成员拉取会话 denied 记审计；`Realtime` 适配器 Noop
+- [x] 9.1 迁移：`msg_session`（(min_uid,max_uid) 唯一偏索引）、`msg_session_member`、`msg_message`（按月分区 + default）、`msg_read_cursor`、`msg_archive_meta`
+- [x] 9.2 `POST /sessions`（EnsureSession 单聊，发起=会员权益经 policy）；`POST /sessions/{id}/messages`、`GET /sessions/{id}/messages?cursor=`、`POST /sessions/{id}/read`、`GET /sessions`
+- [x] 9.3 未读数=会话最大序号−已读游标（SQL 幂等，免 Redis 计数器）；`unread_count` 冗余可重建
+- [ ] 9.4 增量同步 cursor 拉取已实现；分区自动创建 + 超期(>6 月)归档元数据登记已实现，压缩上传对象存储与 detach 待对象存储适配器落地后接通
+- [ ] 9.5 已注册 `ReviewSubjectProvider`（msg.message）+ 发 `MessageSent` 事件；异步机检消费（trust 订阅 MessageSent）待接通
+- [ ] 9.6 非成员拉取 denied（070002）已实现（审计钩子待 audit 存储落地）；`Realtime` 适配器 Noop 已接
 
 ## 10. 小程序主链路
 

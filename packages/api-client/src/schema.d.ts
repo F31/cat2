@@ -500,6 +500,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 我的会话列表（含未读数） */
+        get: operations["listSessions"];
+        put?: never;
+        /** 发起单聊（幂等；同一对用户唯一会话；发起=会员权益） */
+        post: operations["ensureSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sessions/{id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 增量拉取消息（cursor=已拉取最大 seq） */
+        get: operations["syncMessages"];
+        put?: never;
+        /** 发送消息（成员校验） */
+        post: operations["sendMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sessions/{id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交已读游标（幂等；清零该会话未读） */
+        post: operations["markSessionRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/membership/quote": {
         parameters: {
             query?: never;
@@ -904,6 +957,32 @@ export interface components {
             status: number;
             /** Format: date-time */
             invited_at?: string;
+        };
+        SessionPeer: {
+            user_id: string;
+            title?: string;
+            cover?: string;
+        };
+        Session: {
+            id: string;
+            /** @description 1单聊/2群聊 */
+            kind: number;
+            peer?: components["schemas"]["SessionPeer"];
+            last_seq: number;
+            unread: number;
+            /** Format: date-time */
+            last_message_at?: string | null;
+        };
+        Message: {
+            id: string;
+            session_id: string;
+            seq: number;
+            sender_id: string;
+            /** @description 1文本/2图片 */
+            msg_type: number;
+            content: string;
+            /** Format: date-time */
+            created_at?: string;
         };
     };
     responses: {
@@ -1864,6 +1943,158 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+        };
+    };
+    listSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 会话列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["Session"][];
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    ensureSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description user:<id> */
+                    target_ref: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 会话（含是否新建） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            created?: boolean;
+                            session?: components["schemas"]["Session"];
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    syncMessages: {
+        parameters: {
+            query?: {
+                cursor?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 增量消息 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["Message"][];
+                            next_cursor?: number;
+                            has_more?: boolean;
+                        };
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    sendMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description 1文本/2图片
+                     * @default 1
+                     */
+                    msg_type?: number;
+                    content: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 消息 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["Message"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    markSessionRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    read_seq?: number;
+                };
+            };
+        };
+        responses: {
+            200: components["responses"]["OkEmpty"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     quoteMembership: {

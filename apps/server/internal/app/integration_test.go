@@ -943,3 +943,158 @@ func TestIntegrationProfileLocked(t *testing.T) {
 		t.Fatalf("改锁定字段应 060003/403: %d %+v", status, env)
 	}
 }
+
+// 登录一个用户，返回 (user_id, access_token)。
+func loginUser(t *testing.T, h *testApp) (int64, string) {
+	t.Helper()
+	phone := randPhone()
+	_, env := h.do(http.MethodPost, "/api/mp/v1/auth/wechat", "", map[string]string{"code": "wx-" + phone, "phone_code": phone})
+	var login struct {
+		UserID int64 `json:"user_id,string"`
+		Tokens struct {
+			AccessToken string `json:"access_token"`
+		} `json:"tokens"`
+	}
+	_ = json.Unmarshal(env.Data, &login)
+	return login.UserID, login.Tokens.AccessToken
+}
+
+// 给指定 token 开通 VIP 1 年并触发履约（测试不启 scheduler）。
+func makeMember(t *testing.T, h *testApp, token string) {
+	t.Helper()
+	ctx := context.Background()
+	_, env := h.do(http.MethodPost, "/api/mp/v1/membership/orders", token, map[string]any{"level": 1, "years": 1})
+	var opened struct {
+		OrderID int64 `json:"order_id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &opened)
+	if opened.OrderID == 0 {
+		t.Fatalf("开通会员下单失败: %+v", env)
+	}
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/orders/%d/pay", opened.OrderID), token, nil)
+	var pp struct {
+		OutTradeNo string `json:"out_trade_no"`
+	}
+	_ = json.Unmarshal(env.Data, &pp)
+	if status, env := h.do(http.MethodPost, "/api/mp/v1/pay/notify", "", map[string]any{
+		"out_trade_no": pp.OutTradeNo, "amount_fen": 9900, "sign": "ok",
+	}); status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("会员支付回调失败: %d %+v", status, env)
+	}
+	fulfillMemberOrder(t, h, opened.OrderID)
+	_ = ctx
+}
+
+// 消息 R1：单聊会员门槛 → 发起 → 发送 → 未读 → 增量同步 → 已读清零 → 越权拒绝。
+func TestIntegrationMsgFlow(t *testing.T) {
+	h := newTestApp(t)
+	aID, aTok := loginUser(t, h)
+	bID, bTok := loginUser(t, h)
+
+	// 非会员发起单聊 → 070004/403
+	if status, env := h.do(http.MethodPost, "/api/mp/v1/sessions", bTok, map[string]any{
+		"target_ref": fmt.Sprintf("user:%d", aID),
+	}); status != http.StatusForbidden || env.Code != 70004 {
+		t.Fatalf("非会员发起应 070004/403: %d %+v", status, env)
+	}
+	// 非法目标 / 与自己
+	if status, env := h.do(http.MethodPost, "/api/mp/v1/sessions", aTok, map[string]any{"target_ref": "content.project:1"}); status != http.StatusBadRequest || env.Code != 70001 {
+		t.Fatalf("非法目标应 070001/400: %d %+v", status, env)
+	}
+	if status, env := h.do(http.MethodPost, "/api/mp/v1/sessions", aTok, map[string]any{"target_ref": fmt.Sprintf("user:%d", aID)}); status != http.StatusBadRequest || env.Code != 70006 {
+		t.Fatalf("与自己发起应 070006/400: %d %+v", status, env)
+	}
+
+	// A 成为会员后发起
+	makeMember(t, h, aTok)
+	var ensured struct {
+		Created bool `json:"created"`
+		Session struct {
+			ID int64 `json:"id,string"`
+		} `json:"session"`
+	}
+	_, env := h.do(http.MethodPost, "/api/mp/v1/sessions", aTok, map[string]any{"target_ref": fmt.Sprintf("user:%d", bID)})
+	_ = json.Unmarshal(env.Data, &ensured)
+	if !ensured.Created || ensured.Session.ID == 0 {
+		t.Fatalf("发起会话失败: %+v", ensured)
+	}
+	sid := ensured.Session.ID
+	// 幂等：再次发起同一对象返回同一会话
+	_, env = h.do(http.MethodPost, "/api/mp/v1/sessions", aTok, map[string]any{"target_ref": fmt.Sprintf("user:%d", bID)})
+	var again struct {
+		Created bool `json:"created"`
+		Session struct {
+			ID int64 `json:"id,string"`
+		} `json:"session"`
+	}
+	_ = json.Unmarshal(env.Data, &again)
+	if again.Created || again.Session.ID != sid {
+		t.Fatalf("重复发起应返回同一会话: %+v", again)
+	}
+
+	// A 发送两条消息
+	for i := 1; i <= 2; i++ {
+		_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/sessions/%d/messages", sid), aTok, map[string]any{"content": fmt.Sprintf("你好%d", i)})
+		var m struct {
+			Seq int64 `json:"seq"`
+		}
+		_ = json.Unmarshal(env.Data, &m)
+		if m.Seq != int64(i) {
+			t.Fatalf("序号应递增: 期望 %d 得 %d", i, m.Seq)
+		}
+	}
+
+	// B 会话列表未读=2（Peer 应为 A）
+	_, env = h.do(http.MethodGet, "/api/mp/v1/sessions", bTok, nil)
+	var list struct {
+		Items []struct {
+			ID     int64 `json:"id,string"`
+			Unread int   `json:"unread"`
+			Peer   struct {
+				UserID int64 `json:"user_id,string"`
+			} `json:"peer"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &list)
+	if len(list.Items) != 1 || list.Items[0].Unread != 2 || list.Items[0].Peer.UserID != aID {
+		t.Fatalf("B 未读应为 2 且 Peer=A: %+v", list.Items)
+	}
+
+	// B 增量同步
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/sessions/%d/messages?cursor=0", sid), bTok, nil)
+	var sync struct {
+		Items []struct {
+			Seq     int64  `json:"seq"`
+			Content string `json:"content"`
+		} `json:"items"`
+		NextCursor int64 `json:"next_cursor"`
+		HasMore    bool  `json:"has_more"`
+	}
+	_ = json.Unmarshal(env.Data, &sync)
+	if len(sync.Items) != 2 || sync.NextCursor != 2 || sync.HasMore {
+		t.Fatalf("同步结果不符: %+v", sync)
+	}
+
+	// 非成员 C 拉取 → 070002/403
+	_, cTok := loginUser(t, h)
+	if status, env := h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/sessions/%d/messages", sid), cTok, nil); status != http.StatusForbidden || env.Code != 70002 {
+		t.Fatalf("非成员拉取应 070002/403: %d %+v", status, env)
+	}
+
+	// B 已读 → 未读清零
+	if status, env := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/sessions/%d/read", sid), bTok, map[string]any{"read_seq": 2}); status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("已读失败: %d %+v", status, env)
+	}
+	_, env = h.do(http.MethodGet, "/api/mp/v1/sessions", bTok, nil)
+	_ = json.Unmarshal(env.Data, &list)
+	if len(list.Items) != 1 || list.Items[0].Unread != 0 {
+		t.Fatalf("已读后未读应 0: %+v", list.Items)
+	}
+
+	// MessageSent 事件已入 Outbox
+	var n int
+	_ = h.app.Pool.QueryRow(context.Background(), `SELECT count(1) FROM sys_outbox WHERE topic='msg.MessageSent.v1'`).Scan(&n)
+	if n < 2 {
+		t.Fatalf("应有 ≥2 条 MessageSent 事件，实际 %d", n)
+	}
+}

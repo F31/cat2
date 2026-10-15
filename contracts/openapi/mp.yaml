@@ -794,6 +794,152 @@ paths:
                           order_id: { type: string }
                           already_paid: { type: boolean }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /sessions:
+    post:
+      tags: [msg]
+      summary: 发起单聊（幂等；同一对用户唯一会话；发起=会员权益）
+      operationId: ensureSession
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_ref]
+              properties: { target_ref: { type: string, description: 'user:<id>' } }
+      responses:
+        '200':
+          description: 会话（含是否新建）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          created: { type: boolean }
+                          session: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    get:
+      tags: [msg]
+      summary: 我的会话列表（含未读数）
+      operationId: listSessions
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 会话列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /sessions/{id}/messages:
+    post:
+      tags: [msg]
+      summary: 发送消息（成员校验）
+      operationId: sendMessage
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                msg_type: { type: integer, default: 1, description: '1文本/2图片' }
+                content: { type: string }
+      responses:
+        '200':
+          description: 消息
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Message' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    get:
+      tags: [msg]
+      summary: 增量拉取消息（cursor=已拉取最大 seq）
+      operationId: syncMessages
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: cursor
+          in: query
+          schema: { type: integer, description: 已拉取最大 seq（默认 0） }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, description: '上限 50' }
+      responses:
+        '200':
+          description: 增量消息
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/Message' }
+                          next_cursor: { type: integer }
+                          has_more: { type: boolean }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /sessions/{id}/read:
+    post:
+      tags: [msg]
+      summary: 提交已读游标（幂等；清零该会话未读）
+      operationId: markSessionRead
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { read_seq: { type: integer } }
+      responses:
+        '200': { $ref: '#/components/responses/OkEmpty' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /membership/quote:
     get:
       tags: [membership]
@@ -1293,6 +1439,34 @@ components:
         sub_user_id: { type: string }
         status: { type: integer, description: '1生效/2已移除' }
         invited_at: { type: string, format: date-time }
+    SessionPeer:
+      type: object
+      required: [user_id]
+      properties:
+        user_id: { type: string }
+        title: { type: string }
+        cover: { type: string }
+    Session:
+      type: object
+      required: [id, kind, last_seq, unread]
+      properties:
+        id: { type: string }
+        kind: { type: integer, description: '1单聊/2群聊' }
+        peer: { $ref: '#/components/schemas/SessionPeer' }
+        last_seq: { type: integer }
+        unread: { type: integer }
+        last_message_at: { type: string, format: date-time, nullable: true }
+    Message:
+      type: object
+      required: [id, session_id, seq, sender_id, msg_type, content]
+      properties:
+        id: { type: string }
+        session_id: { type: string }
+        seq: { type: integer }
+        sender_id: { type: string }
+        msg_type: { type: integer, description: '1文本/2图片' }
+        content: { type: string }
+        created_at: { type: string, format: date-time }
   responses:
     OkEmpty:
       description: 成功（无业务数据）

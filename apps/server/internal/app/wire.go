@@ -30,6 +30,7 @@ import (
 	contentcontract "catcube/internal/modules/content/contract"
 	"catcube/internal/modules/identity"
 	"catcube/internal/modules/membership"
+	"catcube/internal/modules/msg"
 	"catcube/internal/modules/profile"
 	"catcube/internal/modules/social"
 	"catcube/internal/modules/trade"
@@ -140,6 +141,10 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	socialMod := social.New(social.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Resolver: entityReg,
 	})
+	msgMod := msg.New(msg.Deps{
+		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine,
+		Resolver: entityReg, Realtime: local.RealtimeNoop{},
+	})
 	tradeMod := trade.New(trade.Deps{
 		Pool: pool, Bus: bus, Pay: pay.NewDevClient(), Identity: identityMod.Facade(),
 	})
@@ -159,6 +164,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		socialMod,
 		tradeMod,
 		membershipMod,
+		msgMod,
 	}
 
 	// 依赖拓扑装载：缺依赖启动即失败
@@ -191,6 +197,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	// 跨模块扩展点装配（装配根唯一 import 所有模块）：审核对象提供者
 	trustMod.RegisterSubjectProvider(profileMod)
 	trustMod.RegisterSubjectProvider(verifyMod)
+	trustMod.RegisterSubjectProvider(msgMod.ProviderFor())
 	for _, k := range []string{contentcontract.KindProject, contentcontract.KindProduct, contentcontract.KindMeeting, contentcontract.KindEvent} {
 		trustMod.RegisterSubjectProvider(contentMod.ProviderFor(k))
 	}

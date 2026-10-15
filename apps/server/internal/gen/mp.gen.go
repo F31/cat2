@@ -509,6 +509,19 @@ type MembershipQuote struct {
 	Years   int `json:"years"`
 }
 
+// Message defines model for Message.
+type Message struct {
+	Content   string     `json:"content"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	Id        string     `json:"id"`
+
+	// MsgType 1文本/2图片
+	MsgType   int    `json:"msg_type"`
+	SenderId  string `json:"sender_id"`
+	Seq       int    `json:"seq"`
+	SessionId string `json:"session_id"`
+}
+
 // OpenMembershipInput defines model for OpenMembershipInput.
 type OpenMembershipInput struct {
 	Level OpenMembershipInputLevel `json:"level"`
@@ -564,6 +577,25 @@ type ReportInputReasonCode string
 type ReportReason struct {
 	Code  string `json:"code"`
 	Label string `json:"label"`
+}
+
+// Session defines model for Session.
+type Session struct {
+	Id string `json:"id"`
+
+	// Kind 1单聊/2群聊
+	Kind          int          `json:"kind"`
+	LastMessageAt *time.Time   `json:"last_message_at,omitempty"`
+	LastSeq       int          `json:"last_seq"`
+	Peer          *SessionPeer `json:"peer,omitempty"`
+	Unread        int          `json:"unread"`
+}
+
+// SessionPeer defines model for SessionPeer.
+type SessionPeer struct {
+	Cover  *string `json:"cover,omitempty"`
+	Title  *string `json:"title,omitempty"`
+	UserId string  `json:"user_id"`
 }
 
 // SubAccount defines model for SubAccount.
@@ -789,6 +821,31 @@ type ReportTargetParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// EnsureSessionJSONBody defines parameters for EnsureSession.
+type EnsureSessionJSONBody struct {
+	// TargetRef user:<id>
+	TargetRef string `json:"target_ref"`
+}
+
+// SyncMessagesParams defines parameters for SyncMessages.
+type SyncMessagesParams struct {
+	Cursor *int `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// SendMessageJSONBody defines parameters for SendMessage.
+type SendMessageJSONBody struct {
+	Content string `json:"content"`
+
+	// MsgType 1文本/2图片
+	MsgType *int `json:"msg_type,omitempty"`
+}
+
+// MarkSessionReadJSONBody defines parameters for MarkSessionRead.
+type MarkSessionReadJSONBody struct {
+	ReadSeq *int `json:"read_seq,omitempty"`
+}
+
 // DeactivateAccountParams defines parameters for DeactivateAccount.
 type DeactivateAccountParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
@@ -838,6 +895,15 @@ type PayNotifyJSONRequestBody PayNotifyJSONBody
 
 // ReportTargetJSONRequestBody defines body for ReportTarget for application/json ContentType.
 type ReportTargetJSONRequestBody = ReportInput
+
+// EnsureSessionJSONRequestBody defines body for EnsureSession for application/json ContentType.
+type EnsureSessionJSONRequestBody EnsureSessionJSONBody
+
+// SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
+type SendMessageJSONRequestBody SendMessageJSONBody
+
+// MarkSessionReadJSONRequestBody defines body for MarkSessionRead for application/json ContentType.
+type MarkSessionReadJSONRequestBody MarkSessionReadJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -955,6 +1021,21 @@ type ServerInterface interface {
 	// ReportTarget 举报（入人工复核队列，24h SLA）
 	// (POST /reports)
 	ReportTarget(w http.ResponseWriter, r *http.Request, params ReportTargetParams)
+	// ListSessions 我的会话列表（含未读数）
+	// (GET /sessions)
+	ListSessions(w http.ResponseWriter, r *http.Request)
+	// EnsureSession 发起单聊（幂等；同一对用户唯一会话；发起=会员权益）
+	// (POST /sessions)
+	EnsureSession(w http.ResponseWriter, r *http.Request)
+	// SyncMessages 增量拉取消息（cursor=已拉取最大 seq）
+	// (GET /sessions/{id}/messages)
+	SyncMessages(w http.ResponseWriter, r *http.Request, id string, params SyncMessagesParams)
+	// SendMessage 发送消息（成员校验）
+	// (POST /sessions/{id}/messages)
+	SendMessage(w http.ResponseWriter, r *http.Request, id string)
+	// MarkSessionRead 提交已读游标（幂等；清零该会话未读）
+	// (POST /sessions/{id}/read)
+	MarkSessionRead(w http.ResponseWriter, r *http.Request, id string)
 	// GetMe 当前用户摘要
 	// (GET /users/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
@@ -2082,6 +2163,141 @@ func (siw *ServerInterfaceWrapper) ReportTarget(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// ListSessions operation middleware
+func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSessions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EnsureSession operation middleware
+func (siw *ServerInterfaceWrapper) EnsureSession(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EnsureSession(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SyncMessages operation middleware
+func (siw *ServerInterfaceWrapper) SyncMessages(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SyncMessagesParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SyncMessages(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendMessage operation middleware
+func (siw *ServerInterfaceWrapper) SendMessage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendMessage(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MarkSessionRead operation middleware
+func (siw *ServerInterfaceWrapper) MarkSessionRead(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MarkSessionRead(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMe operation middleware
 func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
 
@@ -2293,6 +2509,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/orders/{id}", wrapper.GetOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/orders/{id}/pay", wrapper.PayOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/pay/notify", wrapper.PayNotify)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/sessions", wrapper.ListSessions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/sessions", wrapper.EnsureSession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/sessions/{id}/messages", wrapper.SyncMessages)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/sessions/{id}/messages", wrapper.SendMessage)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/sessions/{id}/read", wrapper.MarkSessionRead)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/membership/quote", wrapper.QuoteMembership)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/membership/orders", wrapper.OpenMembership)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/membership/me", wrapper.GetMyMembership)
