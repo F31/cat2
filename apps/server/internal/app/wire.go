@@ -116,7 +116,8 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	outbox := pg.NewOutbox(pool)
 	bus := eventbus.NewBus(outbox, pg.NewProcessed(pool))
 	policyEngine := policy.NewEngine()
-	auditRec := audit.NewRecorder(pg.NewAudit(pool))
+	auditStore := pg.NewAudit(pool)
+	auditRec := audit.NewRecorder(auditStore)
 
 	// 微信：配了 appid/secret 走真实接口，否则开发态假实现（登录链路可端到端跑通）
 	identityDeps := identity.Deps{
@@ -275,6 +276,44 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 			Run: func(ctx context.Context) error {
 				_, err := bus.Relay(ctx, "worker", 200)
 				return err
+			},
+		},
+		{
+			Name: "kernel.audit_verify", Interval: time.Hour,
+			Run: func(ctx context.Context) error {
+				// 审计哈希链增量断链/篡改检测告警（p6 §1.6）：自上次校验游标起，
+				// 逐条重算 hash 并校验链条连接；篡改/插入/断链即告警。历史全量离线校验用 audit.VerifyChain。
+				curID, curHash, err := auditStore.Cursor(ctx)
+				if err != nil {
+					return err
+				}
+				if curID == 0 {
+					// 首次运行：以当前链尾为基线（不回溯历史，避免历史遗留误报）
+					id, h, err := auditStore.Latest(ctx)
+					if err != nil {
+						return err
+					}
+					if id == 0 {
+						obs.Default().SetGauge("catcube_audit_chain_ok", 1)
+						return nil
+					}
+					obs.Default().SetGauge("catcube_audit_chain_ok", 1)
+					return auditStore.SetCursor(ctx, id, h)
+				}
+				idx, msg, newID, newHash, err := audit.VerifyIncremental(ctx, auditStore, curID, curHash, 5000)
+				if err != nil {
+					return err
+				}
+				if idx > 0 {
+					obs.Default().SetGauge("catcube_audit_chain_ok", 0)
+					obs.Default().Alert("audit_chain_broken", fmt.Sprintf("%s（游标 id=%d）", msg, curID))
+					return nil
+				}
+				obs.Default().SetGauge("catcube_audit_chain_ok", 1)
+				if newID != curID {
+					return auditStore.SetCursor(ctx, newID, newHash)
+				}
+				return nil
 			},
 		},
 		{

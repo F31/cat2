@@ -2987,10 +2987,10 @@ func TestIntegrationCubeGroupChat(t *testing.T) {
 	_, env = h.do(http.MethodGet, "/api/mp/v1/sessions", bTok, nil)
 	var sessions struct {
 		Items []struct {
-			ID      int64  `json:"id,string"`
-			Kind    int16  `json:"kind"`
-			Title   string `json:"title"`
-			Unread  int    `json:"unread"`
+			ID     int64  `json:"id,string"`
+			Kind   int16  `json:"kind"`
+			Title  string `json:"title"`
+			Unread int    `json:"unread"`
 		} `json:"items"`
 	}
 	_ = json.Unmarshal(env.Data, &sessions)
@@ -3736,5 +3736,81 @@ func TestIntegrationFulfillmentAlertAndManualCompensation(t *testing.T) {
 	_ = h.app.Pool.QueryRow(context.Background(), `SELECT count(1) FROM mbr_member WHERE user_id=$1 AND expires_at > now()`, uid).Scan(&memberN)
 	if memberN == 0 {
 		t.Fatal("补偿后应开通会员权益")
+	}
+}
+
+// 审计断链告警（p6 §1.6）：篡改一条 sys_audit → 断链检测定位并告警。
+func TestIntegrationAuditChainBrokenAlert(t *testing.T) {
+	h := newTestApp(t)
+	uid, tok := loginUser(t, h)
+	// 制造若干审计记录（后台退款/登录等都会写审计）
+	_, _ = h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+		"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+	})
+	var n int
+	_ = h.app.Pool.QueryRow(context.Background(), `SELECT count(1) FROM sys_audit`).Scan(&n)
+	if n == 0 {
+		t.Skip("当前无审计记录可供篡改")
+	}
+	// 基线：将游标对齐到当前链尾（隔离历史遗留记录），再校验应完整
+	var tailID int64
+	var tailHash string
+	_ = h.app.Pool.QueryRow(context.Background(),
+		`SELECT id, btrim(hash) FROM sys_audit ORDER BY created_at DESC, id DESC LIMIT 1`).Scan(&tailID, &tailHash)
+	if _, err := h.app.Pool.Exec(context.Background(), `
+		INSERT INTO sys_settings (scope, key, value, type, updated_at)
+		VALUES ('platform','audit.verify.cursor',$1,'string',now())
+		ON CONFLICT (scope, key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()`,
+		fmt.Sprintf("%d:%s", tailID, tailHash)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.app.Sched.RunOnce(context.Background(), "kernel.audit_verify"); err != nil {
+		t.Fatalf("审计校验任务失败: %v", err)
+	}
+	if obs.Default().Gauge("catcube_audit_chain_ok") != 1 {
+		t.Fatalf("链应完整，实际 gauge=%v", obs.Default().Gauge("catcube_audit_chain_ok"))
+	}
+	before := obs.Default().AlertCount("audit_chain_broken")
+	// 游标之后新写审计记录：建立方（cube 归属审计）
+	if _, err := h.app.Pool.Exec(context.Background(),
+		`UPDATE idn_user SET realname_status=1 WHERE id=$1`, uid); err != nil {
+		t.Fatal(err)
+	}
+	var curID int64
+	var curVal string
+	_ = h.app.Pool.QueryRow(context.Background(),
+		`SELECT value FROM sys_settings WHERE scope='platform' AND key='audit.verify.cursor'`).Scan(&curVal)
+	_, _ = fmt.Sscanf(curVal, "%d:", &curID)
+	bid, bTok := loginUser(t, h)
+	for _, tk := range []string{tok, bTok} {
+		_, _ = h.do(http.MethodPost, "/api/mp/v1/certs", tk, map[string]any{
+			"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+		})
+	}
+	_, cubeEnv := h.do(http.MethodPost, "/api/mp/v1/cubes", tok, map[string]any{
+		"name": "审计立方", "honey_user_id": fmt.Sprintf("%d", bid),
+	})
+	_ = cubeEnv
+	var newID int64
+	if err := h.app.Pool.QueryRow(context.Background(),
+		`SELECT id FROM sys_audit WHERE id > $1 ORDER BY id DESC LIMIT 1`, curID).Scan(&newID); err != nil || newID == 0 {
+		t.Skipf("游标后无新审计记录(cur=%s)", curVal)
+	}
+	tag, err := h.app.Pool.Exec(context.Background(),
+		`UPDATE sys_audit SET detail = '{"tampered":true}'::jsonb WHERE id = $1`, newID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tag.RowsAffected() == 0 {
+		t.Fatal("应篡改到一条记录")
+	}
+	if _, err := h.app.Sched.RunOnce(context.Background(), "kernel.audit_verify"); err != nil {
+		t.Fatalf("审计校验任务失败: %v", err)
+	}
+	if obs.Default().AlertCount("audit_chain_broken") <= before {
+		t.Fatal("篡改后应触发断链告警")
+	}
+	if obs.Default().Gauge("catcube_audit_chain_ok") != 0 {
+		t.Fatal("篡改后 gauge 应为 0")
 	}
 }

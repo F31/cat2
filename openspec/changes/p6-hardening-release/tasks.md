@@ -7,7 +7,7 @@
 - [ ] 1.3 支付回放测试：重复回调、伪造签名、乱序回调全部被拒绝且记审计
 - [ ] 1.4 依赖漏洞扫描与 SAST 接入 CI
 - [ ] 1.5 联系方式抓取压测：模拟批量查看联系方式，验证按用户/日阈值限频与告警触发
-- [ ] 1.6 审计断链告警验证：人为篡改一条 sys_audit，断链检测告警触发
+- [x] 1.6 审计断链告警：`audit.VerifyForward/VerifyIncremental`（逐条重算 hash + 锚点连接校验）；`pg.Audit` 游标（`sys_settings:audit.verify.cursor`，首跑建基线）与 `ListChainAfter`；`kernel.audit_verify` 定时任务 → `catcube_audit_chain_ok` 指标 + `audit_chain_broken` 告警；修复 char(64) 补空格导致的 `LastHash` 取链偏差；单测（篡改/断链定位）+ 集成测试 `TestIntegrationAuditChainBrokenAlert`
 
 ## 2. 压测（tests/perf，独立库）
 
