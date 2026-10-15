@@ -1223,6 +1223,37 @@ func TestIntegrationBFFGuestAndContact(t *testing.T) {
 	}
 }
 
+// 首屏性能（12.5）：GET /feed 单次聚合 + 预计算候选的读路径预算（后端均值 < 300ms；
+// 端到端 ≤3s 预算含前端渲染与网络，此处只守后端读路径不退化）。
+func TestIntegrationFeedLatency(t *testing.T) {
+	h := newTestApp(t)
+	_, aTok := loginUser(t, h)
+	_, bTok := loginUser(t, h)
+	setCard(t, h, aTok, "张三", "310000", []string{"A01"}, []string{"N1"}, []string{"O1"})
+	setCard(t, h, bTok, "李四", "310000", []string{"A01"}, []string{"O1"}, []string{"N1"})
+	relayAll(t, h)
+	refreshCandidates(t, h)
+
+	// 预热（连接/缓存）
+	if status, env := h.do(http.MethodGet, "/api/mp/v1/feed", aTok, nil); status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("feed 预热失败: %d %+v", status, env)
+	}
+
+	const rounds = 10
+	start := time.Now()
+	for i := 0; i < rounds; i++ {
+		status, env := h.do(http.MethodGet, "/api/mp/v1/feed", aTok, nil)
+		if status != http.StatusOK || env.Code != 0 {
+			t.Fatalf("feed 失败: %d %+v", status, env)
+		}
+	}
+	avg := time.Since(start) / rounds
+	if avg > 300*time.Millisecond {
+		t.Fatalf("feed 读路径均值超预算: %v", avg)
+	}
+	t.Logf("feed 读路径均值 %v（预算 300ms）", avg)
+}
+
 // 媒体上传申请：契约 JSON body → 预签名凭证；非法类型/超限拒绝。
 func TestIntegrationMediaUpload(t *testing.T) {
 	h := newTestApp(t)

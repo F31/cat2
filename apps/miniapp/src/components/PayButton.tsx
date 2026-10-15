@@ -12,6 +12,7 @@ export interface PayButtonProps {
   createOrder?: () => Promise<string>
   orderId?: string
   onPaid?: (orderId: string) => void
+  onError?: (e: unknown) => void
 }
 
 // 支付按钮：下单 → 取支付参数 → 调起微信支付（dev 无签名参数时仅确认订单已创建）。
@@ -22,6 +23,7 @@ export default function PayButton({
   createOrder,
   orderId,
   onPaid,
+  onError,
 }: PayButtonProps) {
   const [paying, setPaying] = useState(false)
 
@@ -46,8 +48,12 @@ export default function PayButton({
       }
       onPaid?.(id)
     } catch (e) {
-      const msg = e instanceof Error && /cancel/i.test(e.message) ? '已取消支付' : '支付失败，请重试'
-      Taro.showToast({ title: msg, icon: 'none' })
+      if (onError) {
+        onError(e)
+      } else {
+        const msg = e instanceof Error && /cancel/i.test(e.message) ? '已取消支付' : '支付失败，请重试'
+        Taro.showToast({ title: msg, icon: 'none' })
+      }
     } finally {
       setPaying(false)
     }

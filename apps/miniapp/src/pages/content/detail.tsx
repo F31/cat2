@@ -6,6 +6,7 @@ import { api } from '../../services/request'
 import { ensureLogin } from '../../services/auth'
 import StateView from '../../components/StateView'
 import SubscribeAsk from '../../components/SubscribeAsk'
+import PolicyGate from '../../components/PolicyGate'
 
 const LEVEL_LABEL: Record<number, string> = { 1: 'VIP 会员', 2: 'SVIP 会员', 3: '企业版' }
 
@@ -177,14 +178,14 @@ export default function ContentDetail() {
               {typeof v === 'string' || typeof v === 'number' ? String(v) : JSON.stringify(v)}
             </Block>
           ))}
-          {content.member_gate && content.member_gate.length > 0 ? (
-            <View className="policy-gate">
-              <Text className="policy-gate__hint">开通会员可见：{content.member_gate.join('、')}</Text>
-              <Text className="policy-gate__action" onClick={() => Taro.navigateTo({ url: '/pages/member/open' })}>
-                去开通
-              </Text>
-            </View>
-          ) : null}
+          <PolicyGate
+            allowed={!(content.member_gate && content.member_gate.length > 0)}
+            reason="member.required"
+            unlockText="去开通"
+            onUnlock={() => Taro.navigateTo({ url: '/pages/member/open' })}
+          >
+            <View />
+          </PolicyGate>
           {detail.owner ? <Block title="发布方">{detail.owner.name}</Block> : null}
         </>
       ) : null}

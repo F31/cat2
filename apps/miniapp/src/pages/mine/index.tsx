@@ -72,6 +72,9 @@ export default function Mine() {
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/card/edit' })}>
             <Text>完善资料 / 编辑名片</Text>
           </View>
+          <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/verify/index' })}>
+            <Text>实名认证</Text>
+          </View>
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/social/favorites' })}>
             <Text>我的收藏</Text>
           </View>

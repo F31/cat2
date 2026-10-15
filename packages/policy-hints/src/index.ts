@@ -7,6 +7,8 @@ const hints: Record<string, string> = {
   'quota.exceeded': '操作过于频繁，请稍后再试',
   'account.inactive': '账号状态异常，请联系客服',
   'realname.required': '该操作需要先完成实名认证',
+  'member.required': '开通会员后可查看联系方式与核心优势',
+  'member.enterprise.required': '企业版仅已认证企业可开通',
 }
 
 /** 按原因码取提示文案；未登记的码返回兜底文案。 */

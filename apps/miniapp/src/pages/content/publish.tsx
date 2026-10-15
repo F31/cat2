@@ -110,8 +110,14 @@ export default function Publish() {
       if (id) await api.submitContent(id)
       Taro.showToast({ title: '已提交审核', icon: 'success' })
       setTimeout(() => Taro.navigateBack(), 700)
-    } catch {
-      Taro.showToast({ title: '发布失败（需实名）', icon: 'none' })
+    } catch (e) {
+      // 110004：发布需先实名 → 引导实名认证；其余为表单/网络错误。
+      if (e && typeof e === 'object' && 'code' in e && (e as { code: number }).code === 110004) {
+        Taro.showToast({ title: '发布需先完成实名认证', icon: 'none' })
+        void Taro.navigateTo({ url: '/pages/verify/index' })
+      } else {
+        Taro.showToast({ title: '发布失败，请重试', icon: 'none' })
+      }
     } finally {
       setSubmitting(false)
     }

@@ -83,6 +83,15 @@ export default function MemberOpen() {
         label="立即开通"
         disabled={!agreed}
         createOrder={async () => (await api.openMembership(level, years)).order_id}
+        onError={(e) => {
+          // 120003：企业版仅已认证企业可开通 → 引导实名/企业认证。
+          if (e && typeof e === 'object' && 'code' in e && (e as { code: number }).code === 120003) {
+            Taro.showToast({ title: '企业版需先完成企业认证', icon: 'none' })
+            void Taro.navigateTo({ url: '/pages/verify/index' })
+            return
+          }
+          Taro.showToast({ title: '开通失败，请重试', icon: 'none' })
+        }}
       />
       {!agreed ? <Text className="price__note">请先勾选并同意《会员服务协议》</Text> : null}
     </View>

@@ -7,6 +7,7 @@ import { ensureLogin } from '../../services/auth'
 import FormField from '../../components/FormField'
 import TagPicker from '../../components/TagPicker'
 import Uploader from '../../components/Uploader'
+import StateView from '../../components/StateView'
 
 interface FormState {
   subject_type_code: string
@@ -46,10 +47,14 @@ const EMPTY: FormState = {
 export default function CardEdit() {
   const [form, setForm] = useState<FormState>(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
   const set = <K extends keyof FormState>(key: K, v: FormState[K]) => setForm((f) => ({ ...f, [key]: v }))
 
-  useDidShow(() => {
+  const load = () => {
+    setLoading(true)
+    setError(false)
     void (async () => {
       try {
         await ensureLogin()
@@ -71,10 +76,14 @@ export default function CardEdit() {
           intro: c.intro ?? '',
         })
       } catch {
-        Taro.showToast({ title: '加载失败', icon: 'none' })
+        setError(true)
+      } finally {
+        setLoading(false)
       }
     })()
-  })
+  }
+
+  useDidShow(() => load())
 
   const save = async () => {
     if (!form.name.trim()) {
@@ -111,6 +120,9 @@ export default function CardEdit() {
 
   return (
     <View className="page">
+      <StateView loading={loading} error={error} onRetry={() => load()} />
+      {!loading && !error ? (
+        <>
       <View className="tabs">
         <Text
           className={form.subject_type_code === 'person' ? 'tabs__item tabs__item--active' : 'tabs__item'}
@@ -148,6 +160,8 @@ export default function CardEdit() {
       <Button className="btn-primary" loading={saving} onClick={() => void save()}>
         保存
       </Button>
+        </>
+      ) : null}
     </View>
   )
 }

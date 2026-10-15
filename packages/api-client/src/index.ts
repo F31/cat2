@@ -201,6 +201,27 @@ export interface PayParams {
   paySign?: string
 }
 
+export interface Cert {
+  id: string
+  user_id: string
+  cert_type: number
+  target_org_id?: string
+  status: number
+  reject_reason?: string
+  submitted_at: string
+  reviewed_at?: string | null
+}
+
+export interface CertifyInput {
+  cert_type: number
+  real_name?: string
+  id_card_no?: string
+  agreed: boolean
+  target_org_id?: string
+  material_file_ids?: string[]
+  extra?: Record<string, string>
+}
+
 export interface UploadTicket {
   file_id: string
   upload_url: string
@@ -437,6 +458,14 @@ export function createClient(opts: ClientOptions) {
     // ---- 字典 ----
     listDict(dimension: string, parentCode?: string) {
       return call<{ items: DictItem[] }>('GET', `/dict/${dimension}${qs({ parent_code: parentCode })}`)
+    },
+
+    // ---- 认证 ----
+    submitCert(body: CertifyInput) {
+      return call<Cert>('POST', '/certs', body)
+    },
+    myCerts() {
+      return call<{ items: Cert[] }>('GET', '/certs/mine')
     },
 
     // ---- 媒体 ----
