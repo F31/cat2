@@ -30,7 +30,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 封禁账号（递增 authz_ver，旧令牌立即失效） */
+        /** 封禁账号（递增 authz_ver，旧令牌立即失效；记录原因审计） */
         post: operations["adminBanUser"];
         delete?: never;
         options?: never;
@@ -419,7 +419,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description 封禁结果 */
             200: {

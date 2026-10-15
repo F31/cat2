@@ -56,10 +56,18 @@ paths:
   /users/{id}/ban:
     post:
       tags: [admin-identity]
-      summary: 封禁账号（递增 authz_ver，旧令牌立即失效）
+      summary: 封禁账号（递增 authz_ver，旧令牌立即失效；记录原因审计）
       operationId: adminBanUser
       parameters:
         - $ref: '#/components/parameters/PathUserID'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
       responses:
         '200':
           description: 封禁结果

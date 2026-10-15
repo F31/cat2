@@ -1283,6 +1283,31 @@ func TestIntegrationMediaUpload(t *testing.T) {
 	}
 }
 
+// 后台封禁/解封落审计（sys_audit）。
+func TestIntegrationAdminBanAudited(t *testing.T) {
+	h := newTestApp(t)
+	victimID, victimTok := loginUser(t, h)
+	_, adminTok := loginUser(t, h)
+
+	status, env := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/users/%d/ban", victimID), adminTok,
+		map[string]any{"reason": "违规刷单"})
+	if status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("封禁失败: %d %+v", status, env)
+	}
+	var cnt int
+	if err := h.app.Pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM sys_audit WHERE action='identity:user:ban' AND result=0`).Scan(&cnt); err != nil {
+		t.Fatal(err)
+	}
+	if cnt == 0 {
+		t.Fatal("封禁应落审计")
+	}
+	// 封禁后旧令牌失效
+	if s, _ := h.do(http.MethodGet, "/api/mp/v1/users/me", victimTok, nil); s != http.StatusUnauthorized {
+		t.Fatalf("封禁后旧令牌应失效: %d", s)
+	}
+}
+
 // 企业版过期回落（8.5）：主账号过期 → 子账号同步失效（保留归属 30 天，超期清理）。
 func TestIntegrationEnterpriseSubExpiry(t *testing.T) {
 	h := newTestApp(t)

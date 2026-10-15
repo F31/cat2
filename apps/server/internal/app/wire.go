@@ -100,6 +100,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	// 微信：配了 appid/secret 走真实接口，否则开发态假实现（登录链路可端到端跑通）
 	identityDeps := identity.Deps{
 		Pool: pool, Bus: bus, Encryptor: encryptor, BlindKey: blindKey, DevSMSCode: cfg.DevSMSCode,
+		Audit: auditRec,
 	}
 	if cfg.WeChatAppID != "" && cfg.WeChatAppSecret != "" {
 		authClient := wechat.NewAuthClient(cfg.WeChatAppID, cfg.WeChatAppSecret)

@@ -272,6 +272,11 @@ type AdminListUsersParams struct {
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// AdminBanUserJSONBody defines parameters for AdminBanUser.
+type AdminBanUserJSONBody struct {
+	Reason *string `json:"reason,omitempty"`
+}
+
 // AdminTakedownContentJSONRequestBody defines body for AdminTakedownContent for application/json ContentType.
 type AdminTakedownContentJSONRequestBody AdminTakedownContentJSONBody
 
@@ -280,6 +285,9 @@ type AdminRefundJSONRequestBody AdminRefundJSONBody
 
 // AdminResolveReviewJSONRequestBody defines body for AdminResolveReview for application/json ContentType.
 type AdminResolveReviewJSONRequestBody AdminResolveReviewJSONBody
+
+// AdminBanUserJSONRequestBody defines body for AdminBanUser for application/json ContentType.
+type AdminBanUserJSONRequestBody AdminBanUserJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -313,7 +321,7 @@ type ServerInterface interface {
 	// AdminListUsers 用户列表（按状态/关键字）
 	// (GET /users)
 	AdminListUsers(w http.ResponseWriter, r *http.Request, params AdminListUsersParams)
-	// AdminBanUser 封禁账号（递增 authz_ver，旧令牌立即失效）
+	// AdminBanUser 封禁账号（递增 authz_ver，旧令牌立即失效；记录原因审计）
 	// (POST /users/{id}/ban)
 	AdminBanUser(w http.ResponseWriter, r *http.Request, id PathUserID)
 	// AdminUnbanUser 解封账号

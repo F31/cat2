@@ -6,10 +6,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
@@ -33,6 +35,7 @@ type Deps struct {
 	BlindKey   []byte               // phone_hmac 独立密钥
 	Notify     ports.Notify
 	DevSMSCode string
+	Audit      *audit.Recorder // 后台封禁/解封操作审计
 }
 
 // Module identity 模块。
@@ -474,13 +477,39 @@ func (m *Module) setUserStatus(w http.ResponseWriter, req *http.Request, status 
 		writeErr(w, codeParamInvalid, "参数错误")
 		return
 	}
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(req.Body).Decode(&body)
 	if err := m.store.SetStatus(req.Context(), id, int16(status)); err != nil {
 		writeErr(w, codeInternal, "服务错误")
 		return
 	}
 	// 账号状态变化 → 递增授权版本，旧令牌立即失效
 	_ = m.AuthzBump(req.Context(), id)
+	m.auditStatus(req, id, status, body.Reason)
 	writeData(w, map[string]any{"status": int16(status)})
+}
+
+// auditStatus 后台封禁/解封落审计（哈希链）。
+func (m *Module) auditStatus(req *http.Request, targetID int64, status domain.UserStatus, reason string) {
+	if m.deps.Audit == nil {
+		return
+	}
+	action := "identity:user:ban"
+	if status == domain.StatusActive {
+		action = "identity:user:unban"
+	}
+	ip := req.RemoteAddr
+	if i := strings.LastIndex(ip, ":"); i > 0 {
+		ip = ip[:i]
+	}
+	_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+		ActorID: userIDFrom(req.Context()), ActorType: audit.ActorAdmin, Channel: "admin",
+		Action: action, TargetRef: fmt.Sprintf(`{"type":"user","id":"%d"}`, targetID),
+		Detail: map[string]any{"reason": reason}, Result: audit.ResultOK,
+		IP: ip, UserAgent: req.UserAgent(),
+	})
 }
 
 // capProvider 账号状态能力提供者。
