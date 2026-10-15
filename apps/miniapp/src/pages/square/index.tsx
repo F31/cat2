@@ -39,8 +39,13 @@ export default function Square() {
 
   return (
     <View className="page">
-      <View className="searchbar" onClick={() => Taro.navigateTo({ url: '/pages/search/index' })}>
-        <Text className="searchbar__placeholder">搜索人 / 企业 / 项目 / 产品 / 会议 / 活动</Text>
+      <View className="search-row">
+        <View className="searchbar" onClick={() => Taro.navigateTo({ url: '/pages/search/index' })}>
+          <Text className="searchbar__placeholder">搜索人 / 企业 / 项目 / 产品 / 会议 / 活动</Text>
+        </View>
+        <Button className="search-row__btn" size="mini" onClick={() => Taro.navigateTo({ url: '/pages/content/publish' })}>
+          发布
+        </Button>
       </View>
 
       <ProfilePromptBar

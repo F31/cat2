@@ -232,6 +232,10 @@ page {
   color: #ffffff;
   border-radius: 40px;
 }
+.search-row .searchbar {
+  flex: 1;
+  margin-bottom: 0;
+}
 .tabs {
   display: flex;
   flex-wrap: wrap;

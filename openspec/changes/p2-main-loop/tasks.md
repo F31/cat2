@@ -103,8 +103,8 @@
 - [x] 10.4 完善资料提示条：`ProfilePromptBar`（五项缺一显示、填全消失、不引导实名、无关闭、随页滚动）
 - [x] 10.5 搜索页：关键词 + 六类 Tab 筛选、空态「没有找到相关内容」
 - [ ] 10.6 详情页共用壳：类型/标题/Badges/简介 + 关注Ta/联系Ta（非会员经 `PolicyGate`/70004 引导开通）；详细设计 5.6 各区块待补
-- [ ] 10.7 四类发布表单（字段各自独立）与 ai-entry 占位
-- [ ] 10.8 名片编辑页（个人/组织字段，5.12）；我的收藏/发布/关注粉丝页
+- [x] 10.7 四类发布表单 `pages/content/publish`（项目/产品/会议/活动字段独立；标题+区域+行业/需求/供给标签+按类字段；提交复核）；ai-entry 占位待补
+- [ ] 10.8 名片编辑页 `pages/card/edit`（第二层五项+增值画像+联系方式，保存）与我的发布 `pages/content/mine` 已实现；我的收藏/关注粉丝页待补
 - [x] 10.9 会员开通页：年限选择、原价与折后价同显、协议勾选、「开通后不支持退款」明示、企业版入口（identity_type=2）
 - [ ] 10.10 消息列表已实现（单聊会话+未读）；系统通知置顶、3 秒轮询退避、单聊会话页待补
 - [ ] 10.11 共享组件：`ContentCard`/`PolicyGate`/`ProfilePromptBar` 已落地；TaxonomyPicker/Uploader/CursorList/EmptyState/SubscribeAsk/PayButton 待补

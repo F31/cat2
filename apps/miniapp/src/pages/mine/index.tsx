@@ -63,13 +63,13 @@ export default function Mine() {
       </View>
 
       <View className="menu">
-        <View className="menu__item" onClick={() => placeholder('编辑名片')}>
+        <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/card/edit' })}>
           <Text>完善资料 / 编辑名片</Text>
         </View>
         <View className="menu__item" onClick={() => placeholder('我的收藏')}>
           <Text>我的收藏</Text>
         </View>
-        <View className="menu__item" onClick={() => placeholder('我的发布')}>
+        <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/content/mine' })}>
           <Text>我的发布</Text>
         </View>
         <View className="menu__item" onClick={() => placeholder('关注与粉丝')}>

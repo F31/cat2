@@ -9,9 +9,10 @@ export default defineAppConfig({
     'pages/mine/index',
   ],
   subPackages: [
-    { root: 'pages/content', pages: ['detail'] },
+    { root: 'pages/content', pages: ['detail', 'publish', 'mine'] },
     { root: 'pages/member', pages: ['open'] },
     { root: 'pages/search', pages: ['index'] },
+    { root: 'pages/card', pages: ['edit'] },
   ],
   window: {
     backgroundTextStyle: 'light',
