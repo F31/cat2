@@ -35,6 +35,7 @@ type Deps struct {
 	Resolver *entityref.Registry
 	Realtime ports.Realtime // 一期 Noop（纯异步，无 WebSocket）
 	Audit    *audit.Recorder
+	Storage  ports.Storage // 归档压缩上传（未配置对象存储时开发态本地回退）
 }
 
 // Module msg 模块。
@@ -52,7 +53,7 @@ func (m *Module) DependsOn() []string { return []string{"identity"} }
 func (m *Module) Register(r *module.Registry) error {
 	m.svc = app.New(app.Options{
 		Repo: infra.NewStore(m.deps.Pool), Pool: m.deps.Pool, Bus: m.deps.Bus,
-		Policy: m.deps.Policy, Resolver: m.deps.Resolver,
+		Policy: m.deps.Policy, Resolver: m.deps.Resolver, Storage: m.deps.Storage,
 	})
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/sessions", Handler: m.auth(m.handleEnsure)},
@@ -72,6 +73,9 @@ func (m *Module) Migrations() string { return migrations }
 
 // Facade 对外契约。
 func (m *Module) Facade() contract.Facade { return m }
+
+// Archive 手动触发归档（运维入口；定时由 msg.archive Job 调用同一实现）。
+func (m *Module) Archive(ctx context.Context) error { return m.svc.Archive(ctx) }
 
 func (m *Module) EnsureSession(ctx context.Context, userID int64, targetRef string) (contract.EnsureResult, error) {
 	return m.svc.EnsureSession(ctx, userID, targetRef)

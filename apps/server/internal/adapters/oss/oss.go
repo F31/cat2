@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"time"
 
 	"catcube/internal/ports"
@@ -39,6 +41,10 @@ func (c *Client) URL(_ context.Context, bucket, objectKey, spec string) (string,
 	if host == "" {
 		host = c.Endpoint
 	}
+	if host == "" {
+		// 开发态：本地文件系统回退（与服务端 Put 落盘位置一致）。
+		return localPath(bucket, objectKey), nil
+	}
 	u := fmt.Sprintf("%s/%s/%s", host, bucket, objectKey)
 	if spec != "" {
 		u += "?x-oss-process=" + spec
@@ -46,12 +52,41 @@ func (c *Client) URL(_ context.Context, bucket, objectKey, spec string) (string,
 	return u, nil
 }
 
-func (c *Client) Put(_ context.Context, _, _ string, _ io.Reader) error {
-	return fmt.Errorf("oss: Put 待供应商接入（一期走预签名直传）")
+// localPath 开发态本地对象存储路径（未配置 endpoint 时启用）。
+func localPath(bucket, objectKey string) string {
+	base := os.Getenv("CATCUBE_OSS_DIR")
+	if base == "" {
+		base = filepath.Join(os.TempDir(), "catcube-oss")
+	}
+	return filepath.Join(base, bucket, filepath.FromSlash(objectKey))
 }
 
-func (c *Client) Delete(_ context.Context, _, _ string) error {
-	return fmt.Errorf("oss: Delete 待供应商接入")
+func (c *Client) Put(_ context.Context, bucket, objectKey string, r io.Reader) error {
+	if c.Endpoint != "" {
+		return fmt.Errorf("oss: Put 待供应商接入（一期走预签名直传）")
+	}
+	path := localPath(bucket, objectKey)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = io.Copy(f, r)
+	return err
+}
+
+func (c *Client) Delete(_ context.Context, bucket, objectKey string) error {
+	if c.Endpoint != "" {
+		return fmt.Errorf("oss: Delete 待供应商接入")
+	}
+	err := os.Remove(localPath(bucket, objectKey))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
 
 var _ ports.Storage = (*Client)(nil)

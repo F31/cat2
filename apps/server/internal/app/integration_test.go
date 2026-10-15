@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	neturl "net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"catcube/internal/kernel/obs"
 	"catcube/internal/modules/discovery"
 	"catcube/internal/modules/membership"
+	"catcube/internal/modules/msg"
 	"catcube/internal/modules/trade"
 	"catcube/internal/modules/trust"
 )
@@ -1277,6 +1279,77 @@ func TestIntegrationMediaUpload(t *testing.T) {
 	})
 	if status != http.StatusBadRequest {
 		t.Fatalf("非法类型应 400: %d %+v", status, env)
+	}
+}
+
+// 消息归档（9.4）：超期分区压缩上传对象存储 → 标记已归档 → detach。
+func TestIntegrationMsgArchive(t *testing.T) {
+	h := newTestApp(t)
+	aID, aTok := loginUser(t, h)
+	bID, _ := loginUser(t, h)
+	makeMember(t, h, aTok)
+
+	_, env := h.do(http.MethodPost, "/api/mp/v1/sessions", aTok, map[string]any{"target_ref": fmt.Sprintf("user:%d", bID)})
+	var ensured struct {
+		Session struct {
+			ID int64 `json:"id,string"`
+		} `json:"session"`
+	}
+	_ = json.Unmarshal(env.Data, &ensured)
+	sid := ensured.Session.ID
+
+	// 建 8 个月前的历史分区并塞一条消息（模拟超期数据）
+	ctx := context.Background()
+	from := time.Now().UTC().AddDate(0, -8, 0)
+	from = time.Date(from.Year(), from.Month(), 1, 0, 0, 0, 0, time.UTC)
+	to := from.AddDate(0, 1, 0)
+	name := "msg_message_" + from.Format("200601")
+	// 清理上一轮遗留（detach 后成为独立表，会阻止再次 attach）
+	if _, err := h.app.Pool.Exec(ctx, fmt.Sprintf(`DROP TABLE IF EXISTS %s`, name)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.app.Pool.Exec(ctx, fmt.Sprintf(
+		`CREATE TABLE %s PARTITION OF msg_message FOR VALUES FROM ('%s') TO ('%s')`,
+		name, from.Format("2006-01-02"), to.Format("2006-01-02"))); err != nil {
+		t.Fatal(err)
+	}
+	oldMsgID := int64(990000000000000001)
+	if _, err := h.app.Pool.Exec(ctx,
+		`INSERT INTO msg_message (id, session_id, seq, sender_id, msg_type, content, created_at)
+		 VALUES ($1,$2,9001,$3,1,'old-msg',$4)`,
+		oldMsgID, sid, aID, from.Add(24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	var msgMod *msg.Module
+	for _, m := range h.app.Modules {
+		if mm, ok := m.(*msg.Module); ok {
+			msgMod = mm
+		}
+	}
+	if msgMod == nil {
+		t.Fatal("msg 模块未装载")
+	}
+	if err := msgMod.Archive(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var status int16
+	var objectKey string
+	if err := h.app.Pool.QueryRow(ctx,
+		`SELECT status, COALESCE(object_key,'') FROM msg_archive_meta WHERE partition_name=$1`, name).Scan(&status, &objectKey); err != nil {
+		t.Fatalf("归档元数据缺失: %v", err)
+	}
+	if status != 1 || !strings.HasSuffix(objectKey, ".jsonl.gz") {
+		t.Fatalf("归档应成功并记对象 key: status=%d key=%q", status, objectKey)
+	}
+	// detach 后主表不再包含该分区数据
+	var cnt int
+	if err := h.app.Pool.QueryRow(ctx, `SELECT count(*) FROM msg_message WHERE id=$1`, oldMsgID).Scan(&cnt); err != nil {
+		t.Fatal(err)
+	}
+	if cnt != 0 {
+		t.Fatalf("归档后主表不应含已 detach 数据: %d", cnt)
 	}
 }
 

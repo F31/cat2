@@ -91,7 +91,7 @@
 - [x] 9.1 迁移：`msg_session`（(min_uid,max_uid) 唯一偏索引）、`msg_session_member`、`msg_message`（按月分区 + default）、`msg_read_cursor`、`msg_archive_meta`
 - [x] 9.2 `POST /sessions`（EnsureSession 单聊，发起=会员权益经 policy）；`POST /sessions/{id}/messages`、`GET /sessions/{id}/messages?cursor=`、`POST /sessions/{id}/read`、`GET /sessions`
 - [x] 9.3 未读数=会话最大序号−已读游标（SQL 幂等，免 Redis 计数器）；`unread_count` 冗余可重建
-- [ ] 9.4 增量同步 cursor 拉取已实现；分区自动创建 + 超期(>6 月)归档元数据登记已实现，压缩上传对象存储与 detach 待对象存储适配器落地后接通
+- [x] 9.4 增量同步 cursor 拉取、分区自动创建、超期(>6 月)归档元数据登记；归档补齐：分区导出 JSONL → gzip → 对象存储（`Storage.Put`，未配置 endpoint 时本地 FS 回退）→ 标记 `status=1/object_key` → detach（上传失败不丢数据、保留待重试）；`TestIntegrationMsgArchive` 覆盖（可重复执行）
 - [x] 9.5 已注册 `ReviewSubjectProvider`（msg.message）+ 发 `MessageSent` 事件；trust 订阅 `msg.MessageSent.v1` 异步机检（敏感词/文本机检命中入审核队列，不阻塞投递）；补齐敏感词库加载（wire 启动 + `trust.load_words` 周期 Job）；`TestIntegrationMessageModeration` 覆盖
 - [x] 9.6 非成员拉取/发送 denied（070002）落审计：kernel audit 哈希链 + `adapters/pg` `sys_audit` 存储（`LastHash`/`Append`，复用业务事务或独立写），wire 注入 `Recorder`，msg 在 `sync/send/markread` 拒绝时记 `ResultDenied`；`TestIntegrationDeniedPullAudited` 覆盖；`Realtime` 适配器 Noop 已接
 

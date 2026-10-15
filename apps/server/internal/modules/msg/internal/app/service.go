@@ -2,8 +2,13 @@
 package app
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
+	"fmt"
+	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -35,6 +40,14 @@ type Repo interface {
 	ListMonthPartitions(ctx context.Context) ([]string, error)
 	CountPartition(ctx context.Context, name string) (int64, error)
 	UpsertArchiveMeta(ctx context.Context, name string, from, to time.Time, rowCount int64) error
+	ExportPartition(ctx context.Context, name string, w io.Writer) (int64, error)
+	MarkArchived(ctx context.Context, name, objectKey string) error
+	DetachPartition(ctx context.Context, name string) error
+}
+
+// Storage 归档对象存储（压缩包上传）。
+type Storage interface {
+	Put(ctx context.Context, bucket, objectKey string, r io.Reader) error
 }
 
 // Options 构造参数。
@@ -44,6 +57,7 @@ type Options struct {
 	Bus      *eventbus.Bus
 	Policy   *policy.Engine
 	Resolver *entityref.Registry
+	Storage  Storage
 }
 
 // Service msg 应用服务。
@@ -53,10 +67,12 @@ type Service struct {
 	bus      *eventbus.Bus
 	policy   *policy.Engine
 	resolver *entityref.Registry
+	storage  Storage
 }
 
 func New(o Options) *Service {
-	return &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, policy: o.Policy, resolver: o.Resolver}
+	return &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, policy: o.Policy,
+		resolver: o.Resolver, storage: o.Storage}
 }
 
 // EnsureSession 发起单聊（幂等；发起=会员权益）。
@@ -269,8 +285,38 @@ func (s *Service) Archive(ctx context.Context) error {
 		if err := s.repo.UpsertArchiveMeta(ctx, name, from, to, n); err != nil {
 			return err
 		}
+		// 压缩上传对象存储 → 校验成功后才 detach（失败不丢数据，仅保留元数据待重试）。
+		if s.storage != nil && n > 0 {
+			if err := s.uploadPartition(ctx, name); err != nil {
+				slog.Warn("msg 归档上传失败（保留分区待重试）", "partition", name, "err", err)
+			}
+		}
 	}
 	return nil
+}
+
+// uploadPartition 导出分区 → gzip → 对象存储 → 标记已归档 → detach。
+func (s *Service) uploadPartition(ctx context.Context, name string) error {
+	objectKey := fmt.Sprintf("msg-archive/%s.jsonl.gz", name)
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	n, err := s.repo.ExportPartition(ctx, name, gz)
+	if err != nil {
+		return err
+	}
+	if err := gz.Close(); err != nil {
+		return err
+	}
+	if err := s.storage.Put(ctx, "archive", objectKey, bytes.NewReader(buf.Bytes())); err != nil {
+		return err
+	}
+	if err := s.repo.MarkArchived(ctx, name, objectKey); err != nil {
+		return err
+	}
+	if n == 0 {
+		return nil
+	}
+	return s.repo.DetachPartition(ctx, name)
 }
 
 // ---- 内部 ----

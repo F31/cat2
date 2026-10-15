@@ -148,7 +148,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	})
 	msgMod := msg.New(msg.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine,
-		Resolver: entityReg, Realtime: local.RealtimeNoop{}, Audit: auditRec,
+		Resolver: entityReg, Realtime: local.RealtimeNoop{}, Audit: auditRec, Storage: storage,
 	})
 	settingsReg := settings.NewRegistry(nil)
 	discoveryMod := discovery.New(discovery.Deps{

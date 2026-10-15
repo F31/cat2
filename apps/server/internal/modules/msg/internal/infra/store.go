@@ -3,9 +3,12 @@ package infra
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -249,6 +252,57 @@ func (s *Store) CountPartition(ctx context.Context, name string) (int64, error) 
 	var n int64
 	err := s.pool.QueryRow(ctx, fmt.Sprintf(`SELECT count(*) FROM %s`, name)).Scan(&n)
 	return n, err
+}
+
+// ExportPartition 导出分区为 JSON Lines（每行一条消息），返回导出行数。
+func (s *Store) ExportPartition(ctx context.Context, name string, w io.Writer) (int64, error) {
+	if !partitionRe.MatchString(name) {
+		return 0, fmt.Errorf("infra: 非法分区名 %q", name)
+	}
+	rows, err := s.pool.Query(ctx,
+		fmt.Sprintf(`SELECT id, session_id, seq, sender_id, msg_type, content, created_at FROM %s ORDER BY seq, id`, name))
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	enc := json.NewEncoder(w)
+	var n int64
+	for rows.Next() {
+		var (
+			id, sessionID, seq, senderID int64
+			msgType                      int16
+			content                      string
+			createdAt                    time.Time
+		)
+		if err := rows.Scan(&id, &sessionID, &seq, &senderID, &msgType, &content, &createdAt); err != nil {
+			return n, err
+		}
+		if err := enc.Encode(map[string]any{
+			"id": strconv.FormatInt(id, 10), "session_id": strconv.FormatInt(sessionID, 10),
+			"seq": seq, "sender_id": strconv.FormatInt(senderID, 10),
+			"msg_type": msgType, "content": content, "created_at": createdAt,
+		}); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, rows.Err()
+}
+
+// MarkArchived 标记分区已归档（记录压缩对象 key）。
+func (s *Store) MarkArchived(ctx context.Context, name, objectKey string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE msg_archive_meta SET object_key=$2, status=1 WHERE partition_name=$1`, name, objectKey)
+	return err
+}
+
+// DetachPartition 分离分区（归档成功后从主表摘除，保留表数据供对象存储检索）。
+func (s *Store) DetachPartition(ctx context.Context, name string) error {
+	if !partitionRe.MatchString(name) {
+		return fmt.Errorf("infra: 非法分区名 %q", name)
+	}
+	_, err := s.pool.Exec(ctx, fmt.Sprintf(`ALTER TABLE msg_message DETACH PARTITION %s`, name))
+	return err
 }
 
 // UpsertArchiveMeta 记录归档元数据（幂等）。
