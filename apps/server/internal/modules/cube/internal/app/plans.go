@@ -391,6 +391,39 @@ func (s *Service) LinkRequests(ctx context.Context, cubeID int64) ([]LinkReq, er
 	return out, nil
 }
 
+// CreateProjectFromRef 由来源引用引入项目（circle「到猫立方里办」）。requires 建项目权限（猫王/猫蜜）。
+func (s *Service) CreateProjectFromRef(ctx context.Context, cubeID, userID int64, sourceRef, title, body string) (int64, error) {
+	ok, err := s.canManage(ctx, cubeID, userID)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, domain.ErrNoPermission
+	}
+	if title == "" {
+		title = "来源引入项目"
+	}
+	p := infra.Project{ID: int64(ids.New()), CubeID: cubeID, Type: 2, Name: title,
+		LeaderID: userID, SourceRef: sourceRef, RelatedRef: sourceRef}
+	err = s.pool.InTx(ctx, func(tx db.Tx) error {
+		if err := s.repo.CreateProject(ctx, tx, p); err != nil {
+			return err
+		}
+		if body != "" {
+			if err := s.repo.CreateResearch(ctx, tx, infra.Research{ID: int64(ids.New()), ProjectID: p.ID, Content: body, OperatorID: userID}); err != nil {
+				return err
+			}
+		}
+		return s.publish(ctx, tx, contract.NewProjectCreated(ids.New().String(), contract.ProjectPayload{
+			CubeID: cubeID, ProjectID: p.ID, Name: p.Name, SourceRef: sourceRef, OperatorID: userID,
+		}))
+	})
+	if err != nil {
+		return 0, err
+	}
+	return p.ID, nil
+}
+
 // PublishToPlatform 立方内未发布项目「发布到平台」：调 content.CreateFromCube 回写 ID。
 func (s *Service) PublishToPlatform(ctx context.Context, cubeID, projectID, userID int64) (int64, error) {
 	p, err := s.repo.GetProject(ctx, projectID)

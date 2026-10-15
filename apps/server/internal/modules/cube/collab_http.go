@@ -468,6 +468,9 @@ func (m *Module) DecideLink(ctx context.Context, cubeID, userID, reqID int64, ap
 func (m *Module) LinkRequests(ctx context.Context, cubeID int64) ([]contract.LinkReq, error) {
 	return m.svc.LinkRequests(ctx, cubeID)
 }
+func (m *Module) CreateProjectFromRef(ctx context.Context, cubeID, userID int64, sourceRef, title, body string) (int64, error) {
+	return m.svc.CreateProjectFromRef(ctx, cubeID, userID, sourceRef, title, body)
+}
 func (m *Module) PublishToPlatform(ctx context.Context, cubeID, projectID, userID int64) (int64, error) {
 	return m.svc.PublishToPlatform(ctx, cubeID, projectID, userID)
 }

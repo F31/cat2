@@ -27,6 +27,11 @@ const (
 	TopicFollowed         = "social.Followed.v1"
 	TopicUserRegistered   = "identity.UserRegistered.v1"
 	TopicUserDeactivated  = "identity.UserDeactivated.v1"
+	TopicCircleCreated    = "circle.CircleCreated.v1"
+	TopicCircleEnded      = "circle.CircleEnded.v1"
+	TopicCircleDissolved  = "circle.CircleDissolved.v1"
+	TopicDemandPublished  = "circle.DemandPublished.v1"
+	TopicDemandExpired    = "circle.DemandExpired.v1"
 )
 
 // 配置键。
@@ -108,7 +113,68 @@ func (s *Service) Subscriptions() []eventbus.Subscription {
 		{Topic: TopicFollowed, Handler: s.HandleFollowed},
 		{Topic: TopicUserRegistered, Handler: s.HandleUserRegistered},
 		{Topic: TopicUserDeactivated, Handler: s.HandleUserDeactivated},
+		{Topic: TopicCircleCreated, Handler: s.HandleCircleCreated},
+		{Topic: TopicCircleEnded, Handler: s.handleCircleInactive},
+		{Topic: TopicCircleDissolved, Handler: s.handleCircleInactive},
+		{Topic: TopicDemandPublished, Handler: s.HandleDemandPublished},
+		{Topic: TopicDemandExpired, Handler: s.handleDemandInactive},
 	}
+}
+
+// ---- 圈子投影（§6.9：供搜索与广场混排；需求仅全平台 scope=2 进投影）----
+
+func (s *Service) HandleCircleCreated(ctx context.Context, e eventbus.Event) error {
+	var p struct {
+		CircleID int64  `json:"circle_id,string"`
+		Name     string `json:"name"`
+	}
+	if err := json.Unmarshal(e.Payload, &p); err != nil || p.CircleID == 0 {
+		return nil
+	}
+	_, err := s.repo.UpsertDoc(ctx, infra.Doc{
+		Ref: "circle:" + itoa(p.CircleID), Type: "circle", SubjectID: p.CircleID, Title: p.Name, Active: true,
+	})
+	return err
+}
+
+func (s *Service) handleCircleInactive(ctx context.Context, e eventbus.Event) error {
+	var p struct {
+		CircleID int64 `json:"circle_id,string"`
+	}
+	if err := json.Unmarshal(e.Payload, &p); err != nil || p.CircleID == 0 {
+		return nil
+	}
+	return s.repo.SetActive(ctx, "circle:"+itoa(p.CircleID), false)
+}
+
+func (s *Service) HandleDemandPublished(ctx context.Context, e eventbus.Event) error {
+	var p struct {
+		CircleID int64  `json:"circle_id,string"`
+		DemandID int64  `json:"demand_id,string"`
+		Title    string `json:"title"`
+		Scope    int16  `json:"scope"`
+	}
+	if err := json.Unmarshal(e.Payload, &p); err != nil || p.DemandID == 0 {
+		return nil
+	}
+	if p.Scope != 2 { // 仅本圈不进平台搜索/广场
+		return nil
+	}
+	_, err := s.repo.UpsertDoc(ctx, infra.Doc{
+		Ref: "circle.demand:" + itoa(p.DemandID), Type: "circle.demand", SubjectID: p.DemandID,
+		Title: p.Title, Active: true,
+	})
+	return err
+}
+
+func (s *Service) handleDemandInactive(ctx context.Context, e eventbus.Event) error {
+	var p struct {
+		DemandID int64 `json:"demand_id,string"`
+	}
+	if err := json.Unmarshal(e.Payload, &p); err != nil || p.DemandID == 0 {
+		return nil
+	}
+	return s.repo.SetActive(ctx, "circle.demand:"+itoa(p.DemandID), false)
 }
 
 // ---- 投影处理器 ----

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"time"
 
 	"catcube/internal/kernel/db"
@@ -14,9 +15,16 @@ import (
 	"catcube/internal/modules/circle/contract"
 	"catcube/internal/modules/circle/internal/domain"
 	"catcube/internal/modules/circle/internal/infra"
+	contentcontract "catcube/internal/modules/content/contract"
 	idcontract "catcube/internal/modules/identity/contract"
 	"catcube/pkg/ids"
 )
+
+// cubefacade circle 用到的 cube 能力（到猫立方里办；避免直接依赖实现）。
+type CubeFacade interface {
+	RoleOf(ctx context.Context, cubeID, userID int64) (int16, error)
+	CreateProjectFromRef(ctx context.Context, cubeID, userID int64, sourceRef, title, body string) (int64, error)
+}
 
 // Repo 应用层仓储能力。
 type Repo interface {
@@ -41,6 +49,12 @@ type Repo interface {
 	ExpireDueDemands(ctx context.Context, limit int) ([]int64, error)
 	CreateFeed(ctx context.Context, q infra.Querier, id, circleID, authorID int64, text string, images []byte, announce bool) error
 	ListDueCircles(ctx context.Context, limit int) ([]int64, error)
+	CreateMount(ctx context.Context, q infra.Querier, id, circleID int64, itemRef string, mountedBy int64, mountType, approval int16) error
+	CountMounts(ctx context.Context, circleID int64) (int, error)
+	GetMount(ctx context.Context, id int64) (infra.Mount, error)
+	ListMounts(ctx context.Context, circleID int64) ([]infra.Mount, error)
+	SetMountApproval(ctx context.Context, q infra.Querier, id int64, approve bool) error
+	MarkDemandTransferred(ctx context.Context, demandID int64, ref string) error
 }
 
 // Options 构造参数。
@@ -51,6 +65,8 @@ type Options struct {
 	Policy    *policy.Engine
 	Identity  idcontract.Facade
 	Encryptor *sensitive.Encryptor
+	Content   contentcontract.Facade
+	Cube      CubeFacade
 }
 
 // Service circle 应用服务。
@@ -61,15 +77,18 @@ type Service struct {
 	policy   *policy.Engine
 	identity idcontract.Facade
 	enc      *sensitive.Encryptor
+	content  contentcontract.Facade
+	cube     CubeFacade
 }
 
 func New(o Options) *Service {
-	return &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, policy: o.Policy, identity: o.Identity, enc: o.Encryptor}
+	return &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, policy: o.Policy, identity: o.Identity,
+		enc: o.Encryptor, content: o.Content, cube: o.Cube}
 }
 
 const (
-	postDailyLimit   = 3
-	announceDailyMax = 3
+	postDailyLimit    = 3
+	announceDailyMax  = 3
 	defaultDemandDays = 30
 )
 
@@ -561,3 +580,175 @@ func toDemand(d infra.Demand) contract.Demand {
 		ExpireAt: d.ExpireAt, Scope: d.Scope, Status: d.Status, CreatedAt: d.CreatedAt}
 }
 
+// ---- 挂载与到猫立方里办（§6.6/6.7）----
+
+// mountLimit 单圈挂载上限（默认 50，可由 settings 覆盖后传入）。
+const mountLimit = 50
+
+// Mount 挂载：本人项目/产品直接挂载；他人内容申请挂载（需对方确认，approval_status=0）。
+func (s *Service) Mount(ctx context.Context, circleID, userID int64, itemRef string) (contract.Mount, bool, error) {
+	c, err := s.repo.GetCircle(ctx, circleID)
+	if err != nil {
+		return contract.Mount{}, false, err
+	}
+	if c.Status != contract.CircleActive {
+		return contract.Mount{}, false, domain.ErrEnded
+	}
+	if ok, err := s.isMemberOrOwner(ctx, circleID, userID); err != nil || !ok {
+		return contract.Mount{}, false, domain.ErrNoPermission
+	}
+	ownerID, err := s.itemOwner(ctx, itemRef)
+	if err != nil {
+		return contract.Mount{}, false, domain.ErrInvalidInput
+	}
+	n, err := s.repo.CountMounts(ctx, circleID)
+	if err != nil {
+		return contract.Mount{}, false, err
+	}
+	if n >= mountLimit {
+		return contract.Mount{}, false, domain.ErrMountLimit
+	}
+	direct := ownerID == userID
+	mountType := int16(2)
+	approval := int16(0)
+	if direct {
+		mountType = 1
+		approval = 1
+	}
+	m := infra.Mount{ID: int64(ids.New()), CircleID: circleID, ItemRef: itemRef,
+		MountedBy: userID, MountType: mountType, ApprovalStatus: approval}
+	if err := s.repo.CreateMount(ctx, s.pool, m.ID, circleID, itemRef, userID, mountType, approval); err != nil {
+		return contract.Mount{}, false, err
+	}
+	return toMount(m), direct, nil
+}
+
+// ListMounts 圈内挂载列表。
+func (s *Service) ListMounts(ctx context.Context, circleID int64) ([]contract.Mount, error) {
+	rows, err := s.repo.ListMounts(ctx, circleID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contract.Mount, 0, len(rows))
+	for _, m := range rows {
+		out = append(out, toMount(m))
+	}
+	return out, nil
+}
+
+// DecideMount 内容所有者确认/拒绝他人的挂载申请。
+func (s *Service) DecideMount(ctx context.Context, mountID, userID int64, approve bool) error {
+	m, err := s.repo.GetMount(ctx, mountID)
+	if err != nil {
+		return err
+	}
+	if m.ApprovalStatus != 0 {
+		return domain.ErrNoPermission
+	}
+	ownerID, err := s.itemOwner(ctx, m.ItemRef)
+	if err != nil || ownerID != userID {
+		return domain.ErrNoPermission
+	}
+	return s.repo.SetMountApproval(ctx, s.pool, mountID, approve)
+}
+
+// ToCube 「到猫立方里办」：四前提校验（来自本圈 / 需多方协作 / 已加入立方 / 有建项目权限），
+// 全满足才调 cube.CreateProjectFromRef（只带标题+正文+来源引用）。
+func (s *Service) ToCube(ctx context.Context, circleID, demandID, cubeID, userID int64) (int64, error) {
+	d, err := s.repo.GetDemand(ctx, demandID)
+	if err != nil {
+		return 0, err
+	}
+	if d.CircleID != circleID { // 前提1：来自本圈
+		return 0, domain.ErrInvalidInput
+	}
+	if s.cube == nil {
+		return 0, domain.ErrInvalidInput
+	}
+	role, err := s.cube.RoleOf(ctx, cubeID, userID) // 前提3/4：已加入立方且有建项目权限
+	if err != nil {
+		return 0, err
+	}
+	if role != 1 && role != 2 { // 1猫王/2猫蜜
+		return 0, domain.ErrNoPermission
+	}
+	sourceRef := "circle.demand:" + itoa64(demandID)
+	projectID, err := s.cube.CreateProjectFromRef(ctx, cubeID, userID, sourceRef, d.Title, d.Content)
+	if err != nil {
+		return 0, err
+	}
+	_ = s.repo.MarkDemandTransferred(ctx, demandID, sourceRef)
+	return projectID, nil
+}
+
+// projectCreatedPayload 订阅 cube.ProjectCreated 回写「已转入猫立方办」。
+type projectCreatedPayload struct {
+	CubeID    int64  `json:"cube_id,string"`
+	ProjectID int64  `json:"project_id,string"`
+	Name      string `json:"name"`
+	SourceRef string `json:"source_ref"`
+}
+
+// HandleCubeProjectCreated 订阅 cube.ProjectCreated：来源圈条目回写状态。
+func (s *Service) HandleCubeProjectCreated(ctx context.Context, payload []byte) error {
+	var p projectCreatedPayload
+	if err := json.Unmarshal(payload, &p); err != nil || p.SourceRef == "" {
+		return nil
+	}
+	parts := strings.SplitN(p.SourceRef, ":", 2)
+	if len(parts) != 2 || parts[0] != "circle.demand" {
+		return nil
+	}
+	demandID, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return nil
+	}
+	return s.repo.MarkDemandTransferred(ctx, demandID, p.SourceRef)
+}
+
+// itemOwner 解析被挂载内容归属人（仅 content.* 支持）。
+func (s *Service) itemOwner(ctx context.Context, itemRef string) (int64, error) {
+	if s.content == nil {
+		return 0, domain.ErrInvalidInput
+	}
+	parts := strings.SplitN(itemRef, ":", 2)
+	if len(parts) != 2 || !strings.HasPrefix(parts[0], "content.") {
+		return 0, domain.ErrInvalidInput
+	}
+	id, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, domain.ErrInvalidInput
+	}
+	it, err := s.content.Get(ctx, 0, id)
+	if err != nil {
+		return 0, err
+	}
+	return it.OwnerRef.ID, nil
+}
+
+// ---- 审核对象提供者（circle.demand）----
+
+// ReviewText 审核素材（需求标题+正文）。
+func (s *Service) ReviewText(ctx context.Context, demandID int64) (string, []string, error) {
+	d, err := s.repo.GetDemand(ctx, demandID)
+	if err != nil {
+		return "", nil, err
+	}
+	return d.Title + "\n" + d.Content, nil, nil
+}
+
+// DemandOwner 需求归属人。
+func (s *Service) DemandOwner(ctx context.Context, demandID int64) (int64, error) {
+	d, err := s.repo.GetDemand(ctx, demandID)
+	if err != nil {
+		return 0, err
+	}
+	return d.AuthorID, nil
+}
+
+func toMount(m infra.Mount) contract.Mount {
+	return contract.Mount{ID: m.ID, CircleID: m.CircleID, ItemRef: m.ItemRef, MountedBy: m.MountedBy,
+		MountType: m.MountType, ApprovalStatus: m.ApprovalStatus, Status: m.Status, CreatedAt: m.CreatedAt}
+}
+
+func itoa64(v int64) string { return strconv.FormatInt(v, 10) }

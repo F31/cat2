@@ -2834,3 +2834,112 @@ func TestIntegrationNotice(t *testing.T) {
 		t.Fatalf("同圈同日应合并计数: %d", digestCount)
 	}
 }
+
+// 圈子挂载与「到猫立方里办」（p3 §6.6/6.7/6.9）：本人直接挂/他人需确认/四前提校验/来源回写/搜索投影。
+func TestIntegrationCircleMountToCube(t *testing.T) {
+	h := newTestApp(t)
+	aPhone, bPhone := randPhone(), randPhone()
+	_, aTok := loginPhone(t, h, aPhone)
+	bID, bTok := loginPhone(t, h, bPhone)
+	for _, tok := range []string{aTok, bTok} {
+		if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+			"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+		}); s != http.StatusOK || env.Code != 0 {
+			t.Fatalf("实名失败: %d %+v", s, env)
+		}
+	}
+	// A 建圈
+	_, env := h.do(http.MethodPost, "/api/mp/v1/circles", aTok, map[string]any{"name": "挂载圈", "type": 1})
+	var cir struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cir)
+
+	// B 发布项目（用于他人挂载）
+	_, env = h.do(http.MethodPost, "/api/mp/v1/contents", bTok, map[string]any{
+		"kind": "project", "title": "B的项目",
+		"tagset": map[string]any{"region": "310000", "industry": []string{"A01"}},
+		"fields": map[string]any{"amount_wan": 100, "intro": "简介", "core_strength": "优势", "contact_phone": "13800000000"},
+	})
+	var bItem struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &bItem)
+	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/contents/%d/submit", bItem.ID), bTok, nil); e.Code != 0 {
+		t.Fatalf("提交项目失败: %+v", e)
+	}
+
+	// A 申请挂载 B 的内容 → 待确认（direct=false）
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/mounts", cir.ID), aTok,
+		map[string]any{"item_ref": fmt.Sprintf("content.project:%d", bItem.ID)})
+	var mountResp struct {
+		Mount struct {
+			ID             int64 `json:"id,string"`
+			ApprovalStatus int16 `json:"approval_status"`
+		} `json:"mount"`
+		Direct bool `json:"direct"`
+	}
+	_ = json.Unmarshal(env.Data, &mountResp)
+	if mountResp.Direct || mountResp.Mount.ID == 0 || mountResp.Mount.ApprovalStatus != 0 {
+		t.Fatalf("他人内容挂载应待确认: %+v", env)
+	}
+	// B 确认
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/mounts/%d/decide", mountResp.Mount.ID), bTok,
+		map[string]any{"approve": true}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("内容所有者确认失败: %d %+v", s, e)
+	}
+
+	// A 发布需求（scope=2 全平台，用于搜索投影）+ 建猫立方（猫王）→ 到猫立方里办
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/demands", cir.ID), aTok, map[string]any{
+		"title": "多方协作需求", "content": "需要设计+供应链", "scope": 2,
+	})
+	var dem struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &dem)
+	// 会员能力用于 scope=2：非会员会被降级为仅本圈；此处以 b 为 honey 建立方由 A 发起
+	_, env = h.do(http.MethodPost, "/api/mp/v1/cubes", aTok, map[string]any{
+		"name": "承接立方", "honey_user_id": fmt.Sprintf("%d", bID),
+	})
+	var cube struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cube)
+
+	// 四前提：A 为猫王（有建项目权限）→ to-cube 成功
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/demands/%d/to-cube", cir.ID, dem.ID), aTok,
+		map[string]any{"cube_id": fmt.Sprintf("%d", cube.ID)})
+	var toCube struct {
+		ProjectID int64 `json:"project_id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &toCube)
+	if toCube.ProjectID == 0 {
+		t.Fatalf("到猫立方里办失败: %+v", env)
+	}
+	// 来源需求已回写 transfer_ref
+	relayAll(t, h)
+	var transferRef string
+	_ = h.app.Pool.QueryRow(context.Background(),
+		`SELECT COALESCE(transfer_ref,'') FROM cir_demand WHERE id=$1`, dem.ID).Scan(&transferRef)
+	if transferRef != fmt.Sprintf("circle.demand:%d", dem.ID) {
+		t.Fatalf("需求应回写已转入猫立方办: %q", transferRef)
+	}
+
+	// 搜索投影：circle 与 circle.demand（scope=2）入 dsc_search_doc
+	var n int
+	_ = h.app.Pool.QueryRow(context.Background(),
+		`SELECT count(1) FROM dsc_search_doc WHERE doc_ref=$1`, fmt.Sprintf("circle:%d", cir.ID)).Scan(&n)
+	if n == 0 {
+		t.Fatal("圈子应入搜索投影")
+	}
+	// 非成员 C 无建项目权限 → to-cube 被拒
+	cPhone := randPhone()
+	_, cTok := loginPhone(t, h, cPhone)
+	_, _ = h.do(http.MethodPost, "/api/mp/v1/certs", cTok, map[string]any{
+		"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+	})
+	if s, _ := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/demands/%d/to-cube", cir.ID, dem.ID), cTok,
+		map[string]any{"cube_id": fmt.Sprintf("%d", cube.ID)}); s != http.StatusForbidden {
+		t.Fatalf("无建项目权限应 403: %d", s)
+	}
+}

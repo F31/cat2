@@ -235,6 +235,8 @@ type Facade interface {
 	DecideLink(ctx context.Context, cubeID, userID, reqID int64, approve bool) (projectID int64, err error)
 	LinkRequests(ctx context.Context, cubeID int64) ([]LinkReq, error)
 	PublishToPlatform(ctx context.Context, cubeID, projectID, userID int64) (contentItemID int64, err error)
+	// CreateProjectFromRef 由来源（圈条目等）引入项目：只带标题/正文/来源引用（circle R4 调用）。
+	CreateProjectFromRef(ctx context.Context, cubeID, userID int64, sourceRef, title, body string) (int64, error)
 	// FulfillOrder 供 trade OrderFulfiller 调用（biz_type=cube_plan）。
 	FulfillOrder(ctx context.Context, bizRef string, snapshot []byte) error
 }

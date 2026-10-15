@@ -1480,6 +1480,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/circles/{id}/mounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 圈内挂载列表（引用不复制，点开进原详情） */
+        get: operations["listCircleMounts"];
+        put?: never;
+        /** 挂载内容（本人直接；他人需对方确认；单圈 ≤50） */
+        post: operations["mountCircleItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/circles/mounts/{mid}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 内容所有者确认/拒绝挂载申请 */
+        post: operations["decideCircleMount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/circles/{id}/demands/{did}/to-cube": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 到猫立方里办（四前提校验后调 cube.CreateProjectFromRef，只带标题+正文+来源引用） */
+        post: operations["demandToCube"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/circles/{id}/feeds": {
         parameters: {
             query?: never;
@@ -1776,6 +1828,19 @@ export interface components {
             /** @enum {integer} */
             duration_days?: 7 | 30 | 90 | 180;
             org_id?: string;
+        };
+        CircleMount: {
+            id: string;
+            circle_id: string;
+            item_ref: string;
+            mounted_by: string;
+            /** @description 1 本人 / 2 申请挂载 */
+            mount_type: number;
+            /** @description 0 待确认 / 1 已同意 / 2 已拒绝 */
+            approval_status: number;
+            status: number;
+            /** Format: date-time */
+            created_at?: string;
         };
         CircleDemand: {
             id: string;
@@ -5094,6 +5159,134 @@ export interface operations {
                     };
                 };
             };
+        };
+    };
+    listCircleMounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 挂载列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["CircleMount"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    mountCircleItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description EntityRef，如 content.project:123 */
+                    item_ref: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 挂载结果（direct=true 本人直接挂载） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            mount?: components["schemas"]["CircleMount"];
+                            direct?: boolean;
+                        };
+                    };
+                };
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    decideCircleMount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    approve: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            approved?: boolean;
+                        };
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    demandToCube: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                did: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    cube_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 新建项目 id */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            project_id?: string;
+                        };
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
         };
     };
     publishCircleFeed: {

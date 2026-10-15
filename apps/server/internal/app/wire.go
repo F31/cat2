@@ -174,7 +174,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	})
 	circleMod := circle.New(circle.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine,
-		Encryptor: encryptor, Entities: entityReg,
+		Encryptor: encryptor, Entities: entityReg, Content: contentMod.Facade(), Cube: cubeMod.Facade(),
 	})
 	noticeMod := notice.New(notice.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Circle: circleMod.Facade(),
@@ -252,6 +252,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	trustMod.RegisterSubjectProvider(profileMod)
 	trustMod.RegisterSubjectProvider(verifyMod)
 	trustMod.RegisterSubjectProvider(msgMod.ProviderFor())
+	trustMod.RegisterSubjectProvider(circleMod.ProviderFor())
 	for _, k := range []string{contentcontract.KindProject, contentcontract.KindProduct, contentcontract.KindMeeting, contentcontract.KindEvent} {
 		trustMod.RegisterSubjectProvider(contentMod.ProviderFor(k))
 	}

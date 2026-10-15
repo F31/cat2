@@ -71,6 +71,7 @@ type Demand struct {
 	Scope          int16     `json:"scope"` // 1仅本圈/2全平台
 	Status         int16     `json:"status"`
 	ContactPhone   string    `json:"contact_phone,omitempty"` // 会员可见
+	TransferRef    string    `json:"transfer_ref,omitempty"`  // 已转入猫立方办的项目引用
 	CreatedAt      time.Time `json:"created_at"`
 }
 
@@ -121,4 +122,22 @@ type Facade interface {
 	RenewDemand(ctx context.Context, demandID, userID int64) error
 	PublishFeed(ctx context.Context, circleID, userID int64, text string, imageFileIDs []int64, announcement bool) (int64, error)
 	ExpireDemands(ctx context.Context) error
+
+	// 挂载与到猫立方里办（§6.6/6.7）
+	Mount(ctx context.Context, circleID, userID int64, itemRef string) (Mount, bool, error)
+	ListMounts(ctx context.Context, circleID int64) ([]Mount, error)
+	DecideMount(ctx context.Context, mountID, userID int64, approve bool) error
+	ToCube(ctx context.Context, circleID, demandID, cubeID, userID int64) (int64, error)
+}
+
+// Mount 挂载记录。
+type Mount struct {
+	ID             int64     `json:"id,string"`
+	CircleID       int64     `json:"circle_id,string"`
+	ItemRef        string    `json:"item_ref"`
+	MountedBy      int64     `json:"mounted_by,string"`
+	MountType      int16     `json:"mount_type"`      // 1本人/2申请挂载
+	ApprovalStatus int16     `json:"approval_status"` // 0待确认/1已同意/2已拒绝
+	Status         int16     `json:"status"`
+	CreatedAt      time.Time `json:"created_at"`
 }

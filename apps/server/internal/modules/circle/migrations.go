@@ -90,4 +90,6 @@ CREATE TABLE IF NOT EXISTS cir_mount (
 	created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_cir_mount_circle ON cir_mount(circle_id, status);
+
+ALTER TABLE cir_demand ADD COLUMN IF NOT EXISTS transfer_ref varchar(64);
 `

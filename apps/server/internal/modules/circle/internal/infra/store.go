@@ -373,3 +373,80 @@ func nullStr(v string) any {
 	}
 	return v
 }
+
+// Mount 挂载行。
+type Mount struct {
+	ID             int64
+	CircleID       int64
+	ItemRef        string
+	MountedBy      int64
+	MountType      int16
+	ApprovalStatus int16
+	Status         int16
+	CreatedAt      time.Time
+}
+
+// CreateMount 新建挂载（本人直接同意，他人待确认）。
+func (s *Store) CreateMount(ctx context.Context, q Querier, id, circleID int64, itemRef string, mountedBy int64, mountType, approval int16) error {
+	_, err := q.Exec(ctx, `
+		INSERT INTO cir_mount (id, circle_id, item_ref, mounted_by, mount_type, approval_status, status)
+		VALUES ($1,$2,$3,$4,$5,$6,0)`, id, circleID, itemRef, mountedBy, mountType, approval)
+	return err
+}
+
+// CountMounts 单圈已同意挂载数。
+func (s *Store) CountMounts(ctx context.Context, circleID int64) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx,
+		`SELECT count(1) FROM cir_mount WHERE circle_id=$1 AND status=0 AND approval_status=1`, circleID).Scan(&n)
+	return n, err
+}
+
+// GetMount 取挂载。
+func (s *Store) GetMount(ctx context.Context, id int64) (Mount, error) {
+	var m Mount
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, circle_id, item_ref, mounted_by, mount_type, approval_status, status, created_at
+		FROM cir_mount WHERE id=$1`, id).
+		Scan(&m.ID, &m.CircleID, &m.ItemRef, &m.MountedBy, &m.MountType, &m.ApprovalStatus, &m.Status, &m.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Mount{}, ErrNotFound
+	}
+	return m, err
+}
+
+// ListMounts 圈内挂载（status=0）。
+func (s *Store) ListMounts(ctx context.Context, circleID int64) ([]Mount, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, circle_id, item_ref, mounted_by, mount_type, approval_status, status, created_at
+		FROM cir_mount WHERE circle_id=$1 AND status=0 ORDER BY created_at DESC`, circleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Mount
+	for rows.Next() {
+		var m Mount
+		if err := rows.Scan(&m.ID, &m.CircleID, &m.ItemRef, &m.MountedBy, &m.MountType, &m.ApprovalStatus, &m.Status, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// SetMountApproval 挂载确认/拒绝。
+func (s *Store) SetMountApproval(ctx context.Context, q Querier, id int64, approve bool) error {
+	st := int16(2)
+	if approve {
+		st = 1
+	}
+	_, err := q.Exec(ctx, `UPDATE cir_mount SET approval_status=$2 WHERE id=$1`, id, st)
+	return err
+}
+
+// MarkDemandTransferred 回写「已转入猫立方办」。
+func (s *Store) MarkDemandTransferred(ctx context.Context, demandID int64, ref string) error {
+	_, err := s.pool.Exec(ctx, `UPDATE cir_demand SET transfer_ref=$2 WHERE id=$1`, demandID, ref)
+	return err
+}

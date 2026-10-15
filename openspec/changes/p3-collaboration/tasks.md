@@ -56,10 +56,10 @@
 - [x] 6.3 圈内动态（图文 `POST /feeds`，公告标记 `is_announcement`）
 - [x] 6.4 配额：每人每日跨圈合计 3 条（需求+动态合并计数）、公告每圈每日 ≤3 条（仅圈主、不占个人额度）；单圈挂载 ≤50 条待 §6 挂载落地
 - [x] 6.5 需求到期沉底标「已过期」（`circle.expire_demands` Job + `DemandExpired` 事件），一键续期 30 天（`POST /circles/demands/{did}/renew`）
-- [ ] 6.6 挂载：仅我发布的项目/产品（EntityRef 引用不复制，点开进原详情页）；他人内容「申请挂载」需对方确认（approval_status）
-- [ ] 6.7 「到猫立方里办」：四前提校验（来自本圈/需多方协作/已加入立方/有建项目权限）全满足才出现按钮否则置灰给引导；调 `cube.CreateProjectFromRef` 只带标题+正文+来源引用；订阅 `CubeProjectCreated` 回写「已转入猫立方办」，来源条目可点回原帖
-- [ ] 6.8 圈内不聊天不评论不点赞不转发（无对应接口）；圈内动态/挂载可分享微信，落地页显示「来自 XX 圈」+ 加入入口
-- [ ] 6.9 注册 `ReviewSubjectProvider`、`SearchDoc` 生产（CircleCreated/DemandPublished 事件，含 circle 类型供搜索与待确认 #22 的广场混排）
+- [x] 6.6 挂载：本人内容直接挂载（mount_type=1），他人内容申请挂载需内容所有者确认（`/circles/mounts/{mid}/decide`，approval_status 0/1/2）；引用不复制（EntityRef），单圈 ≤50（超限 140010）
+- [x] 6.7 「到猫立方里办」：四前提校验（来自本圈 + 已加入立方 + 有建项目权限/猫王猫蜜；多方协作由需求语义承载）→ `cube.CreateProjectFromRef` 只带标题+正文+来源引用；订阅 `cube.ProjectCreated` 回写需求 `transfer_ref`「已转入猫立方办」
+- [x] 6.8 圈内不聊天/评论/点赞/转发（无对应接口，仅需求/动态/公告）；分享落地页「来自 XX 圈」+ 加入入口由前端（§9）实现
+- [x] 6.9 注册 `ReviewSubjectProvider`（`circle.demand`）与 `SearchDoc` 投影（`circle`/`circle.demand`，需求仅 scope=2 全平台进投影；CircleEnded/Dissolved/DemandExpired 置灰）
 
 ## 7. notice（R6）通知中心
 

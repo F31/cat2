@@ -2390,6 +2390,104 @@ paths:
         - { name: did, in: path, required: true, schema: { type: string } }
       responses:
         '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { renewed: { type: boolean } } } } } ] } } } }
+  /circles/{id}/mounts:
+    get:
+      tags: [circle]
+      summary: 圈内挂载列表（引用不复制，点开进原详情）
+      operationId: listCircleMounts
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 挂载列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { $ref: '#/components/schemas/CircleMount' } }
+    post:
+      tags: [circle]
+      summary: 挂载内容（本人直接；他人需对方确认；单圈 ≤50）
+      operationId: mountCircleItem
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [item_ref]
+              properties: { item_ref: { type: string, description: 'EntityRef，如 content.project:123' } }
+      responses:
+        '200':
+          description: 挂载结果（direct=true 本人直接挂载）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties: { mount: { $ref: '#/components/schemas/CircleMount' }, direct: { type: boolean } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /circles/mounts/{mid}/decide:
+    post:
+      tags: [circle]
+      summary: 内容所有者确认/拒绝挂载申请
+      operationId: decideCircleMount
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: mid, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approve]
+              properties: { approve: { type: boolean } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { approved: { type: boolean } } } } } ] } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /circles/{id}/demands/{did}/to-cube:
+    post:
+      tags: [circle]
+      summary: 到猫立方里办（四前提校验后调 cube.CreateProjectFromRef，只带标题+正文+来源引用）
+      operationId: demandToCube
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: did, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cube_id]
+              properties: { cube_id: { type: string } }
+      responses:
+        '200':
+          description: 新建项目 id
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { type: object, properties: { project_id: { type: string } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /circles/{id}/feeds:
     post:
       tags: [circle]
@@ -2720,6 +2818,18 @@ components:
         type: { type: integer, description: '1 常设 / 2 临时' }
         duration_days: { type: integer, enum: [7, 30, 90, 180] }
         org_id: { type: string }
+    CircleMount:
+      type: object
+      required: [id, circle_id, item_ref, mounted_by, mount_type, approval_status, status]
+      properties:
+        id: { type: string }
+        circle_id: { type: string }
+        item_ref: { type: string }
+        mounted_by: { type: string }
+        mount_type: { type: integer, description: '1 本人 / 2 申请挂载' }
+        approval_status: { type: integer, description: '0 待确认 / 1 已同意 / 2 已拒绝' }
+        status: { type: integer }
+        created_at: { type: string, format: date-time }
     CircleDemand:
       type: object
       required: [id, circle_id, author_id, title, content, status]

@@ -20,6 +20,7 @@ import (
 	"catcube/internal/modules/circle/internal/app"
 	"catcube/internal/modules/circle/internal/domain"
 	"catcube/internal/modules/circle/internal/infra"
+	contentcontract "catcube/internal/modules/content/contract"
 	idcontract "catcube/internal/modules/identity/contract"
 	"catcube/internal/shared/entityref"
 )
@@ -32,6 +33,8 @@ type Deps struct {
 	Policy    *policy.Engine
 	Encryptor *sensitive.Encryptor
 	Entities  *entityref.Registry
+	Content   contentcontract.Facade
+	Cube      cubefacade
 }
 
 // Module circle 模块。
@@ -68,6 +71,7 @@ func (m *Module) Register(r *module.Registry) error {
 	m.svc = app.New(app.Options{
 		Repo: infra.NewStore(m.deps.Pool), Pool: m.deps.Pool, Bus: m.deps.Bus,
 		Policy: m.deps.Policy, Identity: m.deps.Identity, Encryptor: m.deps.Encryptor,
+		Content: m.deps.Content, Cube: m.deps.Cube,
 	})
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles", Handler: m.auth(m.handleCreate)},
@@ -83,7 +87,17 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/demands", Handler: m.handleListDemands},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/demands/{did}/renew", Handler: m.auth(m.handleRenewDemand)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/feeds", Handler: m.auth(m.handlePublishFeed)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/mounts", Handler: m.auth(m.handleMount)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/mounts", Handler: m.handleListMounts},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/mounts/{mid}/decide", Handler: m.auth(m.handleDecideMount)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/demands/{did}/to-cube", Handler: m.auth(m.handleToCube)},
 	)
+	// 订阅 cube.ProjectCreated：来源圈条目回写「已转入猫立方办」
+	r.EventSubs = append(r.EventSubs, eventbus.Subscription{
+		Topic: "cube.ProjectCreated.v1", Handler: func(ctx context.Context, e eventbus.Event) error {
+			return m.svc.HandleCubeProjectCreated(ctx, e.Payload)
+		},
+	})
 	r.StateMachines = append(r.StateMachines, domain.MachineCircle, domain.MachineDemand)
 	r.Jobs = append(r.Jobs,
 		module.JobDef{Name: "circle.end_due", Interval: time.Hour, Run: m.svc.EndDue},
@@ -154,6 +168,32 @@ func (m *Module) PublishFeed(ctx context.Context, circleID, userID int64, text s
 	return m.svc.PublishFeed(ctx, circleID, userID, text, imageFileIDs, announcement)
 }
 func (m *Module) ExpireDemands(ctx context.Context) error { return m.svc.ExpireDemands(ctx) }
+func (m *Module) Mount(ctx context.Context, circleID, userID int64, itemRef string) (contract.Mount, bool, error) {
+	return m.svc.Mount(ctx, circleID, userID, itemRef)
+}
+func (m *Module) ListMounts(ctx context.Context, circleID int64) ([]contract.Mount, error) {
+	return m.svc.ListMounts(ctx, circleID)
+}
+func (m *Module) DecideMount(ctx context.Context, mountID, userID int64, approve bool) error {
+	return m.svc.DecideMount(ctx, mountID, userID, approve)
+}
+func (m *Module) ToCube(ctx context.Context, circleID, demandID, cubeID, userID int64) (int64, error) {
+	return m.svc.ToCube(ctx, circleID, demandID, cubeID, userID)
+}
+
+// ProviderFor trust.ReviewSubjectProvider（circle.demand）。
+func (m *Module) ProviderFor() reviewProvider { return reviewProvider{m: m} }
+
+type reviewProvider struct{ m *Module }
+
+func (p reviewProvider) SubjectType() string { return "circle.demand" }
+func (p reviewProvider) Extract(ctx context.Context, subjectID int64) (string, []string, error) {
+	return p.m.svc.ReviewText(ctx, subjectID)
+}
+func (p reviewProvider) OwnerOf(ctx context.Context, subjectID int64) (int64, error) {
+	return p.m.svc.DemandOwner(ctx, subjectID)
+}
+func (p reviewProvider) ApplyVerdict(_ context.Context, _ int64, _ bool, _ string) error { return nil }
 
 // Resolve 实现 entityref.Resolver（circle 展示）。
 func (m *Module) Resolve(ctx context.Context, ref entityref.Ref) (entityref.Info, error) {
@@ -354,6 +394,61 @@ func (m *Module) handlePublishFeed(w http.ResponseWriter, req *http.Request) {
 	writeData(w, map[string]any{"id": strconv.FormatInt(id, 10)})
 }
 
+// ---- 挂载与到猫立方里办（§6.6/6.7）----
+
+func (m *Module) handleMount(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		ItemRef string `json:"item_ref"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil || body.ItemRef == "" {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	mt, direct, err := m.svc.Mount(req.Context(), pathID(req, "id"), userIDFrom(req.Context()), body.ItemRef)
+	if err != nil {
+		writeCircleErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"mount": mt, "direct": direct})
+}
+
+func (m *Module) handleListMounts(w http.ResponseWriter, req *http.Request) {
+	items, err := m.svc.ListMounts(req.Context(), pathID(req, "id"))
+	if err != nil {
+		writeCircleErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"items": items})
+}
+
+func (m *Module) handleDecideMount(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		Approve bool `json:"approve"`
+	}
+	_ = json.NewDecoder(req.Body).Decode(&body)
+	if err := m.svc.DecideMount(req.Context(), pathID(req, "mid"), userIDFrom(req.Context()), body.Approve); err != nil {
+		writeCircleErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"approved": body.Approve})
+}
+
+func (m *Module) handleToCube(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		CubeID int64 `json:"cube_id,string"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil || body.CubeID == 0 {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	projectID, err := m.svc.ToCube(req.Context(), pathID(req, "id"), pathID(req, "did"), body.CubeID, userIDFrom(req.Context()))
+	if err != nil {
+		writeCircleErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"project_id": strconv.FormatInt(projectID, 10)})
+}
+
 // ---- 辅助 ----
 
 func (m *Module) auth(next http.HandlerFunc) http.HandlerFunc {
@@ -450,6 +545,8 @@ func writeErr(w http.ResponseWriter, code int, message string) {
 	w.WriteHeader(httpStatus(code))
 	_ = json.NewEncoder(w).Encode(map[string]any{"code": code, "message": message})
 }
+
+type cubefacade = app.CubeFacade
 
 var _ contract.Facade = (*Module)(nil)
 var _ entityref.Resolver = (*Module)(nil)

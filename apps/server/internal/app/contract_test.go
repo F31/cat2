@@ -66,6 +66,7 @@ func TestOpenAPIDeclaresP3Paths(t *testing.T) {
 		"/circles:", "/circles/{id}:", "/circles/{id}/apply:", "/circles/{id}/invite:", "/circles/join:",
 		"/circles/{id}/dissolve:", "/circles/{id}/demands:", "/circles/{id}/feeds:",
 		"/notices:", "/notices/{id}/read:", "/notice-preferences:", "/subscribe-quota/apply:",
+		"/circles/{id}/mounts:", "/circles/mounts/{mid}/decide:", "/circles/{id}/demands/{did}/to-cube:",
 	}
 	for _, p := range paths {
 		if !strings.Contains(text, "\n  "+p) {
