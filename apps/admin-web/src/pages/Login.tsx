@@ -1,0 +1,41 @@
+import { useState } from 'react'
+import { Button, Card, Form, Input, Typography, message } from 'antd'
+import { useNavigate } from 'react-router-dom'
+import { adminApi } from '../api/admin'
+
+// 登录：开发态以手机号走微信登录适配器；正式账号体系与 RBAC 在 p4 接入。
+export default function Login() {
+  const navigate = useNavigate()
+  const [loading, setLoading] = useState(false)
+
+  const onFinish = async (v: { phone: string }) => {
+    setLoading(true)
+    try {
+      await adminApi.login(v.phone)
+      message.success('登录成功')
+      navigate('/dashboard', { replace: true })
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '登录失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f0f2f5' }}>
+      <Card style={{ width: 360 }}>
+        <Typography.Title level={4} style={{ textAlign: 'center' }}>
+          猫平方管理后台
+        </Typography.Title>
+        <Form layout="vertical" onFinish={onFinish}>
+          <Form.Item name="phone" label="手机号" rules={[{ required: true, message: '请输入手机号' }]}>
+            <Input placeholder="11 位手机号（开发态）" maxLength={11} />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" block loading={loading}>
+            登录
+          </Button>
+        </Form>
+      </Card>
+    </div>
+  )
+}

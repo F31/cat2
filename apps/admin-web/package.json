@@ -5,13 +5,15 @@
   "description": "猫平方管理后台（React + AntD + Vite）",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
     "lint": "eslint src --ext .ts,.tsx"
   },
   "dependencies": {
     "@catcube/api-client": "workspace:*",
     "@catcube/domain-types": "workspace:*",
     "@catcube/policy-hints": "workspace:*",
+    "@catcube/utils": "workspace:*",
     "antd": "^5.12.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
