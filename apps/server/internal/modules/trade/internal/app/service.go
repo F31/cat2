@@ -24,6 +24,7 @@ type Repo interface {
 	InsertOrderIdem(ctx context.Context, tx db.Tx, o infra.Order, idem string) error
 	GetOrder(ctx context.Context, id int64) (infra.Order, error)
 	GetOrderByIdem(ctx context.Context, idem string) (infra.Order, error)
+	AdminListOrders(ctx context.Context, status int16, limit int) ([]infra.Order, error)
 	ListExpired(ctx context.Context, limit int) ([]int64, error)
 	CloseOrder(ctx context.Context, id int64) error
 	MarkOrderPaid(ctx context.Context, tx db.Tx, id int64) error
@@ -251,6 +252,19 @@ func (s *Service) GetOrder(ctx context.Context, orderID int64) (contract.Order, 
 		return contract.Order{}, mapNotFound(err)
 	}
 	return toOrder(o), nil
+}
+
+// AdminListOrders 后台订单列表。
+func (s *Service) AdminListOrders(ctx context.Context, status int16, limit int) ([]contract.Order, error) {
+	rows, err := s.repo.AdminListOrders(ctx, status, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contract.Order, 0, len(rows))
+	for _, o := range rows {
+		out = append(out, toOrder(o))
+	}
+	return out, nil
 }
 
 // CloseExpired 关闭超时未支付订单（SchedulerJob）。

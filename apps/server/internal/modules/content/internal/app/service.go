@@ -28,6 +28,7 @@ type Repo interface {
 	InsertItem(ctx context.Context, tx db.Tx, it infra.Item) error
 	GetItem(ctx context.Context, id int64) (infra.Item, error)
 	ListByOwner(ctx context.Context, ownerID int64, kind string) ([]infra.Item, error)
+	AdminList(ctx context.Context, kind string, status int16, limit int) ([]infra.Item, error)
 	UpdateStatus(ctx context.Context, tx db.Tx, id int64, status int16, reason string, publishedAt *time.Time) error
 	SaveSub(ctx context.Context, tx db.Tx, kind string, itemID int64, fields map[string]any) error
 	GetSub(ctx context.Context, kind string, itemID int64) (map[string]any, error)
@@ -225,6 +226,37 @@ func (s *Service) HandleReportConfirmed(ctx context.Context, e eventbus.Event) e
 	}
 	return s.transition(ctx, it, contentcontract.StatusTakenDown, "举报核实下架", nil,
 		domain.EventTakeDown, contentcontract.EventContentTakenDown, "admin")
+}
+
+// AdminList 后台内容列表。
+func (s *Service) AdminList(ctx context.Context, kind string, status int16, limit int) ([]contentcontract.Item, error) {
+	rows, err := s.repo.AdminList(ctx, kind, status, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contentcontract.Item, 0, len(rows))
+	for _, it := range rows {
+		out = append(out, s.toItem(ctx, it, false))
+	}
+	return out, nil
+}
+
+// AdminTakedown 后台下架（展示中→已下架；非法态由状态机拒绝）。
+func (s *Service) AdminTakedown(ctx context.Context, itemID int64, reason string) (contentcontract.Item, error) {
+	it, err := s.repo.GetItem(ctx, itemID)
+	if err != nil {
+		return contentcontract.Item{}, err
+	}
+	if reason == "" {
+		reason = "后台下架"
+	}
+	if err := s.transition(ctx, it, contentcontract.StatusTakenDown, reason, nil,
+		domain.EventTakeDown, contentcontract.EventContentTakenDown, "admin"); err != nil {
+		return contentcontract.Item{}, err
+	}
+	it.Status = contentcontract.StatusTakenDown
+	it.RejectReason = reason
+	return s.toItem(ctx, it, false), nil
 }
 
 // OwnerOf 内容归属人（供 trust 违规记分/限制）。

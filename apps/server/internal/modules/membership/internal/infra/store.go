@@ -89,6 +89,29 @@ func (s *Store) MarkExpired(ctx context.Context, userID int64) error {
 	return err
 }
 
+// AdminList 后台会员列表（level<0/status<0 表示不过滤）。
+func (s *Store) AdminList(ctx context.Context, level, status int16, limit int) ([]Member, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT user_id, level, status, started_at, expires_at, COALESCE(last_order_id,0), price_snapshot
+		  FROM mbr_member
+		 WHERE ($1 < 0 OR level=$1) AND ($2 < 0 OR status=$2)
+		 ORDER BY expires_at DESC, user_id DESC
+		 LIMIT $3`, level, status, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Member
+	for rows.Next() {
+		var m Member
+		if err := rows.Scan(&m.UserID, &m.Level, &m.Status, &m.StartedAt, &m.ExpiresAt, &m.LastOrderID, &m.PriceSnapshot); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // ListSubs 子账号列表。
 func (s *Store) ListSubs(ctx context.Context, masterID int64) ([]SubAccount, error) {
 	rows, err := s.pool.Query(ctx,

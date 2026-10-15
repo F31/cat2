@@ -101,6 +101,25 @@ func (s *Store) GetOrder(ctx context.Context, id int64) (Order, error) {
 }
 
 // GetOrderByIdem 按幂等键。
+// AdminListOrders 后台订单列表（status<0 表示全部）。
+func (s *Store) AdminListOrders(ctx context.Context, status int16, limit int) ([]Order, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+orderCols+` FROM trd_order
+		 WHERE ($1 < 0 OR status=$1) ORDER BY created_at DESC, id DESC LIMIT $2`, status, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Order
+	for rows.Next() {
+		o, err := scanOrder(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) GetOrderByIdem(ctx context.Context, idem string) (Order, error) {
 	return scanOrder(s.pool.QueryRow(ctx, `SELECT `+orderCols+` FROM trd_order WHERE idempotency_key=$1`, idem))
 }

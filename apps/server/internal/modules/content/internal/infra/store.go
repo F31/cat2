@@ -100,6 +100,26 @@ func (s *Store) ListByOwner(ctx context.Context, ownerID int64, kind string) ([]
 	return out, rows.Err()
 }
 
+// AdminList 后台内容列表（kind 空=全部；status<0=全部）。
+func (s *Store) AdminList(ctx context.Context, kind string, status int16, limit int) ([]Item, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+itemCols+` FROM cnt_item
+		 WHERE ($1='' OR kind=$1) AND ($2 < 0 OR status=$2)
+		 ORDER BY created_at DESC, id DESC LIMIT $3`, kind, status, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Item
+	for rows.Next() {
+		it, err := scanItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
+}
+
 // UpdateStatus 状态流转（含驳回原因/发布时间）。
 func (s *Store) UpdateStatus(ctx context.Context, tx db.Tx, id int64, status int16, reason string, publishedAt *time.Time) error {
 	_, err := tx.Exec(ctx, `

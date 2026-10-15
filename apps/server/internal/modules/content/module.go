@@ -66,6 +66,8 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/contents/{id}/submit", Handler: m.auth(m.handleSubmit)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/contents/{id}", Handler: m.handleGet},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/contents/{id}/close", Handler: m.auth(m.handleClose)},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/contents", Handler: m.auth(m.handleAdminList), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/contents/{id}/takedown", Handler: m.auth(m.handleAdminTakedown), Admin: true},
 	)
 	if m.deps.EntityRegistry != nil {
 		for _, k := range []string{contentcontract.KindProject, contentcontract.KindProduct, contentcontract.KindMeeting, contentcontract.KindEvent} {
@@ -194,6 +196,45 @@ func (m *Module) handleClose(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	item, err := m.svc.Close(req.Context(), userIDFrom(req.Context()), id)
+	if err != nil {
+		writeContentErr(w, err)
+		return
+	}
+	writeData(w, item)
+}
+
+// ---- 后台管理（RBAC 细化在 p4）----
+
+func (m *Module) handleAdminList(w http.ResponseWriter, req *http.Request) {
+	status := int16(-1)
+	if s := req.URL.Query().Get("status"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil {
+			status = int16(v)
+		}
+	}
+	limit, _ := strconv.Atoi(req.URL.Query().Get("limit"))
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	items, err := m.svc.AdminList(req.Context(), req.URL.Query().Get("kind"), status, limit)
+	if err != nil {
+		writeContentErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"items": items})
+}
+
+func (m *Module) handleAdminTakedown(w http.ResponseWriter, req *http.Request) {
+	id, err := pathID(req)
+	if err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(req.Body).Decode(&body)
+	item, err := m.svc.AdminTakedown(req.Context(), id, body.Reason)
 	if err != nil {
 		writeContentErr(w, err)
 		return

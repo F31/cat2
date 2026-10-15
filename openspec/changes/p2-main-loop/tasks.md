@@ -112,7 +112,7 @@
 
 ## 11. admin 基础管理
 
-- [ ] 11.1 各模块 admin/ 接口与 AdminSection：用户列表与封禁（identity）、内容管理（content）、审核队列（trust）、订单（trade）、会员列表（membership）
+- [x] 11.1 admin 接口：用户列表/封禁解封（identity `/api/admin/v1/users*`）、内容列表/下架（content `/api/admin/v1/contents*`）、订单列表（trade `/api/admin/v1/orders`）、会员列表（membership `/api/admin/v1/members`）；审核队列（trust）与退款/履约补偿（trade）此前已具备。（RBAC 细化在 p4；独立 admin OpenAPI 契约随 admin-web 落地补）
 - [ ] 11.2 admin-web shell 登录与布局；对应 features 基础页面（列表+操作，RBAC 细化在 p4）
 
 ## 12. 测试与门禁

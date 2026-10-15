@@ -1040,6 +1040,80 @@ func TestIntegrationPermissionMatrix(t *testing.T) {
 	}
 }
 
+// 后台基础管理（11.1）：用户列表/封禁解封、内容列表、会员列表。
+func TestIntegrationAdminFlow(t *testing.T) {
+	h := newTestApp(t)
+	adminID, adminTok := loginUser(t, h)
+	victimID, victimTok := loginUser(t, h)
+
+	// 用户列表包含目标
+	_, env := h.do(http.MethodGet, "/api/admin/v1/users?limit=200", adminTok, nil)
+	var users struct {
+		Items []struct {
+			ID int64 `json:"id,string"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &users)
+	seen := false
+	for _, u := range users.Items {
+		if u.ID == victimID {
+			seen = true
+		}
+	}
+	if !seen {
+		t.Fatalf("后台用户列表应包含 victim")
+	}
+
+	// 封禁 → 旧令牌失效（authz_ver 递增 + 状态拦截）
+	if status, env := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/users/%d/ban", victimID), adminTok, map[string]any{"reason": "违规"}); status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("封禁应成功: %d %+v", status, env)
+	}
+	if status, _ := h.do(http.MethodGet, "/api/mp/v1/users/me", victimTok, nil); status != http.StatusUnauthorized {
+		t.Fatalf("封禁后旧令牌应失效(401): %d", status)
+	}
+	// 解封
+	if status, env := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/users/%d/unban", victimID), adminTok, nil); status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("解封应成功: %d %+v", status, env)
+	}
+
+	// 会员列表：admin 开通后出现
+	makeMember(t, h, adminTok)
+	_, env = h.do(http.MethodGet, "/api/admin/v1/members?level=1", adminTok, nil)
+	var members struct {
+		Items []struct {
+			UserID int64 `json:"user_id,string"`
+			Level  int16 `json:"level"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &members)
+	foundMember := false
+	for _, m := range members.Items {
+		if m.UserID == adminID && m.Level == 1 {
+			foundMember = true
+		}
+	}
+	if !foundMember {
+		t.Fatalf("后台会员列表应包含 admin 的 VIP: %+v", members.Items)
+	}
+
+	// 订单列表（admin 开通会员产生订单）
+	_, env = h.do(http.MethodGet, "/api/admin/v1/orders", adminTok, nil)
+	var orders struct {
+		Items []struct {
+			ID int64 `json:"id,string"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &orders)
+	if len(orders.Items) == 0 {
+		t.Fatal("后台订单列表应至少有会员开通订单")
+	}
+
+	// 内容列表可用
+	if status, env := h.do(http.MethodGet, "/api/admin/v1/contents", adminTok, nil); status != http.StatusOK || env.Code != 0 {
+		t.Fatalf("后台内容列表应可用: %d %+v", status, env)
+	}
+}
+
 // 认证锁定字段不可自改（verify 通过后写 locked_fields）。
 func TestIntegrationProfileLocked(t *testing.T) {
 	h := newTestApp(t)

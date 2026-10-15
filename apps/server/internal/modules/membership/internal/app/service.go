@@ -43,6 +43,7 @@ type Repo interface {
 	GetMember(ctx context.Context, userID int64) (infra.Member, error)
 	UpsertMember(ctx context.Context, tx db.Tx, m infra.Member) error
 	ListExpired(ctx context.Context, limit int) ([]infra.Member, error)
+	AdminList(ctx context.Context, level, status int16, limit int) ([]infra.Member, error)
 	MarkExpired(ctx context.Context, userID int64) error
 	ListSubs(ctx context.Context, masterID int64) ([]infra.SubAccount, error)
 	CountActiveSubs(ctx context.Context, masterID int64) (int, error)
@@ -264,6 +265,11 @@ func (s *Service) RefundQuote(ctx context.Context, orderID int64) (int64, error)
 		return 0, domain.ErrNotActive
 	}
 	return domain.RefundAmount(snap.UnitFen, snap.Years, snap.DiscountRate, m.ExpiresAt, time.Now().UTC()), nil
+}
+
+// AdminList 后台会员列表。
+func (s *Service) AdminList(ctx context.Context, level, status int16, limit int) ([]infra.Member, error) {
+	return s.repo.AdminList(ctx, level, status, limit)
 }
 
 // ExpireDue 到期回落（SchedulerJob）。

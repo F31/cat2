@@ -60,6 +60,7 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/membership/sub-accounts", Handler: m.auth(m.handleSubs)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/membership/sub-accounts", Handler: m.auth(m.handleInvite)},
 		module.Route{Method: http.MethodDelete, Path: "/api/mp/v1/membership/sub-accounts/{subUserID}", Handler: m.auth(m.handleRemove)},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/members", Handler: m.auth(m.handleAdminMembers), Admin: true},
 	)
 	r.Settings = append(r.Settings, app.Schemas...)
 	r.StateMachines = append(r.StateMachines, domain.Machine)
@@ -217,6 +218,44 @@ func (m *Module) handleRemove(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	writeData(w, map[string]any{"removed": true})
+}
+
+// ---- 后台管理（RBAC 细化在 p4）----
+
+func (m *Module) handleAdminMembers(w http.ResponseWriter, req *http.Request) {
+	level := int16(-1)
+	status := int16(-1)
+	if s := req.URL.Query().Get("level"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil {
+			level = int16(v)
+		}
+	}
+	if s := req.URL.Query().Get("status"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil {
+			status = int16(v)
+		}
+	}
+	limit, _ := strconv.Atoi(req.URL.Query().Get("limit"))
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := m.svc.AdminList(req.Context(), level, status, limit)
+	if err != nil {
+		writeMemErr(w, err)
+		return
+	}
+	items := make([]map[string]any, 0, len(rows))
+	for _, r := range rows {
+		items = append(items, map[string]any{
+			"user_id":       strconv.FormatInt(r.UserID, 10),
+			"level":         r.Level,
+			"status":        r.Status,
+			"started_at":    r.StartedAt,
+			"expires_at":    r.ExpiresAt,
+			"last_order_id": strconv.FormatInt(r.LastOrderID, 10),
+		})
+	}
+	writeData(w, map[string]any{"items": items})
 }
 
 func (m *Module) auth(next http.HandlerFunc) http.HandlerFunc {

@@ -65,6 +65,47 @@ func (s *Store) UserByID(ctx context.Context, id int64) (User, error) {
 	return scanUser(s.pool.QueryRow(ctx, `SELECT `+userCols+` FROM idn_user WHERE id=$1`, id))
 }
 
+// AdminUser 后台用户列表项。
+type AdminUser struct {
+	ID             int64
+	Nickname       string
+	Status         int16
+	IdentityType   int16
+	RealnameStatus int16
+	PhoneEnc       []byte
+	CreatedAt      time.Time
+}
+
+// AdminListUsers 后台用户列表（status<0 表示全部；q 模糊匹配昵称）。
+func (s *Store) AdminListUsers(ctx context.Context, status int16, q string, limit int) ([]AdminUser, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, COALESCE(nickname,''), status, identity_type, COALESCE(realname_status,0), phone_enc, created_at
+		  FROM idn_user
+		 WHERE ($1 < 0 OR status=$1)
+		   AND ($2 = '' OR nickname ILIKE '%'||$2||'%')
+		 ORDER BY created_at DESC NULLS LAST, id DESC
+		 LIMIT $3`, status, q, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AdminUser
+	for rows.Next() {
+		var u AdminUser
+		if err := rows.Scan(&u.ID, &u.Nickname, &u.Status, &u.IdentityType, &u.RealnameStatus, &u.PhoneEnc, &u.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// SetStatus 后台封禁/解封。
+func (s *Store) SetStatus(ctx context.Context, userID int64, status int16) error {
+	_, err := s.pool.Exec(ctx, `UPDATE idn_user SET status=$2, updated_at=now() WHERE id=$1`, userID, status)
+	return err
+}
+
 // CreateUser 新建用户（与事件同事务，tx 由调用方提供）。
 func (s *Store) CreateUser(ctx context.Context, tx db.Tx, u User) (int64, error) {
 	id := int64(ids.New())

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"catcube/internal/kernel/db"
@@ -19,6 +20,7 @@ import (
 	"catcube/internal/modules/identity/internal/infra"
 	"catcube/internal/ports"
 	"catcube/pkg/ids"
+	"catcube/pkg/mask"
 )
 
 // Deps 装配依赖。
@@ -72,6 +74,9 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/auth/refresh", Handler: m.handleRefresh},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/users/me", Handler: m.auth(m.handleMe)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/users/me/deactivate", Handler: m.auth(m.handleDeactivate)},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/users", Handler: m.auth(m.handleAdminUsers), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/users/{id}/ban", Handler: m.auth(m.handleAdminBan), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/users/{id}/unban", Handler: m.auth(m.handleAdminUnban), Admin: true},
 	)
 	// CapabilityProvider：账号状态（实名能力在 verify 注册，此处恒 false）
 	r.CapProviders = append(r.CapProviders, capProvider{m})
@@ -408,6 +413,69 @@ func writeErr(w http.ResponseWriter, code int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(httpStatus(code))
 	_ = json.NewEncoder(w).Encode(map[string]any{"code": code, "message": message})
+}
+
+// ---- 后台管理（RBAC 细化在 p4；此阶段经登录态鉴权 + Admin 路由标记）----
+
+func (m *Module) maskPhone(enc []byte) string {
+	if m.deps.Encryptor == nil || len(enc) == 0 {
+		return ""
+	}
+	plain, err := m.deps.Encryptor.Decrypt(enc)
+	if err != nil {
+		return ""
+	}
+	return mask.Phone(string(plain))
+}
+
+func (m *Module) handleAdminUsers(w http.ResponseWriter, req *http.Request) {
+	status := int16(-1)
+	if s := req.URL.Query().Get("status"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil {
+			status = int16(v)
+		}
+	}
+	limit, _ := strconv.Atoi(req.URL.Query().Get("limit"))
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := m.store.AdminListUsers(req.Context(), status, req.URL.Query().Get("q"), limit)
+	if err != nil {
+		writeErr(w, codeInternal, "服务错误")
+		return
+	}
+	items := make([]map[string]any, 0, len(rows))
+	for _, u := range rows {
+		items = append(items, map[string]any{
+			"id": strconv.FormatInt(u.ID, 10), "nickname": u.Nickname, "status": u.Status,
+			"identity_type": u.IdentityType, "realname_status": u.RealnameStatus,
+			"phone_masked": m.maskPhone(u.PhoneEnc), "created_at": u.CreatedAt,
+		})
+	}
+	writeData(w, map[string]any{"items": items})
+}
+
+func (m *Module) handleAdminBan(w http.ResponseWriter, req *http.Request) {
+	m.setUserStatus(w, req, domain.StatusBanned)
+}
+
+func (m *Module) handleAdminUnban(w http.ResponseWriter, req *http.Request) {
+	m.setUserStatus(w, req, domain.StatusActive)
+}
+
+func (m *Module) setUserStatus(w http.ResponseWriter, req *http.Request, status domain.UserStatus) {
+	id, err := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	if err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	if err := m.store.SetStatus(req.Context(), id, int16(status)); err != nil {
+		writeErr(w, codeInternal, "服务错误")
+		return
+	}
+	// 账号状态变化 → 递增授权版本，旧令牌立即失效
+	_ = m.AuthzBump(req.Context(), id)
+	writeData(w, map[string]any{"status": int16(status)})
 }
 
 // capProvider 账号状态能力提供者。

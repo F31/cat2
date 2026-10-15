@@ -52,6 +52,7 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/pay/notify", Handler: m.handleNotify},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/refunds", Handler: m.auth(m.handleRefund), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/fulfillments/{orderID}/retry", Handler: m.auth(m.handleRetryFulfill), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/orders", Handler: m.auth(m.handleAdminOrders), Admin: true},
 	)
 	r.Jobs = append(r.Jobs,
 		module.JobDef{Name: "trade.close_expired", Interval: time.Minute, Run: m.svc.CloseExpired},
@@ -194,6 +195,25 @@ func (m *Module) handleRetryFulfill(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	writeData(w, map[string]any{"reset": ok})
+}
+
+func (m *Module) handleAdminOrders(w http.ResponseWriter, req *http.Request) {
+	status := int16(-1)
+	if s := req.URL.Query().Get("status"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil {
+			status = int16(v)
+		}
+	}
+	limit, _ := strconv.Atoi(req.URL.Query().Get("limit"))
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	items, err := m.svc.AdminListOrders(req.Context(), status, limit)
+	if err != nil {
+		writeTradeErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"items": items})
 }
 
 func (m *Module) auth(next http.HandlerFunc) http.HandlerFunc {
