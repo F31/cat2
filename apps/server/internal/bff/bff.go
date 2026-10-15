@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"catcube/internal/kernel/obs"
 	circlecontract "catcube/internal/modules/circle/contract"
 	contentcontract "catcube/internal/modules/content/contract"
 	cubecontract "catcube/internal/modules/cube/contract"
@@ -38,6 +39,8 @@ type Deps struct {
 	Circle     circlecontract.Facade
 	// Cache 首屏聚合短 TTL 缓存（可空 = 不缓存）
 	Cache ports.Cache
+	// ContactDailyLimit 单用户每日联系方式查看上限（0=不限）；防批量抓取（p6 §1.5）
+	ContactDailyLimit int
 }
 
 // Aggregator 只读聚合器。
@@ -242,7 +245,7 @@ type ContactData struct {
 	Phone string `json:"phone"`
 }
 
-// handleContact 揭示联系方式（手机号）：登录 + 会员权益校验后经 profile 解密下发。
+// handleContact 揭示联系方式（手机号）：登录 + 会员权益校验 + 日限频后经 profile 解密下发。
 func (a *Aggregator) handleContact(w http.ResponseWriter, req *http.Request) {
 	ref := req.URL.Query().Get("ref")
 	typ, id, ok := splitRef(ref)
@@ -251,6 +254,12 @@ func (a *Aggregator) handleContact(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	uid := userIDFrom(req.Context())
+	// 防批量抓取：按用户/日限频（命中阈值即告警，p6 §1.5）
+	if a.contactLimited(req, uid) {
+		obs.Default().Alert("contact_scrape_suspected", "联系方式查看超日限频")
+		writeErrCode(w, http.StatusTooManyRequests, 120008, "今日查看联系方式次数已达上限")
+		return
+	}
 	_, active, err := a.deps.Membership.Me(req.Context(), uid)
 	if err != nil {
 		writeErrCode(w, http.StatusInternalServerError, 9, "服务错误")
@@ -265,7 +274,43 @@ func (a *Aggregator) handleContact(w http.ResponseWriter, req *http.Request) {
 		writeErrCode(w, http.StatusInternalServerError, 9, "服务错误")
 		return
 	}
+	a.contactCount(req, uid)
+	obs.Default().Inc("catcube_contact_reveal_total")
 	writeData(w, ContactData{Ref: ref, Phone: phone})
+}
+
+// contactLimited 是否已达当日查看上限（含本次）。
+func (a *Aggregator) contactLimited(req *http.Request, uid int64) bool {
+	if a.deps.ContactDailyLimit <= 0 || a.deps.Cache == nil {
+		return false
+	}
+	raw, ok, err := a.deps.Cache.Get(req.Context(), contactKey(uid))
+	if err != nil || !ok {
+		return false
+	}
+	n, _ := strconv.Atoi(string(raw))
+	return n >= a.deps.ContactDailyLimit
+}
+
+// contactCount 计数 +1（TTL 至次日零点）。
+func (a *Aggregator) contactCount(req *http.Request, uid int64) {
+	if a.deps.ContactDailyLimit <= 0 || a.deps.Cache == nil {
+		return
+	}
+	n := 0
+	if raw, ok, err := a.deps.Cache.Get(req.Context(), contactKey(uid)); err == nil && ok {
+		n, _ = strconv.Atoi(string(raw))
+	}
+	_ = a.deps.Cache.Set(req.Context(), contactKey(uid), []byte(strconv.Itoa(n+1)), time.Until(nextDay()))
+}
+
+func contactKey(uid int64) string {
+	return "contact:day:" + strconv.FormatInt(uid, 10) + ":" + time.Now().Format("20060102")
+}
+
+func nextDay() time.Time {
+	n := time.Now()
+	return time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, n.Location()).AddDate(0, 0, 1)
 }
 
 func (a *Aggregator) auth(next http.HandlerFunc) http.HandlerFunc {

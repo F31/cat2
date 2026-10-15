@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -203,6 +204,7 @@ func (m *Module) handleNotify(w http.ResponseWriter, req *http.Request) {
 		headers[k] = req.Header.Get(k)
 	}
 	res, err := m.svc.HandleNotify(req.Context(), headers, body)
+	m.auditNotify(req, res, err)
 	if err != nil {
 		writeTradeErr(w, err)
 		return
@@ -279,6 +281,48 @@ func (m *Module) handleAdminOrders(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	writeData(w, map[string]any{"items": items})
+}
+
+// auditNotify 支付回调审计（伪造/金额不符/乱序/重复必须留痕，p6 §1.3）。
+func (m *Module) auditNotify(req *http.Request, res contract.NotifyResult, err error) {
+	if m.deps.Audit == nil {
+		return
+	}
+	action, result := "trade:pay:notify:ok", audit.ResultOK
+	switch {
+	case errors.Is(err, domain.ErrNotifyInvalid):
+		action, result = "trade:pay:notify:invalid_sign", audit.ResultDenied
+	case errors.Is(err, domain.ErrNotifyAmount):
+		action, result = "trade:pay:notify:amount_mismatch", audit.ResultDenied
+	case errors.Is(err, domain.ErrNotifyOutOfOrder):
+		action, result = "trade:pay:notify:out_of_order", audit.ResultFailed
+	case err != nil:
+		action, result = "trade:pay:notify:failed", audit.ResultFailed
+	case res.AlreadyPaid:
+		action = "trade:pay:notify:duplicate"
+	}
+	target := ""
+	if res.OrderID != 0 {
+		target = fmt.Sprintf(`{"id":"%d","type":"order"}`, res.OrderID)
+	}
+	_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+		ActorID: 0, ActorType: audit.ActorSystem, Channel: "mp", Action: action,
+		TargetRef: target, Result: result, IP: clientIP(req), RequestID: req.Header.Get("X-Request-ID"),
+	})
+}
+
+func clientIP(req *http.Request) string {
+	if v := req.Header.Get("X-Forwarded-For"); v != "" {
+		if i := strings.IndexByte(v, ','); i > 0 {
+			return strings.TrimSpace(v[:i])
+		}
+		return strings.TrimSpace(v)
+	}
+	host, _, err := net.SplitHostPort(req.RemoteAddr)
+	if err != nil {
+		return req.RemoteAddr
+	}
+	return host
 }
 
 func (m *Module) auth(next http.HandlerFunc) http.HandlerFunc {

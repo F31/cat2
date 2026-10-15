@@ -176,11 +176,11 @@ func (s *Service) HandleNotify(ctx context.Context, headers map[string]string, b
 		return contract.NotifyResult{OrderID: o.ID, AlreadyPaid: true}, nil
 	}
 	if amount != 0 && amount != p.AmountFen {
-		return contract.NotifyResult{}, fmt.Errorf("trade: 回调金额不一致")
+		return contract.NotifyResult{}, domain.ErrNotifyAmount
 	}
 	if o.Status != contract.StatusPending {
-		// 订单已关闭/已支付：仅补齐支付单状态，不再发 OrderPaid
-		return contract.NotifyResult{OrderID: o.ID, AlreadyPaid: o.Status == contract.StatusPaid}, nil
+		// 订单已关闭/已支付（乱序回调）：仅补齐支付单状态，不再发 OrderPaid
+		return contract.NotifyResult{OrderID: o.ID, AlreadyPaid: o.Status == contract.StatusPaid}, domain.ErrNotifyOutOfOrder
 	}
 	var overRefund bool
 	err = s.pool.InTx(ctx, func(tx db.Tx) error {

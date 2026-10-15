@@ -3814,3 +3814,141 @@ func TestIntegrationAuditChainBrokenAlert(t *testing.T) {
 		t.Fatal("篡改后 gauge 应为 0")
 	}
 }
+
+// 联系方式抓取限频与告警（p6 §1.5）：超日上限拒绝并告警。
+func TestIntegrationContactScrapeRateLimit(t *testing.T) {
+	h := newTestAppCfg(t, func(c *config.Config) { c.ContactDailyLimit = 3 })
+	_, tok := loginUser(t, h)
+	target, _ := loginUser(t, h)
+	// 开通会员（查看联系方式为会员权益）
+	_, env := h.doH(http.MethodPost, "/api/mp/v1/orders", tok, map[string]any{
+		"biz_type": "member", "amount_fen": 9900,
+		"price_snapshot": map[string]any{"price_fen": 9900, "years": 1},
+	}, map[string]string{"Idempotency-Key": fmt.Sprintf("it-contact-%d", time.Now().UnixNano())})
+	var order struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &order)
+	if order.ID == 0 {
+		t.Fatalf("下单失败: %+v", env)
+	}
+	payOrderAndNotify(t, h, tok, order.ID)
+	fulfillMemberOrder(t, h, order.ID)
+	// 前 3 次放行
+	for i := 0; i < 3; i++ {
+		s, env := h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/aggregate/contact?ref=user:%d", target), tok, nil)
+		if s != http.StatusOK || env.Code != 0 {
+			t.Fatalf("第 %d 次应放行: %d %+v", i+1, s, env)
+		}
+	}
+	before := obs.Default().AlertCount("contact_scrape_suspected")
+	// 第 4 次超限
+	s, env := h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/aggregate/contact?ref=user:%d", target), tok, nil)
+	if s != http.StatusTooManyRequests || env.Code != 120008 {
+		t.Fatalf("超限应 429/120008: %d %+v", s, env)
+	}
+	if obs.Default().AlertCount("contact_scrape_suspected") <= before {
+		t.Fatal("超限应触发抓取告警")
+	}
+}
+
+// 支付回放与伪造（p6 §1.3）：重复回调幂等、伪造签名拒绝、金额不符拒绝、乱序回调拒绝，且全部记审计。
+func TestIntegrationPayReplayAndForgery(t *testing.T) {
+	h := newTestApp(t)
+	uid, tok := loginUser(t, h)
+	_ = uid
+	_, env := h.doH(http.MethodPost, "/api/mp/v1/orders", tok, map[string]any{
+		"biz_type": "member", "amount_fen": 9900,
+		"price_snapshot": map[string]any{"price_fen": 9900, "years": 1},
+	}, map[string]string{"Idempotency-Key": fmt.Sprintf("it-replay-%d", time.Now().UnixNano())})
+	var order struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &order)
+	if order.ID == 0 {
+		t.Fatalf("下单失败: %+v", env)
+	}
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/orders/%d/pay", order.ID), tok, nil)
+	var pp struct {
+		OutTradeNo string `json:"out_trade_no"`
+		AmountFen  int64  `json:"amount_fen"`
+	}
+	_ = json.Unmarshal(env.Data, &pp)
+	if pp.OutTradeNo == "" {
+		t.Fatalf("支付参数缺失: %+v", env)
+	}
+
+	auditCount := func(action string) int {
+		var n int
+		_ = h.app.Pool.QueryRow(context.Background(),
+			`SELECT count(1) FROM sys_audit WHERE action=$1`, action).Scan(&n)
+		return n
+	}
+
+	// 1) 伪造签名 → 拒绝 + 记审计
+	s, env2 := h.do(http.MethodPost, "/api/mp/v1/pay/notify", "", map[string]any{
+		"out_trade_no": pp.OutTradeNo, "amount_fen": pp.AmountFen, "sign": "forged",
+	})
+	if s == http.StatusOK && env2.Code == 0 {
+		t.Fatal("伪造签名必须拒绝")
+	}
+	if auditCount("trade:pay:notify:invalid_sign") == 0 {
+		t.Fatal("伪造签名应记审计")
+	}
+	// 2) 金额不符 → 拒绝 + 记审计
+	s, env2 = h.do(http.MethodPost, "/api/mp/v1/pay/notify", "", map[string]any{
+		"out_trade_no": pp.OutTradeNo, "amount_fen": 1, "sign": "ok",
+	})
+	if s == http.StatusOK && env2.Code == 0 {
+		t.Fatal("金额不符必须拒绝")
+	}
+	if auditCount("trade:pay:notify:amount_mismatch") == 0 {
+		t.Fatal("金额不符应记审计")
+	}
+	// 3) 正常回调 → 成功
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/pay/notify", "", map[string]any{
+		"out_trade_no": pp.OutTradeNo, "amount_fen": pp.AmountFen, "sign": "ok",
+	}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("正常回调应成功: %d %+v", s, e)
+	}
+	// 4) 重复回调 → 幂等（already_paid）+ 记审计
+	_, env2 = h.do(http.MethodPost, "/api/mp/v1/pay/notify", "", map[string]any{
+		"out_trade_no": pp.OutTradeNo, "amount_fen": pp.AmountFen, "sign": "ok",
+	})
+	var res struct {
+		AlreadyPaid bool `json:"already_paid"`
+	}
+	_ = json.Unmarshal(env2.Data, &res)
+	if !res.AlreadyPaid {
+		t.Fatalf("重复回调应幂等 already_paid: %+v", env2)
+	}
+	if auditCount("trade:pay:notify:duplicate") == 0 {
+		t.Fatal("重复回调应记审计")
+	}
+	// 5) 乱序回调：关闭订单后再回调 → 拒绝状态变更 + 记审计
+	_, env = h.doH(http.MethodPost, "/api/mp/v1/orders", tok, map[string]any{
+		"biz_type": "member", "amount_fen": 9900,
+		"price_snapshot": map[string]any{"price_fen": 9900, "years": 1},
+	}, map[string]string{"Idempotency-Key": fmt.Sprintf("it-replay2-%d", time.Now().UnixNano())})
+	var order2 struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &order2)
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/orders/%d/pay", order2.ID), tok, nil)
+	var pp2 struct {
+		OutTradeNo string `json:"out_trade_no"`
+		AmountFen  int64  `json:"amount_fen"`
+	}
+	_ = json.Unmarshal(env.Data, &pp2)
+	// 直接置为已关闭（模拟超时关闭后回调到达）
+	if _, err := h.app.Pool.Exec(context.Background(),
+		`UPDATE trd_order SET status=2, closed_at=now() WHERE id=$1`, order2.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, env2 = h.do(http.MethodPost, "/api/mp/v1/pay/notify", "", map[string]any{
+		"out_trade_no": pp2.OutTradeNo, "amount_fen": pp2.AmountFen, "sign": "ok",
+	})
+	if auditCount("trade:pay:notify:out_of_order") == 0 {
+		t.Fatal("乱序回调应记审计")
+	}
+}

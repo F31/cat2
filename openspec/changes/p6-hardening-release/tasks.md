@@ -4,9 +4,9 @@
 
 - [ ] 1.1 越权测试：权限矩阵全部 denied 路径自动化（游客/注册/会员/各后台角色 × 关键资源）
 - [ ] 1.2 渗透测试（外部或工具）：OWASP Top 10 覆盖
-- [ ] 1.3 支付回放测试：重复回调、伪造签名、乱序回调全部被拒绝且记审计
+- [x] 1.3 支付回放：回调审计留痕（`trade:pay:notify:{invalid_sign,amount_mismatch,out_of_order,duplicate,ok}`，伪造/金额不符=Denied）；`ErrNotifyAmount`/`ErrNotifyOutOfOrder` 分类；集成测试 `TestIntegrationPayReplayAndForgery`（伪造/金额不符/正常/重复幂等/乱序）
 - [ ] 1.4 依赖漏洞扫描与 SAST 接入 CI
-- [ ] 1.5 联系方式抓取压测：模拟批量查看联系方式，验证按用户/日阈值限频与告警触发
+- [x] 1.5 抓取限频：`bff` 联系方式查看按用户/日计数（`CATCUBE_CONTACT_DAILY_LIMIT`，默认 200，TTL 至次日）超限 429/120008 并 `contact_scrape_suspected` 告警；指标 `catcube_contact_reveal_total`；集成测试 `TestIntegrationContactScrapeRateLimit`
 - [x] 1.6 审计断链告警：`audit.VerifyForward/VerifyIncremental`（逐条重算 hash + 锚点连接校验）；`pg.Audit` 游标（`sys_settings:audit.verify.cursor`，首跑建基线）与 `ListChainAfter`；`kernel.audit_verify` 定时任务 → `catcube_audit_chain_ok` 指标 + `audit_chain_broken` 告警；修复 char(64) 补空格导致的 `LastHash` 取链偏差；单测（篡改/断链定位）+ 集成测试 `TestIntegrationAuditChainBrokenAlert`
 
 ## 2. 压测（tests/perf，独立库）

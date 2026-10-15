@@ -16,6 +16,8 @@ var (
 	ErrNotPayable        = errors.New("trade: 订单当前状态不可支付")
 	ErrPaymentNotFound   = errors.New("trade: 支付单不存在")
 	ErrNotifyInvalid     = errors.New("trade: 支付回调验签失败")
+	ErrNotifyAmount      = errors.New("trade: 回调金额不一致")
+	ErrNotifyOutOfOrder  = errors.New("trade: 回调乱序（订单非待支付态）")
 	ErrRefundAmount      = errors.New("trade: 退款金额非法")
 	ErrAlreadyFulfilled  = errors.New("trade: 订单已履约")
 	ErrFulfillNoProvider = errors.New("trade: 未注册履约方")
