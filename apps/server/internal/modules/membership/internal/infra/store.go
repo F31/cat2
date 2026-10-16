@@ -185,3 +185,42 @@ func nullID(v int64) any {
 	}
 	return v
 }
+
+// MoveSubAccounts 迁移子账号归属（平台代操作；受「子账号唯一活跃」约束，冲突行跳过并计数）。
+func (s *Store) MoveSubAccounts(ctx context.Context, tx db.Tx, fromMaster, toMaster int64) (int, error) {
+	// 迁移归属：受「(master_id,sub_user_id) 唯一」约束，目标已有同子账号的行跳过
+	tag, err := tx.Exec(ctx, `
+		UPDATE mbr_sub_account a SET master_id=$2
+		WHERE a.master_id=$1 AND a.status=1
+		  AND NOT EXISTS (
+		    SELECT 1 FROM mbr_sub_account x WHERE x.master_id=$2 AND x.sub_user_id=a.sub_user_id
+		  )`, fromMaster, toMaster)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+// AdjustMember 会员人工调整：不存在则新建会员记录（人工开通/调整）。
+func (s *Store) AdjustMember(ctx context.Context, tx db.Tx, userID int64, level *int16, expireAt *time.Time) error {
+	cur, err := s.GetMember(ctx, userID)
+	has := err == nil
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	m := cur
+	if !has {
+		m = Member{UserID: userID, Level: 1, Status: 1}
+	}
+	if level != nil {
+		m.Level = *level
+	}
+	if expireAt != nil {
+		m.ExpiresAt = *expireAt
+	}
+	if m.ExpiresAt.IsZero() {
+		m.ExpiresAt = time.Now().AddDate(1, 0, 0)
+	}
+	m.Status = 1
+	return s.UpsertMember(ctx, tx, m)
+}

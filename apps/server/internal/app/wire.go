@@ -202,7 +202,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	})
 	membershipMod := membership.New(membership.Deps{
 		Pool: pool, Bus: bus, Trade: tradeMod.Facade(), Verify: verifyMod.Facade(),
-		Identity: identityMod.Facade(), Settings: settingsReg, Policy: policyEngine,
+		Identity: identityMod.Facade(), Settings: settingsReg, Policy: policyEngine, Audit: auditRec,
 	})
 	cubeMod := cube.New(cube.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine, Entities: entityReg,
@@ -212,15 +212,17 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	circleMod := circle.New(circle.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine,
 		Encryptor: encryptor, Entities: entityReg, Content: contentMod.Facade(), Cube: cubeMod.Facade(),
+		Audit: auditRec,
 	})
 	// cube 作为群成员解析器注册给 msg（msg 不认识猫立方）
 	msgMod.SetMemberResolver(cubeMod.SessionMemberResolver())
 	noticeMod := notice.New(notice.Deps{
-		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Circle: circleMod.Facade(),
+		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Circle: circleMod.Facade(), Audit: auditRec,
 	})
 	flagStore := featureflag.NewStore(pool)
+	schedRunner := scheduler.NewRunner(pool, 20261013)
 	opsMod := ops.New(ops.Deps{Pool: pool, Identity: identityMod.Facade(), Outbox: outbox, Bus: bus,
-		Flags: flagStore, Settings: settingsReg, Storage: storage, Audit: auditRec})
+		Flags: flagStore, Settings: settingsReg, Storage: storage, Audit: auditRec, Runner: schedRunner})
 	aiMod := ai.New(ai.Deps{Pool: pool, Flags: flagStore, LLM: llm.NewDevClient(), Auth: authFunc,
 		Settings: settingsReg, Dict: dictMod.Facade()})
 	// 审核辅助（AI 预分类/摘要）：装配根桥接同阶模块（trust ← ai）
@@ -258,7 +260,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	a := &App{Config: cfg, Pool: pool, Bus: bus, Policy: policyEngine, Modules: ordered, Mux: http.NewServeMux(), Cache: cache, Audit: auditRec, AlertTh: eventbus.AlertThresholds{Backlog: cfg.AlertOutboxBacklog, OldestAge: cfg.AlertOutboxOldestSec, DeadCount: cfg.AlertOutboxDead}}
+	a := &App{Config: cfg, Pool: pool, Bus: bus, Policy: policyEngine, Modules: ordered, Mux: http.NewServeMux(), Sched: schedRunner, Cache: cache, Audit: auditRec, AlertTh: eventbus.AlertThresholds{Backlog: cfg.AlertOutboxBacklog, OldestAge: cfg.AlertOutboxOldestSec, DeadCount: cfg.AlertOutboxDead}}
 
 	// 逐模块 Register：收集路由/事件/任务/能力
 	for _, m := range ordered {

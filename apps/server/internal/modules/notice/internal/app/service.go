@@ -24,6 +24,7 @@ type CircleFacade interface {
 
 // Repo 应用层仓储能力。
 type Repo interface {
+	BatchInsertNotice(ctx context.Context, items []infra.Notice) (int, error)
 	UpsertTemplate(ctx context.Context, id int64, t domain.Template) error
 	ListTemplates(ctx context.Context) ([]domain.Template, error)
 	InsertNotice(ctx context.Context, q infra.Querier, n infra.Notice) error
@@ -229,6 +230,23 @@ func (s *Service) Preferences(ctx context.Context, userID int64) ([]contract.Pre
 		out = append(out, contract.Preference{TemplateCode: t.Code, Enabled: enabled, Closeable: t.Closeable})
 	}
 	return out, nil
+}
+
+// Broadcast 定向公告：向指定用户站内信投递（不可关闭类；管理员代操作，审计由模块层写）。
+func (s *Service) Broadcast(ctx context.Context, userIDs []int64, title, content string) (int, error) {
+	if len(userIDs) == 0 || title == "" || content == "" {
+		return 0, domain.ErrTemplateNotFound
+	}
+	if len(userIDs) > 500 {
+		userIDs = userIDs[:500]
+	}
+	items := make([]infra.Notice, 0, len(userIDs))
+	for _, uid := range userIDs {
+		items = append(items, infra.Notice{
+			ID: int64(ids.New()), UserID: uid, TemplateCode: "admin.announcement", Title: title, Content: content, Channel: "inapp",
+		})
+	}
+	return s.repo.BatchInsertNotice(ctx, items)
 }
 
 func (s *Service) SetPreference(ctx context.Context, userID int64, code string, enabled bool) error {

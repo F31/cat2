@@ -325,6 +325,12 @@ type NotFound = Error
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Error
 
+// AdminOverdueAffiliationsParams defines parameters for AdminOverdueAffiliations.
+type AdminOverdueAffiliationsParams struct {
+	Days  *int `form:"days,omitempty" json:"days,omitempty"`
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // AdminResolveAffiliationJSONBody defines parameters for AdminResolveAffiliation.
 type AdminResolveAffiliationJSONBody struct {
 	Pass   bool    `json:"pass"`
@@ -372,6 +378,11 @@ type AdminReviewCertJSONBody struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
+// AdminDissolveCircleJSONBody defines parameters for AdminDissolveCircle.
+type AdminDissolveCircleJSONBody struct {
+	Reason string `json:"reason"`
+}
+
 // AdminListContentsParams defines parameters for AdminListContents.
 type AdminListContentsParams struct {
 	Kind   *AdminListContentsParamsKind `form:"kind,omitempty" json:"kind,omitempty"`
@@ -384,6 +395,16 @@ type AdminListContentsParamsKind string
 
 // AdminTakedownContentJSONBody defines parameters for AdminTakedownContent.
 type AdminTakedownContentJSONBody struct {
+	Reason string `json:"reason"`
+}
+
+// AdminBanCubeJSONBody defines parameters for AdminBanCube.
+type AdminBanCubeJSONBody struct {
+	Reason string `json:"reason"`
+}
+
+// AdminDissolveCubeJSONBody defines parameters for AdminDissolveCube.
+type AdminDissolveCubeJSONBody struct {
 	Reason string `json:"reason"`
 }
 
@@ -434,6 +455,34 @@ type AdminListMembersParams struct {
 	Level  *int `form:"level,omitempty" json:"level,omitempty"`
 	Status *int `form:"status,omitempty" json:"status,omitempty"`
 	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// AdminForceRemoveSubJSONBody defines parameters for AdminForceRemoveSub.
+type AdminForceRemoveSubJSONBody struct {
+	MasterId  string `json:"master_id"`
+	Reason    string `json:"reason"`
+	SubUserId string `json:"sub_user_id"`
+}
+
+// AdminAdjustMemberJSONBody defines parameters for AdminAdjustMember.
+type AdminAdjustMemberJSONBody struct {
+	ExpireAt *string `json:"expire_at,omitempty"`
+	Level    *int    `json:"level,omitempty"`
+	Reason   string  `json:"reason"`
+}
+
+// AdminTransferMasterJSONBody defines parameters for AdminTransferMaster.
+type AdminTransferMasterJSONBody struct {
+	Reason   string `json:"reason"`
+	ToUserId string `json:"to_user_id"`
+}
+
+// AdminBroadcastNoticeJSONBody defines parameters for AdminBroadcastNotice.
+type AdminBroadcastNoticeJSONBody struct {
+	Content string   `json:"content"`
+	Reason  *string  `json:"reason,omitempty"`
+	Title   string   `json:"title"`
+	UserIds []string `json:"user_ids"`
 }
 
 // AdminListOrdersParams defines parameters for AdminListOrders.
@@ -503,14 +552,35 @@ type AdminUpsertBadgeJSONRequestBody AdminUpsertBadgeJSONBody
 // AdminReviewCertJSONRequestBody defines body for AdminReviewCert for application/json ContentType.
 type AdminReviewCertJSONRequestBody AdminReviewCertJSONBody
 
+// AdminDissolveCircleJSONRequestBody defines body for AdminDissolveCircle for application/json ContentType.
+type AdminDissolveCircleJSONRequestBody AdminDissolveCircleJSONBody
+
 // AdminTakedownContentJSONRequestBody defines body for AdminTakedownContent for application/json ContentType.
 type AdminTakedownContentJSONRequestBody AdminTakedownContentJSONBody
+
+// AdminBanCubeJSONRequestBody defines body for AdminBanCube for application/json ContentType.
+type AdminBanCubeJSONRequestBody AdminBanCubeJSONBody
+
+// AdminDissolveCubeJSONRequestBody defines body for AdminDissolveCube for application/json ContentType.
+type AdminDissolveCubeJSONRequestBody AdminDissolveCubeJSONBody
 
 // AdminCreateExportJSONRequestBody defines body for AdminCreateExport for application/json ContentType.
 type AdminCreateExportJSONRequestBody AdminCreateExportJSONBody
 
 // AdminSetFeatureFlagJSONRequestBody defines body for AdminSetFeatureFlag for application/json ContentType.
 type AdminSetFeatureFlagJSONRequestBody AdminSetFeatureFlagJSONBody
+
+// AdminForceRemoveSubJSONRequestBody defines body for AdminForceRemoveSub for application/json ContentType.
+type AdminForceRemoveSubJSONRequestBody AdminForceRemoveSubJSONBody
+
+// AdminAdjustMemberJSONRequestBody defines body for AdminAdjustMember for application/json ContentType.
+type AdminAdjustMemberJSONRequestBody AdminAdjustMemberJSONBody
+
+// AdminTransferMasterJSONRequestBody defines body for AdminTransferMaster for application/json ContentType.
+type AdminTransferMasterJSONRequestBody AdminTransferMasterJSONBody
+
+// AdminBroadcastNoticeJSONRequestBody defines body for AdminBroadcastNotice for application/json ContentType.
+type AdminBroadcastNoticeJSONRequestBody AdminBroadcastNoticeJSONBody
 
 // AdminResetOrgAdminJSONRequestBody defines body for AdminResetOrgAdmin for application/json ContentType.
 type AdminResetOrgAdminJSONRequestBody AdminResetOrgAdminJSONBody
@@ -532,6 +602,9 @@ type AdminRestrictUserJSONRequestBody AdminRestrictUserJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// AdminOverdueAffiliations 超期未核验归属（平台代处理队列）
+	// (GET /affiliations/overdue)
+	AdminOverdueAffiliations(w http.ResponseWriter, r *http.Request, params AdminOverdueAffiliationsParams)
 	// AdminResolveAffiliation 平台代处理归属核验（组织管理员超 7 天未处理）
 	// (POST /affiliations/{id}/resolve)
 	AdminResolveAffiliation(w http.ResponseWriter, r *http.Request, id string)
@@ -556,12 +629,21 @@ type ServerInterface interface {
 	// AdminReviewCert 平台审核认证（全类型）
 	// (POST /certs/{id}/review)
 	AdminReviewCert(w http.ResponseWriter, r *http.Request, id string)
+	// AdminDissolveCircle 平台解散圈子（代操作，前后值审计）
+	// (POST /circles/{id}/dissolve)
+	AdminDissolveCircle(w http.ResponseWriter, r *http.Request, id string)
 	// AdminListContents 内容列表（按类型/状态）
 	// (GET /contents)
 	AdminListContents(w http.ResponseWriter, r *http.Request, params AdminListContentsParams)
 	// AdminTakedownContent 下架内容（记录原因）
 	// (POST /contents/{id}/takedown)
 	AdminTakedownContent(w http.ResponseWriter, r *http.Request, id string)
+	// AdminBanCube 平台封禁猫立方（代操作，前后值审计）
+	// (POST /cubes/{id}/ban)
+	AdminBanCube(w http.ResponseWriter, r *http.Request, id string)
+	// AdminDissolveCube 平台解散猫立方（代操作，前后值审计）
+	// (POST /cubes/{id}/dissolve)
+	AdminDissolveCube(w http.ResponseWriter, r *http.Request, id string)
 	// AdminDashboard 数据概览（12+ 项核心指标，口径见 docs/ops/dashboards.md）
 	// (GET /dashboard)
 	AdminDashboard(w http.ResponseWriter, r *http.Request)
@@ -595,15 +677,33 @@ type ServerInterface interface {
 	// AdminGovernanceUsers 用户检索筛选（昵称模糊/手机号盲精确/状态/实名/会员等级/注册时间）
 	// (GET /governance/users)
 	AdminGovernanceUsers(w http.ResponseWriter, r *http.Request, params AdminGovernanceUsersParams)
+	// AdminJobs 可手动重跑的任务列表
+	// (GET /jobs)
+	AdminJobs(w http.ResponseWriter, r *http.Request)
+	// AdminRunJob 手动重跑任务一次（审计）
+	// (POST /jobs/{name}/run)
+	AdminRunJob(w http.ResponseWriter, r *http.Request, name string)
 	// AdminListMembers 会员列表（按等级/状态）
 	// (GET /members)
 	AdminListMembers(w http.ResponseWriter, r *http.Request, params AdminListMembersParams)
+	// AdminForceRemoveSub 强制解除子账号（代操作，前后值审计）
+	// (POST /memberships/sub-accounts/remove)
+	AdminForceRemoveSub(w http.ResponseWriter, r *http.Request)
+	// AdminAdjustMember 会员人工调整（等级/到期；前后值审计；双人复核待 RBAC）
+	// (POST /memberships/{id}/adjust)
+	AdminAdjustMember(w http.ResponseWriter, r *http.Request, id string)
+	// AdminTransferMaster 转移企业版主账号（代操作，前后值审计）
+	// (POST /memberships/{id}/transfer-master)
+	AdminTransferMaster(w http.ResponseWriter, r *http.Request, id string)
 	// AdminMenus 后台菜单声明（AdminSection 声明式；p4 扩菜单级/操作级权限点）
 	// (GET /menus)
 	AdminMenus(w http.ResponseWriter, r *http.Request)
 	// AdminNoticeTemplates 通知模板（只读；编辑随 p4）
 	// (GET /notice-templates)
 	AdminNoticeTemplates(w http.ResponseWriter, r *http.Request)
+	// AdminBroadcastNotice 定向公告（管理员代操作，站内信；审计）
+	// (POST /notices/broadcast)
+	AdminBroadcastNotice(w http.ResponseWriter, r *http.Request)
 	// AdminListOrders 订单列表（按状态）
 	// (GET /orders)
 	AdminListOrders(w http.ResponseWriter, r *http.Request, params AdminListOrdersParams)
@@ -656,6 +756,52 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// AdminOverdueAffiliations operation middleware
+func (siw *ServerInterfaceWrapper) AdminOverdueAffiliations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AdminOverdueAffiliationsParams
+
+	// ------------- Optional query parameter "days" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "days", r.URL.Query(), &params.Days, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "days"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "days", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminOverdueAffiliations(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // AdminResolveAffiliation operation middleware
 func (siw *ServerInterfaceWrapper) AdminResolveAffiliation(w http.ResponseWriter, r *http.Request) {
@@ -946,6 +1092,32 @@ func (siw *ServerInterfaceWrapper) AdminReviewCert(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// AdminDissolveCircle operation middleware
+func (siw *ServerInterfaceWrapper) AdminDissolveCircle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminDissolveCircle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminListContents operation middleware
 func (siw *ServerInterfaceWrapper) AdminListContents(w http.ResponseWriter, r *http.Request) {
 
@@ -1022,6 +1194,58 @@ func (siw *ServerInterfaceWrapper) AdminTakedownContent(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminTakedownContent(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminBanCube operation middleware
+func (siw *ServerInterfaceWrapper) AdminBanCube(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminBanCube(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminDissolveCube operation middleware
+func (siw *ServerInterfaceWrapper) AdminDissolveCube(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminDissolveCube(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1420,6 +1644,46 @@ func (siw *ServerInterfaceWrapper) AdminGovernanceUsers(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// AdminJobs operation middleware
+func (siw *ServerInterfaceWrapper) AdminJobs(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminJobs(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminRunJob operation middleware
+func (siw *ServerInterfaceWrapper) AdminRunJob(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminRunJob(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminListMembers operation middleware
 func (siw *ServerInterfaceWrapper) AdminListMembers(w http.ResponseWriter, r *http.Request) {
 
@@ -1479,6 +1743,72 @@ func (siw *ServerInterfaceWrapper) AdminListMembers(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// AdminForceRemoveSub operation middleware
+func (siw *ServerInterfaceWrapper) AdminForceRemoveSub(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminForceRemoveSub(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminAdjustMember operation middleware
+func (siw *ServerInterfaceWrapper) AdminAdjustMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminAdjustMember(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminTransferMaster operation middleware
+func (siw *ServerInterfaceWrapper) AdminTransferMaster(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminTransferMaster(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminMenus operation middleware
 func (siw *ServerInterfaceWrapper) AdminMenus(w http.ResponseWriter, r *http.Request) {
 
@@ -1498,6 +1828,20 @@ func (siw *ServerInterfaceWrapper) AdminNoticeTemplates(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminNoticeTemplates(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminBroadcastNotice operation middleware
+func (siw *ServerInterfaceWrapper) AdminBroadcastNotice(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminBroadcastNotice(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2016,6 +2360,16 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/menus", wrapper.AdminMenus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/jobs", wrapper.AdminJobs)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/jobs/{name}/run", wrapper.AdminRunJob)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/memberships/{id}/transfer-master", wrapper.AdminTransferMaster)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/memberships/sub-accounts/remove", wrapper.AdminForceRemoveSub)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/memberships/{id}/adjust", wrapper.AdminAdjustMember)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/affiliations/overdue", wrapper.AdminOverdueAffiliations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/ban", wrapper.AdminBanCube)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/dissolve", wrapper.AdminDissolveCube)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/dissolve", wrapper.AdminDissolveCircle)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/notices/broadcast", wrapper.AdminBroadcastNotice)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports", wrapper.AdminExports)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/exports", wrapper.AdminCreateExport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports/{id}/download", wrapper.AdminDownloadExport)

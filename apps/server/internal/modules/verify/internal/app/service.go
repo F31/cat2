@@ -31,6 +31,7 @@ type Repo interface {
 	GetAffiliation(ctx context.Context, id int64) (infra.Affiliation, error)
 	GetAffiliationByUserOrg(ctx context.Context, userID, orgID int64) (infra.Affiliation, error)
 	PendingAffiliations(ctx context.Context, orgID int64, limit int) ([]infra.Affiliation, error)
+	OverdueAffiliations(ctx context.Context, days, limit int) ([]infra.Affiliation, error)
 	AffiliationsOf(ctx context.Context, userID int64) ([]infra.Affiliation, error)
 	DecideAffiliation(ctx context.Context, tx db.Tx, id, reviewerID int64, status int16, reason string) (bool, error)
 	SetPrimary(ctx context.Context, tx db.Tx, userID, id int64) error

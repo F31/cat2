@@ -126,6 +126,16 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cube-apportions/{groupID}", Handler: m.auth(m.handleApportionDetail)},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/cubes", Handler: m.auth(m.handleAdminList), Admin: true},
 	)
+	// 平台代操作：封禁/解散（p4 §4.4）
+	// 注：z 顺序保持声明式，执行由 adminOps 提供
+	r.Routes = append(r.Routes,
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/cubes/{id}/ban", Handler: m.auth(m.handleAdminBanCube), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/cubes/{id}/dissolve", Handler: m.auth(m.handleAdminDissolveCube), Admin: true},
+	)
+	r.AuditPoints = append(r.AuditPoints,
+		audit.Point{Action: "cube:admin:ban", Path: "/api/admin/v1/cubes/{id}/ban", Required: true, LogFailed: true, Module: "cube"},
+		audit.Point{Action: "cube:admin:dissolve", Path: "/api/admin/v1/cubes/{id}/dissolve", Required: true, LogFailed: true, Module: "cube"},
+	)
 	r.StateMachines = append(r.StateMachines, domain.MachineCube, domain.MachineMember,
 		domain.MachineProject, domain.MachineTask, domain.MachineReport, domain.MachinePlan)
 	r.Settings = append(r.Settings, app.Schemas...)

@@ -298,6 +298,22 @@ func (s *Service) Dissolve(ctx context.Context, circleID, userID int64) error {
 	return err
 }
 
+// AdminDissolve 平台代操作解散（无圈主校验；审计由模块层写）。
+func (s *Service) AdminDissolve(ctx context.Context, circleID int64) error {
+	c, err := s.repo.GetCircle(ctx, circleID)
+	if err != nil {
+		return err
+	}
+	return s.pool.InTx(ctx, func(tx db.Tx) error {
+		if err := s.repo.SetStatus(ctx, tx, circleID, contract.CircleDissolved, true); err != nil {
+			return err
+		}
+		return s.publish(ctx, tx, contract.NewCircleDissolved(ids.New().String(), contract.CirclePayload{
+			CircleID: circleID, Name: c.Name, UserID: c.OwnerUserID,
+		}))
+	})
+}
+
 // ConvertToPermanent 已结束转常设（圈主）。
 func (s *Service) ConvertToPermanent(ctx context.Context, circleID, userID int64) error {
 	c, err := s.repo.GetCircle(ctx, circleID)

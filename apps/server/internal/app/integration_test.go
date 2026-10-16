@@ -5359,3 +5359,184 @@ func TestIntegrationGovernanceUserSearchAndRestrict(t *testing.T) {
 		t.Fatalf("解除后应可发布: %+v", env)
 	}
 }
+
+// 运营代操作（p4 §4.4/§4.5）：任务重跑、超期归属代处理、会员代操作、立方/圈封禁解散、定向公告。
+// 全部要求原因且写审计（detail 含 before/after 快照）。
+func TestIntegrationAdminOperations(t *testing.T) {
+	h := newTestApp(t)
+	_, admTok := loginAdmin(t, h)
+	adminID, _ := loginUser(t, h)
+	ctx := context.Background()
+	_ = adminID
+
+	// 1) 任务重跑（列表 + 执行 + 审计）
+	_, env := h.do(http.MethodGet, "/api/admin/v1/jobs", admTok, nil)
+	var jobs struct {
+		Items []string `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &jobs)
+	if len(jobs.Items) == 0 {
+		t.Fatal("应能列出可重跑任务")
+	}
+	if s, e := h.do(http.MethodPost, "/api/admin/v1/jobs/kernel.outbox_relay/run", admTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("任务重跑失败: %d %+v", s, e)
+	}
+	var jobAudit int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM sys_audit WHERE action='ops:job:run'`).Scan(&jobAudit)
+	if jobAudit == 0 {
+		t.Fatal("任务重跑应写审计")
+	}
+
+	// 2) 超期归属代处理（构造 8 天前待核验记录）
+	orgID := int64(0)
+	if err := h.app.Pool.QueryRow(ctx, `SELECT coalesce(max(id),0) FROM idn_user`).Scan(&orgID); err != nil || orgID == 0 {
+		t.Fatal("需要用户数据")
+	}
+	applicant, _ := loginUser(t, h)
+	affID := time.Now().UnixNano()
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO vfy_affiliation (id, user_id, org_id, role, proof_file_ids, status, created_at, updated_at)
+		VALUES ($1,$2,$3,'采购', '[]'::jsonb, 0, now() - interval '8 days', now())`, affID, applicant, orgID); err != nil {
+		t.Fatal(err)
+	}
+	_, env = h.do(http.MethodGet, "/api/admin/v1/affiliations/overdue?days=7", admTok, nil)
+	var overdue struct {
+		Items []struct {
+			ID int64 `json:"id,string"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &overdue)
+	if len(overdue.Items) == 0 {
+		t.Fatal("应列出超期未核验归属")
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/affiliations/%d/resolve", affID), admTok,
+		map[string]any{"pass": true, "reason": "组织管理员超期未处理"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("代处理失败: %d %+v", s, e)
+	}
+	var affStatus int16
+	_ = h.app.Pool.QueryRow(ctx, `SELECT status FROM vfy_affiliation WHERE id=$1`, affID).Scan(&affStatus)
+	if affStatus != 1 {
+		t.Fatalf("代处理后应已核验: %d", affStatus)
+	}
+
+	// 3) 会员人工调整（含前后值快照审计）
+	target, targetTok := loginUser(t, h)
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/memberships/%d/adjust", target), admTok,
+		map[string]any{"level": 3, "reason": "商务补偿开通"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("会员调整失败: %d %+v", s, e)
+	}
+	var lvl int16
+	_ = h.app.Pool.QueryRow(ctx, `SELECT level FROM mbr_member WHERE user_id=$1`, target).Scan(&lvl)
+	if lvl != 3 {
+		t.Fatalf("调整后等级应为 3: %d", lvl)
+	}
+	var snap string
+	_ = h.app.Pool.QueryRow(ctx, `
+		SELECT COALESCE(detail::text,'') FROM sys_audit WHERE action='membership:member:adjust'
+		ORDER BY created_at DESC LIMIT 1`).Scan(&snap)
+	if !strings.Contains(snap, "before") || !strings.Contains(snap, "after") {
+		t.Fatalf("代操作审计应含前后值快照: %s", snap)
+	}
+
+	// 4) 企业版主账号转移（目标须为生效企业版）
+	other, otherTok := loginUser(t, h)
+	for _, u := range []int64{target, other} {
+		if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/memberships/%d/adjust", u), admTok,
+			map[string]any{"level": 3, "reason": "为企业版准备"}); s != http.StatusOK || e.Code != 0 {
+			t.Fatalf("预置企业版失败: %d %+v", s, e)
+		}
+	}
+	_ = otherTok
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/memberships/%d/transfer-master", target), admTok,
+		map[string]any{"to_user_id": fmt.Sprintf("%d", other), "reason": "主体变更"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("转移主账号失败: %d %+v", s, e)
+	}
+	var movedAudit int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM sys_audit WHERE action='membership:master:transfer'`).Scan(&movedAudit)
+	if movedAudit == 0 {
+		t.Fatal("转移应写审计")
+	}
+
+	// 5) 立方封禁/解散 + 圈解散（平台代操作，须给原因）
+	cubeOwner, cubeTok := loginUser(t, h)
+	for _, u := range []int64{cubeOwner, target} {
+		_ = u
+	}
+	if _, err := h.app.Pool.Exec(ctx, `UPDATE idn_user SET realname_status=1 WHERE id=$1`, cubeOwner); err != nil {
+		t.Fatal(err)
+	}
+	if _, env := h.do(http.MethodPost, "/api/mp/v1/certs", cubeTok, map[string]any{
+		"cert_type": 1, "real_name": "立方主", "id_card_no": "310101199001010011", "agreed": true,
+	}); env.Code != 0 {
+		t.Fatalf("实名失败: %+v", env)
+	}
+	honey, honeyTok := loginUser(t, h)
+	if _, env := h.do(http.MethodPost, "/api/mp/v1/certs", honeyTok, map[string]any{
+		"cert_type": 1, "real_name": "猫蜜", "id_card_no": "310101199001010011", "agreed": true,
+	}); env.Code != 0 {
+		t.Fatalf("实名失败: %+v", env)
+	}
+	_, env = h.do(http.MethodPost, "/api/mp/v1/cubes", cubeTok, map[string]any{
+		"name": "代操作立方", "honey_user_id": fmt.Sprintf("%d", honey),
+	})
+	var cube struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cube)
+	if cube.ID == 0 {
+		t.Fatalf("建立方失败: %+v", env)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/cubes/%d/ban", cube.ID), admTok, map[string]any{"reason": "违规经营"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("立方封禁失败: %d %+v", s, e)
+	}
+	var cubeStatus int16
+	_ = h.app.Pool.QueryRow(ctx, `SELECT status FROM cub_cube WHERE id=$1`, cube.ID).Scan(&cubeStatus)
+	if cubeStatus != 1 {
+		t.Fatalf("立方应封禁: %d", cubeStatus)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/cubes/%d/dissolve", cube.ID), admTok, map[string]any{"reason": "封禁后解散"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("立方解散失败: %d %+v", s, e)
+	}
+	// 圈：管理员解散（建圈需实名）
+	if _, env := h.do(http.MethodPost, "/api/mp/v1/certs", targetTok, map[string]any{
+		"cert_type": 1, "real_name": "圈主", "id_card_no": "310101199001010011", "agreed": true,
+	}); env.Code != 0 {
+		t.Fatalf("实名失败: %+v", env)
+	}
+	_, env = h.do(http.MethodPost, "/api/mp/v1/circles", targetTok, map[string]any{
+		"name": "代操作圈", "type": 2, "duration_days": 30,
+	})
+	var circle struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &circle)
+	if circle.ID == 0 {
+		t.Fatalf("建圈失败: %+v", env)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/circles/%d/dissolve", circle.ID), admTok, map[string]any{"reason": "违规"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("圈解散失败: %d %+v", s, e)
+	}
+	var circleStatus int16
+	_ = h.app.Pool.QueryRow(ctx, `SELECT status FROM cir_circle WHERE id=$1`, circle.ID).Scan(&circleStatus)
+	if circleStatus != 2 {
+		t.Fatalf("圈应解散: %d", circleStatus)
+	}
+
+	// 6) 定向公告
+	if s, e := h.do(http.MethodPost, "/api/admin/v1/notices/broadcast", admTok, map[string]any{
+		"user_ids": []string{fmt.Sprintf("%d", target), fmt.Sprintf("%d", other)},
+		"title":    "平台公告", "content": "系统维护通知", "reason": "例行公告",
+	}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("定向公告失败: %d %+v", s, e)
+	}
+	var noticeN int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM ntc_notice WHERE template_code='admin.announcement'`).Scan(&noticeN)
+	if noticeN < 2 {
+		t.Fatalf("定向公告应送达 2 人: %d", noticeN)
+	}
+	var bcAudit int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM sys_audit WHERE action='notice:announcement:broadcast'`).Scan(&bcAudit)
+	if bcAudit == 0 {
+		t.Fatal("定向公告应写审计")
+	}
+}

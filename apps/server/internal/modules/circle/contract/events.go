@@ -10,12 +10,12 @@ import (
 
 // 事件 Topic。
 const (
-	EventCircleCreated  = "circle.CircleCreated.v1"
-	EventCircleEnded    = "circle.CircleEnded.v1"
+	EventCircleCreated   = "circle.CircleCreated.v1"
+	EventCircleEnded     = "circle.CircleEnded.v1"
 	EventCircleDissolved = "circle.CircleDissolved.v1"
-	EventMemberJoined   = "circle.MemberJoined.v1"
+	EventMemberJoined    = "circle.MemberJoined.v1"
 	EventDemandPublished = "circle.DemandPublished.v1"
-	EventDemandExpired  = "circle.DemandExpired.v1"
+	EventDemandExpired   = "circle.DemandExpired.v1"
 )
 
 // CirclePayload 圈子事件载荷。
@@ -47,12 +47,18 @@ func newEvent(id, topic string, p any) eventbus.Event {
 	return eventbus.Event{ID: id, Topic: topic, OccurredAt: time.Now().UTC(), SpaceID: 1, Payload: payload}
 }
 
-func NewCircleCreated(id string, p CirclePayload) eventbus.Event { return newEvent(id, EventCircleCreated, p) }
-func NewCircleEnded(id string, p CirclePayload) eventbus.Event   { return newEvent(id, EventCircleEnded, p) }
+func NewCircleCreated(id string, p CirclePayload) eventbus.Event {
+	return newEvent(id, EventCircleCreated, p)
+}
+func NewCircleEnded(id string, p CirclePayload) eventbus.Event {
+	return newEvent(id, EventCircleEnded, p)
+}
 func NewCircleDissolved(id string, p CirclePayload) eventbus.Event {
 	return newEvent(id, EventCircleDissolved, p)
 }
-func NewMemberJoined(id string, p MemberPayload) eventbus.Event { return newEvent(id, EventMemberJoined, p) }
+func NewMemberJoined(id string, p MemberPayload) eventbus.Event {
+	return newEvent(id, EventMemberJoined, p)
+}
 func NewDemandPublished(id string, p DemandPayload) eventbus.Event {
 	return newEvent(id, EventDemandPublished, p)
 }

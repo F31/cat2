@@ -71,6 +71,8 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/badges", Handler: m.auth(m.handleBadgeDefs), Admin: true},
 		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/badges/{code}", Handler: m.auth(m.handleUpsertBadge), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/badges/grant", Handler: m.auth(m.handleGrantBadge), Admin: true},
+		// 平台代处理：超期未核验归属（p4 §4.4）
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/affiliations/overdue", Handler: m.auth(m.handleOverdueAffiliations), Admin: true},
 		// 组织管理员机制
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/orgs/{id}/admins", Handler: m.auth(m.handleInviteOrgAdmin)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/orgs/{id}/admins", Handler: m.auth(m.handleOrgAdmins)},
@@ -157,6 +159,10 @@ func (m *Module) ConfirmOrgAdmin(ctx context.Context, inviteID, userID int64) er
 func (m *Module) OrgAdminsOf(ctx context.Context, orgID int64) ([]contract.OrgAdmin, error) {
 	return m.svc.OrgAdminsOf(ctx, orgID)
 }
+func (m *Module) OverdueAffiliations(ctx context.Context, days, limit int) ([]contract.Affiliation, error) {
+	return m.svc.OverdueAffiliations(ctx, days, limit)
+}
+
 func (m *Module) ResetOrgAdmin(ctx context.Context, orgID, operatorID, userID int64, remove bool) error {
 	return m.svc.ResetOrgAdmin(ctx, orgID, operatorID, userID, remove)
 }

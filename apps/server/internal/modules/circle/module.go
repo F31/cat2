@@ -28,6 +28,8 @@ import (
 
 // Deps 装配依赖。
 type Deps struct {
+	// Audit 代操作审计写入器（可空）
+	Audit     *audit.Recorder
 	Pool      *db.Pool
 	Bus       *eventbus.Bus
 	Identity  idcontract.Facade
@@ -83,6 +85,7 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/join", Handler: m.auth(m.handleJoin)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/members", Handler: m.auth(m.handleMembers)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/dissolve", Handler: m.auth(m.handleDissolve)},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/circles/{id}/dissolve", Handler: m.auth(m.handleAdminDissolve), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/convert", Handler: m.auth(m.handleConvert)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/demands", Handler: m.auth(m.handlePublishDemand)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/demands", Handler: m.handleListDemands},
@@ -101,6 +104,7 @@ func (m *Module) Register(r *module.Registry) error {
 	})
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "circle:dissolve", Path: "/api/mp/v1/circles/{id}/dissolve", Required: true, LogFailed: true, Module: "circle"},
+		audit.Point{Action: "circle:admin:dissolve", Path: "/api/admin/v1/circles/{id}/dissolve", Required: true, LogFailed: true, Module: "circle"},
 	)
 	r.StateMachines = append(r.StateMachines, domain.MachineCircle, domain.MachineDemand)
 	r.Jobs = append(r.Jobs,
@@ -316,6 +320,36 @@ func (m *Module) handleDissolve(w http.ResponseWriter, req *http.Request) {
 	if err := m.svc.Dissolve(req.Context(), pathID(req, "id"), userIDFrom(req.Context())); err != nil {
 		writeCircleErr(w, err)
 		return
+	}
+	writeData(w, map[string]any{"dissolved": true})
+}
+
+// handleAdminDissolve 平台代操作：解散圈子（before/after 快照入审计）。
+func (m *Module) handleAdminDissolve(w http.ResponseWriter, req *http.Request) {
+	id := pathID(req, "id")
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	if id == 0 || json.NewDecoder(req.Body).Decode(&body) != nil || body.Reason == "" {
+		writeErr(w, 1, "参数错误（必须给原因）")
+		return
+	}
+	var before int16
+	if err := m.deps.Pool.QueryRow(req.Context(), `SELECT status FROM cir_circle WHERE id=$1`, id).Scan(&before); err != nil {
+		writeErr(w, 4, "圈子不存在")
+		return
+	}
+	if err := m.svc.AdminDissolve(req.Context(), id); err != nil {
+		writeCircleErr(w, err)
+		return
+	}
+	if m.deps.Audit != nil {
+		_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+			ActorID: userIDFrom(req.Context()), ActorType: audit.ActorAdmin, Channel: "admin", Action: "circle:admin:dissolve",
+			TargetRef: fmt.Sprintf(`{"id":"%d","type":"circle"}`, id),
+			Detail:    audit.Change{Before: map[string]any{"status": before}, After: map[string]any{"status": 2}}.Snapshot(body.Reason),
+			Result:    audit.ResultOK, IP: audit.ClientIP(req),
+		})
 	}
 	writeData(w, map[string]any{"dissolved": true})
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
@@ -33,6 +34,7 @@ type Deps struct {
 	Verify   verifycontract.Facade
 	Identity idcontract.Facade
 	Settings *settings.Registry
+	Audit    *audit.Recorder
 	Policy   *policy.Engine
 }
 
@@ -62,6 +64,15 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/membership/sub-accounts", Handler: m.auth(m.handleInvite)},
 		module.Route{Method: http.MethodDelete, Path: "/api/mp/v1/membership/sub-accounts/{subUserID}", Handler: m.auth(m.handleRemove)},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/members", Handler: m.auth(m.handleAdminMembers), Admin: true},
+		// 代操作（p4 §4.4；前后值快照入审计；双人复核待 RBAC #13）
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/memberships/{id}/transfer-master", Handler: m.auth(m.handleTransferMaster), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/memberships/sub-accounts/remove", Handler: m.auth(m.handleForceRemoveSub), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/memberships/{id}/adjust", Handler: m.auth(m.handleAdjustMember), Admin: true},
+	)
+	r.AuditPoints = append(r.AuditPoints,
+		audit.Point{Action: "membership:master:transfer", Path: "/api/admin/v1/memberships/{id}/transfer-master", Required: true, LogFailed: true, Module: "membership"},
+		audit.Point{Action: "membership:sub:remove", Path: "/api/admin/v1/memberships/sub-accounts/remove", Required: true, LogFailed: true, Module: "membership"},
+		audit.Point{Action: "membership:member:adjust", Path: "/api/admin/v1/memberships/{id}/adjust", Required: true, LogFailed: true, Module: "membership"},
 	)
 	r.Settings = append(r.Settings, app.Schemas...)
 	r.StateMachines = append(r.StateMachines, domain.Machine)

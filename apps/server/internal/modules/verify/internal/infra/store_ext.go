@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 
 	"github.com/jackc/pgx/v5"
 
@@ -128,6 +129,30 @@ func (s *Store) PendingAffiliations(ctx context.Context, orgID int64, limit int)
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+affCols+` FROM vfy_affiliation WHERE org_id=$1 AND status=0 ORDER BY created_at LIMIT $2`, orgID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Affiliation
+	for rows.Next() {
+		a, err := scanAff(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// OverdueAffiliations 超期未核验（平台代处理）。
+func (s *Store) OverdueAffiliations(ctx context.Context, days, limit int) ([]Affiliation, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+affCols+` FROM vfy_affiliation
+		WHERE status=0 AND created_at < now() - ($1 || ' days')::interval
+		ORDER BY created_at LIMIT $2`, strconv.Itoa(days), limit)
 	if err != nil {
 		return nil, err
 	}

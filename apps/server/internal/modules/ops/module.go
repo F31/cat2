@@ -19,16 +19,24 @@ import (
 	"catcube/internal/kernel/featureflag"
 	"catcube/internal/kernel/module"
 	"catcube/internal/kernel/obs"
+	"catcube/internal/kernel/scheduler"
 	"catcube/internal/kernel/settings"
 	idcontract "catcube/internal/modules/identity/contract"
 	"catcube/internal/ports"
 	"catcube/pkg/ids"
 )
 
+// JobRunner 任务运行器（scheduler.Runner 的结构化接口，避免 ops 直接依赖 scheduler 内部）。
+type JobRunner interface {
+	Jobs() []scheduler.Job
+	RunOnce(ctx context.Context, name string) (bool, error)
+}
+
 // Deps 装配依赖。
 type Deps struct {
 	Pool     *db.Pool
 	Storage  ports.Storage
+	Runner   JobRunner
 	Audit    *audit.Recorder
 	Identity idcontract.Facade
 	Outbox   eventbus.OutboxStore
@@ -52,6 +60,9 @@ func (m *Module) Register(r *module.Registry) error {
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/dead-letters", Handler: m.auth(m.handleList), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/dead-letters/{eventID}/replay", Handler: m.auth(m.handleReplay), Admin: true},
+		// 任务重跑（代操作清单，p4 §4.4）
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/jobs", Handler: m.auth(m.handleJobs), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/jobs/{name}/run", Handler: m.auth(m.handleRunJob), Admin: true},
 		// 导出中心（p4 §7.4）：申请 → 异步生成 → 下载（带水印 + 导出审计）
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/exports", Handler: m.auth(m.handleCreateExport), Admin: true},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/exports", Handler: m.auth(m.handleListExports), Admin: true},
@@ -85,6 +96,7 @@ func (m *Module) Register(r *module.Registry) error {
 		audit.Point{Action: "ops:dead_letter:replay", Path: "/api/admin/v1/dead-letters/{eventID}/replay", Required: true, LogFailed: true, Module: "ops"},
 		audit.Point{Action: "ops:feature_flag:set", Path: "/api/admin/v1/feature-flags/{key}", Required: true, LogFailed: true, Module: "ops"},
 		audit.Point{Action: "ops:setting:set", Path: "/api/admin/v1/settings/{key}", Required: true, LogFailed: true, Module: "ops"},
+		audit.Point{Action: "ops:job:run", Path: "/api/admin/v1/jobs/{name}/run", Required: true, LogFailed: true, Module: "ops"},
 		audit.Point{Action: "export:create", Path: "/api/admin/v1/exports", Required: true, LogFailed: true, Module: "ops"},
 		audit.Point{Action: "export:download", Path: "/api/admin/v1/exports/{id}/download", Required: true, LogFailed: true, Module: "ops"},
 	)

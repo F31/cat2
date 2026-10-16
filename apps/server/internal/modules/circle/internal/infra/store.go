@@ -25,21 +25,21 @@ type Querier interface {
 
 // Circle 圈子行。
 type Circle struct {
-	ID             int64
-	Name           string
-	Intro          string
-	CoverFileID    int64
-	RegionCode     string
-	Industry       []string
-	Type           int16
-	DurationDays   int16
-	EndAt          *time.Time
-	OwnerUserID    int64
-	OrgID          int64
-	MemberCount    int
+	ID              int64
+	Name            string
+	Intro           string
+	CoverFileID     int64
+	RegionCode      string
+	Industry        []string
+	Type            int16
+	DurationDays    int16
+	EndAt           *time.Time
+	OwnerUserID     int64
+	OrgID           int64
+	MemberCount     int
 	RecommendableAt time.Time
-	Status         int16
-	CreatedAt      time.Time
+	Status          int16
+	CreatedAt       time.Time
 }
 
 // Member 成员行。
@@ -53,18 +53,18 @@ type Member struct {
 
 // Demand 需求行。
 type Demand struct {
-	ID            int64
-	CircleID      int64
-	AuthorID      int64
-	Title         string
-	Content       string
-	DemandType    string
-	RegionCode    string
-	Industry      []string
-	ExpireAt      time.Time
-	Scope         int16
-	Status        int16
-	CreatedAt     time.Time
+	ID         int64
+	CircleID   int64
+	AuthorID   int64
+	Title      string
+	Content    string
+	DemandType string
+	RegionCode string
+	Industry   []string
+	ExpireAt   time.Time
+	Scope      int16
+	Status     int16
+	CreatedAt  time.Time
 }
 
 // Store circle 仓储。

@@ -110,9 +110,9 @@ func TestMachineTaskTable(t *testing.T) {
 		}
 	}
 	invalid := []struct{ from, event, actor string }{
-		{TaskTodo, EventApprove, "confirmer"},   // 越过进行中/待确认
-		{TaskDone, EventSubmit, "assignee"},     // 已完成不可再提交
-		{TaskDone, "no_such_event", "system"},       // 无「逾期自动通过」事件
+		{TaskTodo, EventApprove, "confirmer"}, // 越过进行中/待确认
+		{TaskDone, EventSubmit, "assignee"},   // 已完成不可再提交
+		{TaskDone, "no_such_event", "system"}, // 无「逾期自动通过」事件
 	}
 	for _, c := range invalid {
 		if _, err := eng.Apply(ctx, MachineTask, 1, c.from, c.event, c.actor); err == nil {

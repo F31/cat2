@@ -137,6 +137,27 @@ func SetMetrics(c counter) {
 	deniedCounter, appendedCounter = c, c
 }
 
+// Change 代操作前后值快照（p4 §4.5：代操作 detail 必须含前后值）。
+type Change struct {
+	Before map[string]any
+	After  map[string]any
+}
+
+// Snapshot 生成 detail：{"before":..., "after":..., "change_reason":...}（脱敏后写入）。
+func (c Change) Snapshot(reason string) map[string]any {
+	out := map[string]any{}
+	if c.Before != nil {
+		out["before"] = SanitizeDetail(c.Before)
+	}
+	if c.After != nil {
+		out["after"] = SanitizeDetail(c.After)
+	}
+	if reason != "" {
+		out["change_reason"] = reason
+	}
+	return out
+}
+
 // Recorder 审计写入器。
 type Recorder struct {
 	store Store

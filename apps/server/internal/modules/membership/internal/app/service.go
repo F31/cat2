@@ -46,6 +46,8 @@ type Repo interface {
 	AdminList(ctx context.Context, level, status int16, limit int) ([]infra.Member, error)
 	MarkExpired(ctx context.Context, userID int64) error
 	ListSubs(ctx context.Context, masterID int64) ([]infra.SubAccount, error)
+	MoveSubAccounts(ctx context.Context, tx db.Tx, fromMaster, toMaster int64) (int, error)
+	AdjustMember(ctx context.Context, tx db.Tx, userID int64, level *int16, expireAt *time.Time) error
 	ExpireSubsByMaster(ctx context.Context, masterID int64) error
 	PurgeRemovedSubs(ctx context.Context, before time.Time) (int64, error)
 	CountActiveSubs(ctx context.Context, masterID int64) (int, error)
@@ -234,6 +236,31 @@ func (s *Service) InviteSub(ctx context.Context, masterID, subUserID int64) erro
 		return err
 	}
 	return s.emit(ctx, memcontract.NewSubAccountChanged(ids.New().String(), memcontract.SubAccountPayload{MasterID: masterID, SubUserID: subUserID, Action: "invite"}))
+}
+
+// TransferMaster 平台代操作：把 masterID 名下子账号迁移到 toUserID。
+func (s *Service) TransferMaster(ctx context.Context, masterID, toUserID int64) (int, error) {
+	moved := 0
+	err := s.pool.InTx(ctx, func(tx db.Tx) error {
+		n, err := s.repo.MoveSubAccounts(ctx, tx, masterID, toUserID)
+		moved = n
+		return err
+	})
+	if err != nil {
+		return 0, err
+	}
+	if s.bus != nil {
+		_ = s.bus.Publish(ctx, nil, memcontract.NewSubAccountChanged(ids.New().String(),
+			memcontract.SubAccountPayload{MasterID: toUserID, SubUserID: masterID, Action: "transfer_master"}))
+	}
+	return moved, nil
+}
+
+// AdjustMember 会员人工调整（等级/到期时间；双人复核待 RBAC #13）。
+func (s *Service) AdjustMember(ctx context.Context, userID int64, level *int16, expireAt *time.Time) error {
+	return s.pool.InTx(ctx, func(tx db.Tx) error {
+		return s.repo.AdjustMember(ctx, tx, userID, level, expireAt)
+	})
 }
 
 // RemoveSub 移除子账号。

@@ -42,8 +42,8 @@
 - [x] 4.1 用户 360：`GET /api/admin/v1/users/{id}/360`（bff 只读聚合 8 区：identity/profile/verify（认证+归属+组织管理员）/membership（会员+子账号）/content/cube（含角色）/circle（含角色）/trust（受限状态）），每区标注来源模块；后台硬门槛（非管理员 403）；admin-web「用户 360」页；集成测试 `TestIntegrationUser360`。**trade 订单明细区待补**（facade 需增按用户查询）
 - [x] 4.2 检索筛选：`GET /api/admin/v1/governance/users`（昵称模糊、**手机号盲索引精确**、状态、实名、身份类型、会员等级（membership 交集）、注册时间范围、分页）；结果标注会员等级与生效态；导出走导出中心（含 `export:create` 审计）；admin-web 用户页筛选栏；集成测试覆盖（含非管理员 403）
 - [x] 4.3 封禁与限制：封禁/解禁（identity `ban/unban`，二次确认 + 审计）；**限制发布** `POST /api/admin/v1/users/{id}/restrict`（days>0 限制、days=0 解除，必须给原因，审计点 `trust:user:restrict`）；**内容发布门禁落地**：content `Publish/Submit` 校验 `publish.allowed` 能力，限制期返回 `110006`/429；circle 沿用同一能力；admin-web 用户页「限制/解除」二次确认
-- [ ] 4.4 运营代操作清单 10 项落地（入口/权限点/审计级别，详细设计 10.2）：代处理超期核验、重置组织管理员、转移企业版主账号、强制解除子账号、履约手动补偿、猫立方/圈子封禁解散、归属纠错审批、会员人工调整（双人复核）、定向公告发布、死信重放/任务重跑
-- [ ] 4.5 代操作全部二次确认 + 全量审计（detail 含操作前后值快照）
+- [x] 4.4 代操作清单（除渠道相关与双人复核）：**已落地** 代处理超期核验（`GET /api/admin/v1/affiliations/overdue` + `POST /affiliations/{id}/resolve`）、重置组织管理员、转移企业版主账号、强制解除子账号、履约手动补偿、猫立方封禁/解散、圈子解散、会员人工调整（单人、含前后值审计）、定向公告、死信重放/任务重跑（`GET/POST /api/admin/v1/jobs[/{name}/run]`）；admin-web「代操作」页。**待办**：归属纠错审批（channel，#13）与「会员/资金类双人复核」（RBAC，#13）
+- [x] 4.5 二次确认与全量审计：admin-web 代操作均需填写原因（审计强制）、危险操作二次确认；服务端统一 `audit.Change{Before,After}.Snapshot(reason)` 写入 detail（含脱敏）；敏感动词路由由 `TestSensitiveRoutesHaveAuditPoints` 强制声明审计点；集成测试 `TestIntegrationAdminOperations` 断言快照存在
 
 ## 5. 审计体系落地
 

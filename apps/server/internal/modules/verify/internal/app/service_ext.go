@@ -270,6 +270,22 @@ func (s *Service) PendingAffiliations(ctx context.Context, orgID, reviewerID int
 	return out, nil
 }
 
+// OverdueAffiliations 超期未核验归属（平台代处理队列；默认 >7 天）。
+func (s *Service) OverdueAffiliations(ctx context.Context, days, limit int) ([]contract.Affiliation, error) {
+	if days <= 0 {
+		days = 7
+	}
+	rows, err := s.repo.OverdueAffiliations(ctx, days, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contract.Affiliation, 0, len(rows))
+	for _, a := range rows {
+		out = append(out, toAffiliation(a))
+	}
+	return out, nil
+}
+
 // ResolveAffiliation 平台代处理（组织管理员超 7 天未处理）。
 func (s *Service) ResolveAffiliation(ctx context.Context, affID, operatorID int64, pass bool, reason string) error {
 	status := contract.AffRejected

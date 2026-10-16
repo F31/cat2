@@ -214,6 +214,50 @@ export const adminApi = {
       steps: Array<{ key: string; label: string; users: number; conversion: number }>
     }>('GET', `/admin/v1/dashboard/funnel?days=${days}`)
   },
+  jobs() {
+    return call<{ items: string[] }>('GET', '/admin/v1/jobs')
+  },
+  runJob(name: string) {
+    return call<{ ran: boolean; job: string }>('POST', `/admin/v1/jobs/${name}/run`)
+  },
+  broadcastNotice(userIds: string[], title: string, content: string, reason: string) {
+    return call<{ sent: number }>('POST', '/admin/v1/notices/broadcast', {
+      user_ids: userIds,
+      title,
+      content,
+      reason,
+    })
+  },
+  adjustMember(userId: string, level: number, reason: string, expireAt?: string) {
+    return call<{ adjusted: boolean }>('POST', `/admin/v1/memberships/${userId}/adjust`, {
+      level,
+      expire_at: expireAt,
+      reason,
+    })
+  },
+  transferMaster(userId: string, toUserId: string, reason: string) {
+    return call<{ transferred: boolean; sub_accounts_moved: number }>(
+      'POST',
+      `/admin/v1/memberships/${userId}/transfer-master`,
+      { to_user_id: toUserId, reason },
+    )
+  },
+  overdueAffiliations(days = 7) {
+    return call<{ items: Array<{ id: string; user_id: string; org_id: string; role?: string }> }>(
+      'GET',
+      `/admin/v1/affiliations/overdue?days=${days}`,
+    )
+  },
+  resolveAffiliation(id: string, pass: boolean, reason: string) {
+    return call<{ resolved: boolean }>('POST', `/admin/v1/affiliations/${id}/resolve`, { pass, reason })
+  },
+  adminCubeStatus(id: string, action: 'ban' | 'dissolve', reason: string) {
+    return call<{ cube_id: string; status: number }>('POST', `/admin/v1/cubes/${id}/${action}`, { reason })
+  },
+  adminDissolveCircle(id: string, reason: string) {
+    return call<{ dissolved: boolean }>('POST', `/admin/v1/circles/${id}/dissolve`, { reason })
+  },
+
   governanceUsers(f: {
     q?: string
     phone?: string

@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
@@ -28,6 +29,7 @@ type Deps struct {
 	Bus      *eventbus.Bus
 	Identity idcontract.Facade
 	Circle   circlecontract.Facade
+	Audit    *audit.Recorder
 }
 
 // Module notice 模块。
@@ -79,6 +81,7 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/subscribe-quota/apply", Handler: m.auth(m.handleApplyQuota)},
 		// 后台：模板与公告管理（页面随 p4；此处提供只读列表）
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/notice-templates", Handler: m.auth(m.handleAdminTemplates), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/notices/broadcast", Handler: m.auth(m.handleAdminBroadcast), Admin: true},
 	)
 	// 订阅全部业务事件（事件驱动触达）
 	for _, topic := range app.Topics() {
@@ -87,6 +90,9 @@ func (m *Module) Register(r *module.Registry) error {
 	r.Jobs = append(r.Jobs,
 		module.JobDef{Name: "notice.seed_templates", Interval: 10 * time.Minute, Run: m.svc.Register},
 		module.JobDef{Name: "notice.digest", Interval: time.Minute, Run: m.svc.RunDigest},
+	)
+	r.AuditPoints = append(r.AuditPoints,
+		audit.Point{Action: "notice:announcement:broadcast", Path: "/api/admin/v1/notices/broadcast", Required: true, LogFailed: true, Module: "notice"},
 	)
 	return nil
 }
@@ -274,3 +280,43 @@ func writeErr(w http.ResponseWriter, code int, message string) {
 }
 
 var _ noticecontract.Facade = (*Module)(nil)
+
+// handleAdminBroadcast 定向公告（管理员代操作；仅站内信，审计留痕）。
+func (m *Module) handleAdminBroadcast(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		UserIDs []string `json:"user_ids"`
+		Title   string   `json:"title"`
+		Content string   `json:"content"`
+		Reason  string   `json:"reason"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil || body.Title == "" || body.Content == "" {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	ids := make([]int64, 0, len(body.UserIDs))
+	for _, s := range body.UserIDs {
+		if v, err := strconv.ParseInt(s, 10, 64); err == nil && v > 0 {
+			ids = append(ids, v)
+		}
+	}
+	if len(ids) == 0 {
+		writeErr(w, codeParamInvalid, "请指定接收用户")
+		return
+	}
+	sent, err := m.svc.Broadcast(req.Context(), ids, body.Title, body.Content)
+	if err != nil {
+		writeErr(w, codeInternal, "服务错误")
+		return
+	}
+	if m.deps.Audit != nil {
+		_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+			ActorID: userIDFrom(req.Context()), ActorType: audit.ActorAdmin, Channel: "admin",
+			Action: "notice:announcement:broadcast", Result: audit.ResultOK, IP: audit.ClientIP(req),
+			Detail: audit.Change{
+				Before: map[string]any{"targets": 0, "title": ""},
+				After:  map[string]any{"targets": sent, "title": body.Title},
+			}.Snapshot(body.Reason),
+		})
+	}
+	writeData(w, map[string]any{"sent": sent})
+}

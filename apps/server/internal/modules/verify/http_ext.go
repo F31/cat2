@@ -241,3 +241,14 @@ func (m *Module) handleGrantBadge(w http.ResponseWriter, req *http.Request) {
 	}
 	writeData(w, map[string]any{"ok": true})
 }
+
+func (m *Module) handleOverdueAffiliations(w http.ResponseWriter, req *http.Request) {
+	days, _ := strconv.Atoi(req.URL.Query().Get("days"))
+	limit, _ := strconv.Atoi(req.URL.Query().Get("limit"))
+	items, err := m.svc.OverdueAffiliations(req.Context(), days, limit)
+	if err != nil {
+		writeVerifyErrExt(w, err)
+		return
+	}
+	writeData(w, map[string]any{"items": items})
+}

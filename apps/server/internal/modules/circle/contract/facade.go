@@ -52,27 +52,27 @@ type CircleDetail struct {
 	CoverFileID   int64    `json:"cover_file_id,string,omitempty"`
 	RegionCode    string   `json:"region_code,omitempty"`
 	IndustryCodes []string `json:"industry_codes"`
-	MyRole        int16    `json:"my_role"`     // 0非成员/1圈主/2成员
+	MyRole        int16    `json:"my_role"` // 0非成员/1圈主/2成员
 	Joined        bool     `json:"joined"`
 	Recommendable bool     `json:"recommendable"` // 新圈 7 天内不进推荐流
 }
 
 // Demand 圈内需求。
 type Demand struct {
-	ID             int64     `json:"id,string"`
-	CircleID       int64     `json:"circle_id,string"`
-	AuthorID       int64     `json:"author_id,string"`
-	Title          string    `json:"title"`
-	Content        string    `json:"content"`
-	DemandType     string    `json:"demand_type,omitempty"`
-	RegionCode     string    `json:"region_code,omitempty"`
-	IndustryCodes  []string  `json:"industry_codes"`
-	ExpireAt       time.Time `json:"expire_at"`
-	Scope          int16     `json:"scope"` // 1仅本圈/2全平台
-	Status         int16     `json:"status"`
-	ContactPhone   string    `json:"contact_phone,omitempty"` // 会员可见
-	TransferRef    string    `json:"transfer_ref,omitempty"`  // 已转入猫立方办的项目引用
-	CreatedAt      time.Time `json:"created_at"`
+	ID            int64     `json:"id,string"`
+	CircleID      int64     `json:"circle_id,string"`
+	AuthorID      int64     `json:"author_id,string"`
+	Title         string    `json:"title"`
+	Content       string    `json:"content"`
+	DemandType    string    `json:"demand_type,omitempty"`
+	RegionCode    string    `json:"region_code,omitempty"`
+	IndustryCodes []string  `json:"industry_codes"`
+	ExpireAt      time.Time `json:"expire_at"`
+	Scope         int16     `json:"scope"` // 1仅本圈/2全平台
+	Status        int16     `json:"status"`
+	ContactPhone  string    `json:"contact_phone,omitempty"` // 会员可见
+	TransferRef   string    `json:"transfer_ref,omitempty"`  // 已转入猫立方办的项目引用
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // CreateInput 建圈入参。

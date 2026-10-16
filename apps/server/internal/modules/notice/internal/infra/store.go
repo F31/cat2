@@ -86,6 +86,27 @@ func (s *Store) InsertNotice(ctx context.Context, q Querier, n Notice) error {
 	return err
 }
 
+// BatchInsertNotice 批量写站内信（定向公告；单次上限由调用方控制）。
+func (s *Store) BatchInsertNotice(ctx context.Context, items []Notice) (int, error) {
+	if len(items) == 0 {
+		return 0, nil
+	}
+	n := 0
+	err := s.pool.InTx(ctx, func(tx db.Tx) error {
+		for _, it := range items {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO ntc_notice (id, user_id, template_code, title, content, ref, channel, is_read)
+				VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),$7,false)`,
+				it.ID, it.UserID, it.TemplateCode, it.Title, it.Content, it.Ref, it.Channel); err != nil {
+				return err
+			}
+			n++
+		}
+		return nil
+	})
+	return n, err
+}
+
 // ListNotices 站内信列表。
 func (s *Store) ListNotices(ctx context.Context, userID int64, unreadOnly bool, limit int) ([]Notice, error) {
 	if limit <= 0 || limit > 100 {

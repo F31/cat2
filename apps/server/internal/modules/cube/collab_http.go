@@ -7,9 +7,11 @@ import (
 	"strconv"
 	"time"
 
+	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/obs"
 	"catcube/internal/modules/cube/contract"
 	tradecontract "catcube/internal/modules/trade/contract"
+	"fmt"
 )
 
 // ---- contract.Facade 委托（§2）----
@@ -357,6 +359,46 @@ func (m *Module) FulfillOrder(ctx context.Context, bizRef string, snapshot []byt
 
 // BizType 实现 trade.OrderFulfiller。
 func (m *Module) BizType() string { return "cube_plan" }
+
+// handleAdminBanCube 平台封禁立方（status=1）。
+func (m *Module) handleAdminBanCube(w http.ResponseWriter, req *http.Request) {
+	m.adminCubeStatus(w, req, 1, "cube:admin:ban")
+}
+
+// handleAdminDissolveCube 平台解散立方（status=2）。
+func (m *Module) handleAdminDissolveCube(w http.ResponseWriter, req *http.Request) {
+	m.adminCubeStatus(w, req, 2, "cube:admin:dissolve")
+}
+
+func (m *Module) adminCubeStatus(w http.ResponseWriter, req *http.Request, status int16, action string) {
+	id, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	if id == 0 || json.NewDecoder(req.Body).Decode(&body) != nil || body.Reason == "" {
+		writeErr(w, 1, "参数错误（必须给原因）")
+		return
+	}
+	var before int16
+	if err := m.deps.Pool.QueryRow(req.Context(), `SELECT status FROM cub_cube WHERE id=$1`, id).Scan(&before); err != nil {
+		writeErr(w, 4, "立方不存在")
+		return
+	}
+	if _, err := m.deps.Pool.Exec(req.Context(), `
+		UPDATE cub_cube SET status=$2, updated_at=now(), version=version+1 WHERE id=$1`, id, status); err != nil {
+		writeErr(w, 9, "服务错误")
+		return
+	}
+	if m.deps.Audit != nil {
+		_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+			ActorID: userIDFrom(req.Context()), ActorType: audit.ActorAdmin, Channel: "admin", Action: action,
+			TargetRef: fmt.Sprintf(`{"id":"%d","type":"cube"}`, id),
+			Detail:    audit.Change{Before: map[string]any{"status": before}, After: map[string]any{"status": status}}.Snapshot(body.Reason),
+			Result:    audit.ResultOK, IP: audit.ClientIP(req),
+		})
+	}
+	writeData(w, map[string]any{"cube_id": strconv.FormatInt(id, 10), "status": status})
+}
 
 // Fulfill 实现 trade.OrderFulfiller（支付成功后开通订阅）。
 func (m *Module) Fulfill(ctx context.Context, order tradecontract.Order) error {
