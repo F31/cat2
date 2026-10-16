@@ -40,6 +40,7 @@ const (
 	PermSettlePay      = "channel:settlement:pay"
 	PermExportCreate   = "ops:export:create"
 	PermAuditRead      = "ops:audit:read"
+	PermSettingsRead   = "ops:settings:read"
 	PermSettingsSet    = "ops:settings:set"
 	PermJobRun         = "ops:job:run"
 	PermDashboardRead  = "ops:dashboard:read"
@@ -74,8 +75,8 @@ var builtinRoles = []Role{
 var defaultPerms = map[string][]string{
 	RoleOps: {
 		PermUserRead, PermUserRestrict, PermModeration, PermCertReview, PermBadgeSet, PermBroadcast,
-		PermCommissionSet, PermOperatorFeeSet, PermExportCreate, PermAuditRead, PermSettingsSet, PermJobRun,
-		PermDashboardRead, PermRBACManage,
+		PermCommissionSet, PermOperatorFeeSet, PermExportCreate, PermAuditRead, PermSettingsRead, PermSettingsSet,
+		PermJobRun, PermDashboardRead, PermRBACManage,
 	},
 	RoleAuditor: {PermUserRead, PermModeration, PermCertReview, PermDashboardRead},
 	RoleFinance: {
@@ -95,7 +96,7 @@ var permLabels = map[string]string{
 	PermCommissionSet: "佣金规则配置", PermOperatorFeeSet: "代理费/保证金口径配置",
 	PermOperatorReview: "运营商开户审核", PermSettleCreate: "结算发起", PermSettleReview: "结算复核",
 	PermSettlePay: "结算打款", PermExportCreate: "导出中心", PermAuditRead: "审计查询",
-	PermSettingsSet: "系统配置/特性开关", PermJobRun: "任务重跑/死信重放",
+	PermSettingsRead: "系统配置查看", PermSettingsSet: "系统配置/特性开关", PermJobRun: "任务重跑/死信重放",
 	PermDashboardRead: "看板/埋点", PermRBACManage: "角色与权限管理",
 }
 
@@ -105,7 +106,7 @@ func Registry() []PermDef {
 		PermUserRead, PermUserRestrict, PermModeration, PermCertReview, PermBadgeSet, PermBroadcast,
 		PermMemberAdjust, PermRefundApprove, PermCommissionSet, PermOperatorFeeSet, PermOperatorReview,
 		PermSettleCreate, PermSettleReview, PermSettlePay, PermExportCreate, PermAuditRead,
-		PermSettingsSet, PermJobRun, PermDashboardRead, PermRBACManage,
+		PermSettingsRead, PermSettingsSet, PermJobRun, PermDashboardRead, PermRBACManage,
 	}
 	out := make([]PermDef, 0, len(order))
 	for _, p := range order {

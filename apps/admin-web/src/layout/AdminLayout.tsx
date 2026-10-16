@@ -25,6 +25,7 @@ const FALLBACK: MenuProps['items'] = [
   { key: '/ai-prompts', label: 'AI 提示词与用量' },
   { key: '/badges', label: '认证标识' },
   { key: '/roles', label: '角色与权限' },
+  { key: '/system-settings', label: '系统设置' },
 ]
 
 export default function AdminLayout() {

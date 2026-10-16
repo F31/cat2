@@ -16,6 +16,7 @@ import (
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
 	"catcube/internal/kernel/sensitive"
+	"catcube/internal/kernel/settings"
 	"catcube/internal/modules/identity/contract"
 	"catcube/internal/modules/identity/internal/app"
 	"catcube/internal/modules/identity/internal/domain"
@@ -35,7 +36,8 @@ type Deps struct {
 	BlindKey   []byte               // phone_hmac 独立密钥
 	Notify     ports.Notify
 	DevSMSCode string
-	Audit      *audit.Recorder // 后台封禁/解封操作审计
+	Audit      *audit.Recorder    // 后台封禁/解封操作审计
+	Settings   *settings.Registry // 登录失败阈值等安全配置（p4 §3.4）
 }
 
 // Module identity 模块。
@@ -68,6 +70,15 @@ func (m *Module) Register(r *module.Registry) error {
 		Repo: m.store, Pool: m.deps.Pool, Tokens: ts, WeChat: exchanger,
 		Encryptor: m.deps.Encryptor, BlindKey: m.deps.BlindKey, Bus: m.deps.Bus,
 		Notify: m.deps.Notify, DevSMSCode: m.deps.DevSMSCode,
+		FailThreshold: func(ctx context.Context) int {
+			if m.deps.Settings == nil {
+				return domain.FailThreshold
+			}
+			if v, err := m.deps.Settings.Int(ctx, 1, "admin.security.login_fail_threshold"); err == nil && v > 0 {
+				return int(v)
+			}
+			return domain.FailThreshold
+		},
 	})
 
 	r.Routes = append(r.Routes,
@@ -122,6 +133,21 @@ func (m *Module) IsAdmin(ctx context.Context, userID int64) (bool, error) {
 		return false, nil
 	}
 	return role > 0, nil
+}
+
+// AdminStepUpRequired 后台账号是否需短信二次验证（p4 §3.4）。
+func (m *Module) AdminStepUpRequired(ctx context.Context, userID int64) (bool, error) {
+	return m.svc.AdminStepUpRequired(ctx, userID)
+}
+
+// SendStepUpCode 发送后台二次验证短信。
+func (m *Module) SendStepUpCode(ctx context.Context, userID int64) error {
+	return m.svc.SendStepUpCode(ctx, userID)
+}
+
+// VerifyStepUpCode 校验后台二次验证码。
+func (m *Module) VerifyStepUpCode(ctx context.Context, userID int64, code string) error {
+	return m.svc.VerifyStepUpCode(ctx, userID, code)
 }
 
 // GrantAdmin 授予/取消平台管理员。

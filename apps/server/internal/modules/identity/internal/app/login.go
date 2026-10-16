@@ -47,6 +47,7 @@ type Repo interface {
 	RotateSession(ctx context.Context, tx db.Tx, sessionID int64, newHash []byte, ttl time.Duration) error
 	RecordAttempt(ctx context.Context, tx db.Tx, userID int64, phoneHMAC []byte, success bool, ip string) error
 	RecentFailures(ctx context.Context, phoneHMAC []byte) (int, time.Time, error)
+	FailuresSinceLastSuccess(ctx context.Context, phoneHMAC []byte) (int, error)
 	SaveSMSCode(ctx context.Context, phoneHMAC, codeHash []byte, ttl time.Duration) error
 	ConsumeSMSCode(ctx context.Context, phoneHMAC, codeHash []byte) (bool, error)
 }
@@ -63,6 +64,8 @@ type Service struct {
 	notify   ports.Notify
 	// DevSMSCode 非空时作为固定验证码（开发/联调），生产留空走真实短信。
 	DevSMSCode string
+	// failThreshold 登录失败阈值（超管可配；p4 §3.4）。
+	failThreshold func(ctx context.Context) int
 }
 
 // Options 构造参数。
@@ -76,14 +79,88 @@ type Options struct {
 	Bus        *eventbus.Bus
 	Notify     ports.Notify
 	DevSMSCode string
+	// FailThreshold 登录失败阈值提供者（缺省 5）。
+	FailThreshold func(ctx context.Context) int
 }
 
 func NewService(o Options) *Service {
 	return &Service{
 		repo: o.Repo, pool: o.Pool, tokens: o.Tokens, wechat: o.WeChat,
 		enc: o.Encryptor, blindKey: o.BlindKey, bus: o.Bus, notify: o.Notify,
-		DevSMSCode: o.DevSMSCode,
+		DevSMSCode: o.DevSMSCode, failThreshold: o.FailThreshold,
 	}
+}
+
+// threshold 当前登录失败阈值（缺省 domain.FailThreshold）。
+func (s *Service) threshold(ctx context.Context) int {
+	if s.failThreshold != nil {
+		if v := s.failThreshold(ctx); v > 0 {
+			return v
+		}
+	}
+	return domain.FailThreshold
+}
+
+// AdminStepUpRequired 后台账号是否需短信二次验证（自上次成功以来失败达阈值；p4 §3.4）。
+func (s *Service) AdminStepUpRequired(ctx context.Context, userID int64) (bool, error) {
+	u, err := s.repo.UserByID(ctx, userID)
+	if err != nil {
+		return false, nil // 无此用户按无需处理
+	}
+	n, err := s.repo.FailuresSinceLastSuccess(ctx, u.PhoneHMAC)
+	if err != nil {
+		return false, err
+	}
+	return n >= s.threshold(ctx), nil
+}
+
+// SendStepUpCode 向账号绑定手机号发送二次验证码（复用登录短信码通道）。
+func (s *Service) SendStepUpCode(ctx context.Context, userID int64) error {
+	u, err := s.repo.UserByID(ctx, userID)
+	if err != nil {
+		return domain.ErrPhoneRequired
+	}
+	phone, err := s.plainPhone(u)
+	if err != nil || phone == "" {
+		return domain.ErrPhoneRequired
+	}
+	return s.RequestSMSCode(ctx, phone)
+}
+
+// VerifyStepUpCode 校验二次验证码；成功记录一次成功尝试（清除失败计数）。
+func (s *Service) VerifyStepUpCode(ctx context.Context, userID int64, code string) error {
+	if code == "" {
+		return domain.ErrCodeInvalid
+	}
+	u, err := s.repo.UserByID(ctx, userID)
+	if err != nil {
+		return domain.ErrCodeInvalid
+	}
+	ok, err := s.repo.ConsumeSMSCode(ctx, u.PhoneHMAC, codeHash(u.PhoneHMAC, code))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		_ = s.pool.InTx(ctx, func(tx db.Tx) error {
+			return s.repo.RecordAttempt(ctx, tx, u.ID, u.PhoneHMAC, false, "")
+		})
+		return domain.ErrCodeInvalid
+	}
+	return s.pool.InTx(ctx, func(tx db.Tx) error {
+		return s.repo.RecordAttempt(ctx, tx, u.ID, u.PhoneHMAC, true, "")
+	})
+}
+
+// plainPhone 解密账号手机号。
+func (s *Service) plainPhone(u infra.User) (string, error) {
+	if s.enc == nil {
+		return string(u.PhoneEnc), nil
+	}
+	raw, err := s.enc.Decrypt(u.PhoneEnc)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
 }
 
 // LoginResult 登录结果。
@@ -282,7 +359,7 @@ func (s *Service) SMSLogin(ctx context.Context, phone, code, device, ip string) 
 	if err != nil {
 		return LoginResult{}, err
 	}
-	if domain.Locked(fails, lastFail, time.Now()) {
+	if domain.LockedN(fails, lastFail, time.Now(), s.threshold(ctx)) {
 		return LoginResult{}, domain.ErrLocked
 	}
 	ok, err := s.repo.ConsumeSMSCode(ctx, hmac, codeHash(hmac, code))

@@ -39,7 +39,15 @@ const (
 
 // Locked 给定窗口内失败次数与最近一次失败时间，判断是否处于锁定。
 func Locked(failures int, lastFail time.Time, now time.Time) bool {
-	if failures < FailThreshold {
+	return LockedN(failures, lastFail, now, FailThreshold)
+}
+
+// LockedN 可配置阈值的锁定判定（后台登录失败阈值超管可配，p4 §3.4）。
+func LockedN(failures int, lastFail time.Time, now time.Time, threshold int) bool {
+	if threshold <= 0 {
+		threshold = FailThreshold
+	}
+	if failures < threshold {
 		return false
 	}
 	return now.Sub(lastFail) < FailWindow

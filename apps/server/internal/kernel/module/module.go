@@ -43,7 +43,8 @@ type Route struct {
 	Method  string
 	Path    string // /api/{mp|admin}/v1/<module>/<resource>
 	Handler http.HandlerFunc
-	Admin   bool // true=后台路由（RBAC 过滤）
+	Admin   bool   // true=后台路由（RBAC 过滤）
+	Perm    string // 非空=后台操作级权限点（<module>:<resource>:<action>，p4 §3.2）
 }
 
 // AdminSection 后台菜单声明段（p1 §9.9/§11.7；菜单级+操作级权限点细化在 p4）。

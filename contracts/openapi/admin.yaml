@@ -43,6 +43,25 @@ paths:
                             type: array
                             items: { $ref: '#/components/schemas/AdminSection' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/step-up/code:
+    post:
+      tags: [admin-security]
+      summary: 发送后台短信二次验证码（登录失败触发；p4 §3.4）
+      operationId: adminStepUpSendCode
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /auth/step-up:
+    post:
+      tags: [admin-security]
+      summary: 校验后台短信二次验证码（成功清除失败计数）
+      operationId: adminStepUpVerify
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [code], properties: { code: { type: string } } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
   /jobs:
     get:
       tags: [admin-governance]

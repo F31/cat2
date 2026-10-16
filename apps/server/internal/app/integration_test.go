@@ -6011,6 +6011,73 @@ func TestIntegrationAdminRBAC(t *testing.T) {
 	}
 }
 
+// 后台登录安全（p4 §3.4）：IP 白名单 + 登录失败触发短信二次验证；阈值/开关超管可配。
+func TestIntegrationAdminLoginSecurity(t *testing.T) {
+	h := newTestApp(t)
+	uid, admTok := loginAdmin(t, h)
+	ctx := context.Background()
+
+	setSetting := func(key, value, typ string) {
+		t.Helper()
+		// 直写配置（避免用被白名单拦截的 HTTP 通道；生产改配置走后台/CLI）
+		if _, err := h.app.Pool.Exec(ctx, `
+			INSERT INTO sys_settings (scope, key, value, type, version, updated_at)
+			VALUES ('platform',$1,$2,$3,1,now())
+			ON CONFLICT (scope, key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()`, key, value, typ); err != nil {
+			t.Fatalf("设置 %s 失败: %v", key, err)
+		}
+	}
+	// 清理，避免污染其它用例
+	defer func() {
+		setSetting("admin.security.ip_allowlist", "", "string")
+		setSetting("admin.security.login_fail_threshold", "3", "int")
+		setSetting("admin.security.sms_2fa_enabled", "true", "bool")
+	}()
+
+	// 1) IP 白名单：非允许网段 → 403
+	setSetting("admin.security.ip_allowlist", "10.0.0.", "string")
+	if s, _ := h.do(http.MethodGet, "/api/admin/v1/roles", admTok, nil); s != http.StatusForbidden {
+		t.Fatalf("IP 不在白名单应 403: %d", s)
+	}
+	setSetting("admin.security.ip_allowlist", "127.0.0.1", "string")
+	if s, _ := h.do(http.MethodGet, "/api/admin/v1/roles", admTok, nil); s != http.StatusOK {
+		t.Fatalf("IP 在白名单应放行: %d", s)
+	}
+	setSetting("admin.security.ip_allowlist", "", "string")
+
+	// 2) 短信二次验证：失败达阈值（配为 1）→ 后台 403/码4；验证后放行
+	setSetting("admin.security.login_fail_threshold", "1", "int")
+	setSetting("admin.security.sms_2fa_enabled", "true", "bool")
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO idn_login_attempt (user_id, phone_hmac, success, created_at)
+		SELECT $1, phone_hmac, false, now() FROM idn_user WHERE id=$1`, uid); err != nil {
+		t.Fatal(err)
+	}
+	if s, e := h.do(http.MethodGet, "/api/admin/v1/roles", admTok, nil); s != http.StatusForbidden || e.Code != 4 {
+		t.Fatalf("需二次验证应 403/4: %d %+v", s, e)
+	}
+	// 发送验证码（开发态固定码 123456）→ 校验 → 放行
+	if s, e := h.do(http.MethodPost, "/api/admin/v1/auth/step-up/code", admTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("发送二次验证码失败: %d %+v", s, e)
+	}
+	if s, e := h.do(http.MethodPost, "/api/admin/v1/auth/step-up", admTok, map[string]any{"code": "123456"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("二次验证失败: %d %+v", s, e)
+	}
+	if s, _ := h.do(http.MethodGet, "/api/admin/v1/roles", admTok, nil); s != http.StatusOK {
+		t.Fatalf("二次验证后应放行: %d", s)
+	}
+	// 3) 关闭开关后不再拦截
+	setSetting("admin.security.sms_2fa_enabled", "false", "bool")
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO idn_login_attempt (user_id, phone_hmac, success, created_at)
+		SELECT $1, phone_hmac, false, now() FROM idn_user WHERE id=$1`, uid); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := h.do(http.MethodGet, "/api/admin/v1/roles", admTok, nil); s != http.StatusOK {
+		t.Fatalf("关闭二次验证后应放行: %d", s)
+	}
+}
+
 // 智能客服（p5 §5）：开关门禁；平台主题作答，越界转人工；上游故障降级。
 func TestIntegrationAICustomerService(t *testing.T) {
 	h := newTestApp(t)

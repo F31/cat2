@@ -47,6 +47,12 @@ type AdminUserFilter struct {
 type Facade interface {
 	// IsAdmin 是否平台管理员（后台路由硬门槛；p4 细化五角色）。
 	IsAdmin(ctx context.Context, userID int64) (bool, error)
+	// AdminStepUpRequired 后台账号是否需短信二次验证（登录失败达阈值；p4 §3.4）。
+	AdminStepUpRequired(ctx context.Context, userID int64) (bool, error)
+	// SendStepUpCode 发送后台二次验证短信（复用登录短信通道）。
+	SendStepUpCode(ctx context.Context, userID int64) error
+	// VerifyStepUpCode 校验后台二次验证码；成功清除失败计数。
+	VerifyStepUpCode(ctx context.Context, userID int64, code string) error
 	// GrantAdmin 授予/取消平台管理员（运维引导）。
 	GrantAdmin(ctx context.Context, userID int64, admin bool) error
 	// Authenticate 校验 Access Token，返回用户 ID 与授权版本。

@@ -76,11 +76,11 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/audits", Handler: m.auth(m.handleAudits), Admin: true},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/audits/{id}", Handler: m.auth(m.handleAuditDetail), Admin: true},
 		// 业务配置（配置三层第三层：后台改，热生效）
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/settings", Handler: m.auth(m.handleSettings), Admin: true},
-		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/settings/{key}", Handler: m.auth(m.handleSetSetting), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/settings", Handler: m.auth(m.handleSettings), Admin: true, Perm: "ops:settings:read"},
+		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/settings/{key}", Handler: m.auth(m.handleSetSetting), Admin: true, Perm: "ops:settings:set"},
 		// 特性开关（灰度发布）：后台配置 + 客户端评估
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/feature-flags", Handler: m.auth(m.handleFlags), Admin: true},
-		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/feature-flags/{key}", Handler: m.auth(m.handleSetFlag), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/feature-flags", Handler: m.auth(m.handleFlags), Admin: true, Perm: "ops:settings:read"},
+		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/feature-flags/{key}", Handler: m.auth(m.handleSetFlag), Admin: true, Perm: "ops:settings:set"},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/flags", Handler: m.auth(m.handleMyFlags)},
 	)
 	r.Settings = append(r.Settings, Schemas...)
@@ -123,6 +123,29 @@ func (m *Module) handleList(w http.ResponseWriter, req *http.Request) {
 var Schemas = []settings.Schema{
 	{Key: "audit.retention_days", Type: settings.TypeInt, Default: "180", Description: "审计留存天数（资金/合规类建议 ≥1095）"},
 	{Key: "audit.denied_surge_threshold", Type: settings.TypeInt, Default: "50", Description: "5 分钟内 denied 审计告警阈值"},
+
+	// 系统设置 · 登录安全（p4 §3.4；超管/运营管理员在后台「系统设置」配置）
+	{Key: "admin.security.login_fail_threshold", Type: settings.TypeInt, Default: "3",
+		Description: "后台账号连续登录失败达到该次数触发短信二次验证"},
+	{Key: "admin.security.sms_2fa_enabled", Type: settings.TypeBool, Default: "true",
+		Description: "是否启用短信二次验证（登录失败触发）"},
+	{Key: "admin.security.ip_allowlist", Type: settings.TypeString, Default: "",
+		Description: "后台 IP 白名单（逗号分隔，支持前缀如 10.0.0.；空=不限制）"},
+
+	// 系统设置 · 密码策略（独立后台账号启用后生效，预留）
+	{Key: "admin.security.password_min_len", Type: settings.TypeInt, Default: "8", Description: "后台密码最小长度"},
+	{Key: "admin.security.password_policy", Type: settings.TypeString, Default: "upper,lower,digit",
+		Description: "后台密码复杂度（逗号分隔：upper/lower/digit/symbol）"},
+
+	// 系统设置 · 短信网关
+	{Key: "sms.gateway.provider", Type: settings.TypeString, Default: "dev", Description: "短信网关供应商（dev=日志模拟）"},
+	{Key: "sms.gateway.endpoint", Type: settings.TypeString, Default: "", Description: "短信网关接入地址"},
+	{Key: "sms.gateway.sign", Type: settings.TypeString, Default: "", Description: "短信签名"},
+
+	// 系统设置 · AI 网关（ADR-003）
+	{Key: "ai.gateway.enabled", Type: settings.TypeBool, Default: "false", Description: "是否启用独立 AI 网关（安全围栏）"},
+	{Key: "ai.gateway.url", Type: settings.TypeString, Default: "", Description: "AI 网关接入地址"},
+	{Key: "ai.gateway.key", Type: settings.TypeString, Default: "", Description: "AI 网关密钥（敏感；仅超管可见/修改）"},
 }
 
 // handleAudits 审计查询（五维筛选）。

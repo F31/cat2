@@ -253,6 +253,17 @@ func (s *Store) RecentFailures(ctx context.Context, phoneHMAC []byte) (int, time
 	return n, *last, nil
 }
 
+// FailuresSinceLastSuccess 自最近一次成功登录以来的失败次数（后台二次验证判定，p4 §3.4）。
+func (s *Store) FailuresSinceLastSuccess(ctx context.Context, phoneHMAC []byte) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `
+		SELECT count(1) FROM idn_login_attempt a
+		WHERE a.phone_hmac=$1 AND a.success=false
+		  AND a.created_at > COALESCE((SELECT max(created_at) FROM idn_login_attempt
+		      WHERE phone_hmac=$1 AND success=true), 'epoch'::timestamptz)`, phoneHMAC).Scan(&n)
+	return n, err
+}
+
 // SaveSMSCode 保存验证码哈希（同手机号历史未用码即作废）。
 func (s *Store) SaveSMSCode(ctx context.Context, phoneHMAC, codeHash []byte, ttl time.Duration) error {
 	return s.pool.InTx(ctx, func(tx db.Tx) error {

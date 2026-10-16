@@ -366,6 +366,11 @@ type AdminAuditsParams struct {
 	Limit     *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// AdminStepUpVerifyJSONBody defines parameters for AdminStepUpVerify.
+type AdminStepUpVerifyJSONBody struct {
+	Code string `json:"code"`
+}
+
 // AdminGrantBadgeJSONBody defines parameters for AdminGrantBadge.
 type AdminGrantBadgeJSONBody struct {
 	Code        string                             `json:"code"`
@@ -578,6 +583,9 @@ type AdminResolveAffiliationJSONRequestBody AdminResolveAffiliationJSONBody
 // AdminAiSavePromptJSONRequestBody defines body for AdminAiSavePrompt for application/json ContentType.
 type AdminAiSavePromptJSONRequestBody AdminAiSavePromptJSONBody
 
+// AdminStepUpVerifyJSONRequestBody defines body for AdminStepUpVerify for application/json ContentType.
+type AdminStepUpVerifyJSONRequestBody AdminStepUpVerifyJSONBody
+
 // AdminGrantBadgeJSONRequestBody defines body for AdminGrantBadge for application/json ContentType.
 type AdminGrantBadgeJSONRequestBody AdminGrantBadgeJSONBody
 
@@ -670,6 +678,12 @@ type ServerInterface interface {
 	// AdminAuditDetail 审计详情（含哈希链字段与快照）
 	// (GET /audits/{id})
 	AdminAuditDetail(w http.ResponseWriter, r *http.Request, id string)
+	// AdminStepUpVerify 校验后台短信二次验证码（成功清除失败计数）
+	// (POST /auth/step-up)
+	AdminStepUpVerify(w http.ResponseWriter, r *http.Request)
+	// AdminStepUpSendCode 发送后台短信二次验证码（登录失败触发；p4 §3.4）
+	// (POST /auth/step-up/code)
+	AdminStepUpSendCode(w http.ResponseWriter, r *http.Request)
 	// AdminBadgeDefs 认证标识定义列表（后台可配，新增类型不改接口）
 	// (GET /badges)
 	AdminBadgeDefs(w http.ResponseWriter, r *http.Request)
@@ -1144,6 +1158,34 @@ func (siw *ServerInterfaceWrapper) AdminAuditDetail(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminAuditDetail(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminStepUpVerify operation middleware
+func (siw *ServerInterfaceWrapper) AdminStepUpVerify(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminStepUpVerify(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminStepUpSendCode operation middleware
+func (siw *ServerInterfaceWrapper) AdminStepUpSendCode(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminStepUpSendCode(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2667,6 +2709,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/menus", wrapper.AdminMenus)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/step-up/code", wrapper.AdminStepUpSendCode)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/step-up", wrapper.AdminStepUpVerify)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/jobs", wrapper.AdminJobs)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/jobs/{name}/run", wrapper.AdminRunJob)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/memberships/{id}/transfer-master", wrapper.AdminTransferMaster)

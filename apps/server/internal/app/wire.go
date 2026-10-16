@@ -136,9 +136,10 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	auditRec := audit.NewRecorder(auditStore)
 
 	// 微信：配了 appid/secret 走真实接口，否则开发态假实现（登录链路可端到端跑通）
+	settingsReg := settings.NewRegistry(pg.NewSettings(pool))
 	identityDeps := identity.Deps{
 		Pool: pool, Bus: bus, Encryptor: encryptor, BlindKey: blindKey, DevSMSCode: cfg.DevSMSCode,
-		Audit: auditRec,
+		Audit: auditRec, Settings: settingsReg,
 	}
 	if cfg.WeChatAppID != "" && cfg.WeChatAppSecret != "" {
 		authClient := wechat.NewAuthClient(cfg.WeChatAppID, cfg.WeChatAppSecret)
@@ -192,7 +193,6 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	socialMod := social.New(social.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Resolver: entityReg,
 	})
-	settingsReg := settings.NewRegistry(pg.NewSettings(pool))
 	msgMod := msg.New(msg.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine,
 		Resolver: entityReg, Realtime: local.RealtimeNoop{}, Audit: auditRec, Storage: storage,
@@ -278,7 +278,10 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		for _, rt := range reg.Routes {
 			h := rt.Handler
 			if rt.Admin {
-				h = requireAdmin(identityMod.Facade(), a.RBAC, a.Audit, rt.Handler) // 后台路由硬门槛（超管或任一角色）
+				if rt.Perm != "" {
+					h = requirePerm(a.RBAC, a.Audit, rt.Perm, h)
+				}
+				h = requireAdmin(identityMod.Facade(), a.RBAC, settingsReg, a.Audit, h) // 后台路由硬门槛（超管或任一角色）
 			}
 			a.Mux.HandleFunc(rt.Method+" "+rt.Path, h)
 		}
@@ -385,14 +388,21 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 			perms, _ := a.RBAC.Perms(req.Context(), uid)
 			mods := rbac.VisibleModules(perms)
 			canRBAC := false
+			canSettings := false
 			for _, p := range perms {
 				if p == rbac.PermRBACManage {
 					canRBAC = true
+				}
+				if p == rbac.PermSettingsRead || p == rbac.PermSettingsSet {
+					canSettings = true
 				}
 			}
 			filtered := make([]module.AdminSection, 0, len(adminMenus))
 			for _, s := range adminMenus {
 				if s.Key == "ops.rbac" && !canRBAC {
+					continue
+				}
+				if s.Key == "ops.system_settings" && !canSettings {
 					continue
 				}
 				if mods[s.Module] {
@@ -404,7 +414,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "ok", "data": map[string]any{"items": items}})
 	}
-	a.Mux.HandleFunc("GET /api/admin/v1/menus", requireAdmin(identityMod.Facade(), a.RBAC, a.Audit, menusHandler))
+	a.Mux.HandleFunc("GET /api/admin/v1/menus", requireAdmin(identityMod.Facade(), a.RBAC, settingsReg, a.Audit, menusHandler))
 
 	// ---- 后台 RBAC 配置（p4 §3，ADR-002）----
 	adminJSON := func(w http.ResponseWriter, code int, msg string, data any) {
@@ -430,7 +440,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		return uid, super, perms
 	}
 	rbacAdmin := func(next http.HandlerFunc) http.HandlerFunc {
-		return requireAdmin(identityMod.Facade(), a.RBAC, a.Audit, next)
+		return requireAdmin(identityMod.Facade(), a.RBAC, settingsReg, a.Audit, next)
 	}
 	rbacWrite := func(next http.HandlerFunc) http.HandlerFunc {
 		return rbacAdmin(requirePerm(a.RBAC, a.Audit, rbac.PermRBACManage, next))
@@ -529,6 +539,49 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		adminJSON(w, 0, "ok", map[string]any{"ok": true})
 	}))
 
+	// 后台短信二次验证（p4 §3.4）：仅需已登录（令牌有效），不经后台准入/权限门禁
+	adminTokenAuth := func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, req *http.Request) {
+			token := ""
+			if h := req.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
+				token = strings.TrimPrefix(h, "Bearer ")
+			}
+			if token == "" {
+				http.Error(w, `{"code":2,"message":"未登录"}`, http.StatusUnauthorized)
+				return
+			}
+			uid, _, err := identityMod.Facade().Authenticate(req.Context(), token)
+			if err != nil {
+				http.Error(w, `{"code":2,"message":"登录已失效"}`, http.StatusUnauthorized)
+				return
+			}
+			next(w, req.WithContext(context.WithValue(req.Context(), adminCtxKey{}, uid)))
+		}
+	}
+	a.Mux.HandleFunc("POST /api/admin/v1/auth/step-up/code", adminTokenAuth(func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := adminUID(req)
+		if err := identityMod.Facade().SendStepUpCode(req.Context(), uid); err != nil {
+			adminJSON(w, 1, "验证码发送失败", nil)
+			return
+		}
+		adminJSON(w, 0, "ok", map[string]any{"sent": true})
+	}))
+	a.Mux.HandleFunc("POST /api/admin/v1/auth/step-up", adminTokenAuth(func(w http.ResponseWriter, req *http.Request) {
+		var body struct {
+			Code string `json:"code"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			adminJSON(w, 1, "参数错误", nil)
+			return
+		}
+		uid, _ := adminUID(req)
+		if err := identityMod.Facade().VerifyStepUpCode(req.Context(), uid, body.Code); err != nil {
+			adminJSON(w, 1, "验证码错误", nil)
+			return
+		}
+		adminJSON(w, 0, "ok", map[string]any{"ok": true})
+	}))
+
 	// 指标导出（Prometheus 文本格式）
 	a.Mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
@@ -567,9 +620,9 @@ func toSchedulerJobs(jobs []module.JobDef) []scheduler.Job {
 	return out
 }
 
-// requireAdmin 后台路由守卫：先认证令牌，再校验后台准入（超管或任一 RBAC 角色）。
-// 未登录→401；非管理员→403 并记 denied 审计（防爆破，p4 §3.3）。
-func requireAdmin(id idcontract.Facade, rbacStore *rbac.Store, rec *audit.Recorder, next http.HandlerFunc) http.HandlerFunc {
+// requireAdmin 后台路由守卫：先认证令牌，再校验后台准入（超管或任一 RBAC 角色），
+// 再校验 IP 白名单与短信二次验证（登录失败达阈值，p4 §3.4）。未登录→401；不允许→403 并记 denied 审计。
+func requireAdmin(id idcontract.Facade, rbacStore *rbac.Store, settingsReg *settings.Registry, rec *audit.Recorder, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		token := ""
 		if h := req.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
@@ -590,8 +643,43 @@ func requireAdmin(id idcontract.Facade, rbacStore *rbac.Store, rec *audit.Record
 			http.Error(w, `{"code":3,"message":"无后台权限"}`, http.StatusForbidden)
 			return
 		}
+		// IP 白名单（超管后台可配；空=不限制，支持前缀）
+		if settingsReg != nil {
+			if list, err := settingsReg.Get(req.Context(), 1, "admin.security.ip_allowlist"); err == nil && strings.TrimSpace(list) != "" {
+				if !ipAllowed(clientIP(req), list) {
+					recordAdminDenied(req, rec, uid, "admin:ip:denied")
+					http.Error(w, `{"code":3,"message":"IP 不在允许范围"}`, http.StatusForbidden)
+					return
+				}
+			}
+			// 短信二次验证：登录失败达阈值（超管可配阈值/开关）
+			if en, err := settingsReg.Get(req.Context(), 1, "admin.security.sms_2fa_enabled"); err == nil && strings.EqualFold(strings.TrimSpace(en), "true") {
+				if need, _ := id.AdminStepUpRequired(req.Context(), uid); need {
+					http.Error(w, `{"code":4,"message":"需短信二次验证"}`, http.StatusForbidden)
+					return
+				}
+			}
+		}
 		next(w, req.WithContext(context.WithValue(req.Context(), adminCtxKey{}, uid)))
 	}
+}
+
+// ipAllowed 白名单匹配：逗号分隔；支持精确与前缀（如 10.0.0.）。
+func ipAllowed(ip, list string) bool {
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return false
+	}
+	for _, item := range strings.Split(list, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if ip == item || strings.HasPrefix(ip, item) {
+			return true
+		}
+	}
+	return false
 }
 
 // adminCtxKey 后台已认证用户（requireAdmin 注入，requirePerm 读取）。
@@ -699,7 +787,7 @@ func adminSectionsFor(mods []module.Module) []module.AdminSection {
 		"circle":     {{Key: "circle.circles", Label: "圈子管理", Path: "/circles", Module: "circle"}},
 		"profile":    {{Key: "profile.templates", Label: "画像字段模板", Path: "/profile-templates", Module: "profile"}},
 		"notice":     {{Key: "notice.templates", Label: "通知模板", Path: "/templates", Module: "notice"}},
-		"ops":        {{Key: "ops.dead_letters", Label: "死信队列", Path: "/dead-letters", Module: "ops"}, {Key: "ops.rbac", Label: "角色与权限", Path: "/roles", Module: "ops"}},
+		"ops":        {{Key: "ops.dead_letters", Label: "死信队列", Path: "/dead-letters", Module: "ops"}, {Key: "ops.rbac", Label: "角色与权限", Path: "/roles", Module: "ops"}, {Key: "ops.system_settings", Label: "系统设置", Path: "/system-settings", Module: "ops"}},
 		"dict":       {{Key: "dict.taxonomy", Label: "主体类型与选项", Path: "/dict", Module: "dict"}},
 	}
 	var out []module.AdminSection
