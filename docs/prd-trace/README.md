@@ -68,6 +68,15 @@
 | 各类认证必填材料与 8.4 一致、驳回可重提 | ✅ | `modules/verify`（cert_type 1–5）；`TestIntegrationVerifyRealname` |
 | 组织管理员审核成员核验；超 7 天平台代处理 | ◐ | 平台代处理走审核队列（trust SLA）；**组织侧管理员审核面板归 p4** |
 
+## AI 一期（p5，受开关门禁）
+
+| 验收点 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 一句话入驻/发布草稿/自然语言搜索 | ◐ | 框架就绪（`ai` 模块 + `pages/card|content|search` 入口，默认关）；**产品 #3 确认纳入一期后开启开关即上线** |
+| AI 不可用关闭开关无影响（原表单全链路） | ✅ | `TestIntegrationAIFlagGateAndDegrade` |
+| 采纳率与成本可观测 | ✅ | `catcube_ai_adopted_total`/`catcube_ai_cost_fen_total`；`ai_call_log` 留痕 |
+| 隐私红线（手机号/证件号不进提示词） | ✅ | `sanitizeForPrompt` 单测 + 集成测试 |
+
 ## 发布与管理
 
 | 验收点 | 状态 | 证据 / 说明 |

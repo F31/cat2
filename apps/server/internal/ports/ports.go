@@ -105,3 +105,31 @@ type LLM interface {
 	Complete(ctx context.Context, prompt string, schema map[string]any) ([]byte, error)
 	Embed(ctx context.Context, text string) ([]float32, error)
 }
+
+// OCRRequest 文字识别请求。
+type OCRRequest struct {
+	ImageURL string // 图片地址（预签名 URL，不传原图二进制）
+	Purpose  string // 用途：cert/qualification/invoice
+}
+
+// OCRResult 识别结果。
+type OCRResult struct {
+	Text   string            `json:"text"`
+	Fields map[string]string `json:"fields,omitempty"` // 结构化字段（如姓名/证件号/企业名）
+}
+
+// OCR 文字识别端口（p5 §1.2；一期可不用，接口先行）。
+type OCR interface {
+	Recognize(ctx context.Context, req OCRRequest) (OCRResult, error)
+}
+
+// ASRRequest 语音识别请求。
+type ASRRequest struct {
+	VoiceURL string // 语音地址（预签名 URL）
+	Format   string // mp3/wav/...
+}
+
+// ASR 语音识别端口（一句话入驻的语音输入）。
+type ASR interface {
+	Transcribe(ctx context.Context, req ASRRequest) (string, error)
+}

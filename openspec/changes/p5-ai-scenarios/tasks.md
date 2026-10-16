@@ -5,7 +5,7 @@
 ## 1. ai 模块（R0）
 
 - [x] 1.1 模块结构 `modules/ai`（R0，无同阶依赖：认证经 `AuthFunc` 注入）；迁移 `ai_call_log`（场景/用户/token/耗时/outcome/adopted/input_len）；`admin/` 页面归 p4
-- [ ] 1.2 `ports/llm`、`ports/ocr`、`ports/asr` 接口与供应商适配器（境内模型，依 #4 结论）；契约测试套件
+- [x] 1.2 端口与契约套件：`ports.LLM`（已有）+ 新增 `ports.OCR`/`ports.ASR`；开发态适配器 `llm.DevClient/DevOCR/DevASR`（含 `FAULT` 故障模拟）并接入 `ports/suite`（`TestLLMContract`/`TestOCRContract`/`TestASRContract`）；境内供应商适配器待 #4 结论后接入
 - [x] 1.3 contract：`OnboardDraft`/`PublishDraft`（Draft）/`Search`（Translate2Query）/`Feedback`/`Enabled`；**降级签名**：开关关闭或上游失败统一返回 `030001`（HTTP 503），前端回退原表单
 - [x] 1.4 提示词版本：`ai_prompt(feature,version,body,approved)`；生效规则=**仅 approved=true 的最高版本**，否则用代码默认 `code-v1`；`ai_call_log.prompt_version` 留痕；集成测试验证未评测版本不生效、评测通过即生效
 - [x] 1.5 配额与成本：SettingsSchema `ai.quota.user.daily`/`ai.budget.fen.daily`/`ai.cost.fen_per_1ktoken`；按用户/日计数 + 预算用尽 → `030004`/429；成本指标 `catcube_ai_cost_fen_total`、超限计数 `catcube_ai_quota_exceeded_total`；**并修复配置三层缺口**：`pg.Settings` 存储接入 + 后台 `GET/PUT /api/admin/v1/settings` + admin-web「业务配置」页（热生效）

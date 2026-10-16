@@ -26,6 +26,13 @@
 | 审计链完整性 | `catcube_audit_chain_ok` | gauge | 1=近窗链条校验通过，0=断链/篡改 | `kernel.audit_verify`（1 小时） |
 | 履约兜底 | `catcube_fulfillment_stuck` | gauge | 重试超阈/死信履约单数（付了钱没开通） | `trade.fulfill`（30s） |
 | 事件投递 | `catcube_outbox_relayed_total` / `catcube_outbox_retry_total` | counter | 成功投递/重试次数 | `eventbus.Relay` |
+| AI 调用 | `catcube_ai_call_total` | counter | AI 调用次数（含降级尝试） | `ai` 模块 |
+| AI 降级 | `catcube_ai_degraded_total` | counter | 开关关闭/上游失败/解析失败降级次数 | `ai` 模块 |
+| AI 采纳率 | `catcube_ai_adopted_total` / `catcube_ai_rejected_total` | counter | 采纳/放弃反馈（采纳率 = 采纳/(采纳+放弃)） | `ai.Feedback` |
+| AI 成本 | `catcube_ai_cost_fen_total` / `catcube_ai_tokens_total` | counter | 成本（分，按 `ai.cost.fen_per_1ktoken` 估算）与 token 量 | `ai` 模块 |
+| AI 配额 | `catcube_ai_quota_exceeded_total` | counter | 日额度/预算用尽次数 | `ai.checkQuota` |
+| AI 隐私 | `catcube_ai_privacy_scrub_total` | counter | 提示词中剥离的敏感信息条数（应持续为 0 表示上游无泄漏面） | `ai.sanitizeForPrompt` |
+| AI 输出收敛 | `catcube_ai_output_dropped_total` | counter | 模型幻觉字段被丢弃数（异常升高说明提示词需调优） | `ai` 模块 |
 
 `*` 为预留指标（口径已定，随 p5/OTel 或后续增量补齐）；其余均已实现并有测试覆盖（见 `TestIntegrationBusinessMetrics`）。
 

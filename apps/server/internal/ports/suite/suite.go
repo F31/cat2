@@ -159,3 +159,48 @@ func Realtime(t *testing.T, r ports.Realtime) {
 }
 
 var _ = io.Discard
+
+// LLM 大模型端口契约（适配器只需满足结构化输出与失败语义）。
+func LLM(t *testing.T, l ports.LLM) {
+	t.Helper()
+	ctx := context.Background()
+	raw, err := l.Complete(ctx, "请输出 JSON（search）\n文本:上海找钣金", map[string]any{"type": "object"})
+	if err != nil {
+		t.Fatalf("Complete 失败: %v", err)
+	}
+	var v map[string]any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		t.Fatalf("应返回合法 JSON: %v raw=%s", err, raw)
+	}
+	vec, err := l.Embed(ctx, "供应商")
+	if err != nil {
+		t.Fatalf("Embed 失败: %v", err)
+	}
+	if len(vec) == 0 {
+		t.Fatal("向量不应为空")
+	}
+}
+
+// OCR 文字识别端口契约。
+func OCR(t *testing.T, o ports.OCR) {
+	t.Helper()
+	res, err := o.Recognize(context.Background(), ports.OCRRequest{ImageURL: "http://example/x.png", Purpose: "cert"})
+	if err != nil {
+		t.Fatalf("Recognize 失败: %v", err)
+	}
+	if res.Text == "" && len(res.Fields) == 0 {
+		t.Fatal("识别结果不应全空")
+	}
+}
+
+// ASR 语音识别端口契约。
+func ASR(t *testing.T, a ports.ASR) {
+	t.Helper()
+	text, err := a.Transcribe(context.Background(), ports.ASRRequest{VoiceURL: "http://example/x.mp3", Format: "mp3"})
+	if err != nil {
+		t.Fatalf("Transcribe 失败: %v", err)
+	}
+	if strings.TrimSpace(text) == "" {
+		t.Fatal("识别文本不应为空")
+	}
+}

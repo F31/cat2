@@ -70,3 +70,32 @@ func extractUserText(prompt string) string {
 	}
 	return "未识别"
 }
+
+// DevOCR 开发态 OCR：返回可预测结构（真实供应商在接入时替换）。
+type DevOCR struct{}
+
+func NewDevOCR() *DevOCR { return &DevOCR{} }
+
+func (DevOCR) Recognize(_ context.Context, req ports.OCRRequest) (ports.OCRResult, error) {
+	if strings.Contains(req.ImageURL, "FAULT") {
+		return ports.OCRResult{}, errors.New("ocr: 上游不可用（dev 模拟）")
+	}
+	return ports.OCRResult{Text: "样例识别文本", Fields: map[string]string{"org_name": "样例企业"}}, nil
+}
+
+// DevASR 开发态语音识别。
+type DevASR struct{}
+
+func NewDevASR() *DevASR { return &DevASR{} }
+
+func (DevASR) Transcribe(_ context.Context, req ports.ASRRequest) (string, error) {
+	if strings.Contains(req.VoiceURL, "FAULT") {
+		return "", errors.New("asr: 上游不可用（dev 模拟）")
+	}
+	return "我是华东重工采购总监，寻找钣金供应商", nil
+}
+
+var (
+	_ ports.OCR = DevOCR{}
+	_ ports.ASR = DevASR{}
+)
