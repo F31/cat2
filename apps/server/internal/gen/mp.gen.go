@@ -1294,6 +1294,12 @@ type ApplyAffiliationJSONBody struct {
 	Role         *string `json:"role,omitempty"`
 }
 
+// PendingAffiliationsParams defines parameters for PendingAffiliations.
+type PendingAffiliationsParams struct {
+	OrgId string `form:"org_id" json:"org_id"`
+	Limit *int   `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // VerifyAffiliationJSONBody defines parameters for VerifyAffiliation.
 type VerifyAffiliationJSONBody struct {
 	Pass   bool    `json:"pass"`
@@ -1867,6 +1873,9 @@ type ServerInterface interface {
 	// MyAffiliations 我的单位归属（含待核验/已核验/主单位）
 	// (GET /affiliations/mine)
 	MyAffiliations(w http.ResponseWriter, r *http.Request)
+	// PendingAffiliations 组织待核验归属（组织管理员视角；红点数据）
+	// (GET /affiliations/pending)
+	PendingAffiliations(w http.ResponseWriter, r *http.Request, params PendingAffiliationsParams)
 	// SetPrimaryAffiliation 设为主单位（仅已核验归属，唯一）
 	// (POST /affiliations/{id}/primary)
 	SetPrimaryAffiliation(w http.ResponseWriter, r *http.Request, id string)
@@ -2266,6 +2275,52 @@ func (siw *ServerInterfaceWrapper) MyAffiliations(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MyAffiliations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PendingAffiliations operation middleware
+func (siw *ServerInterfaceWrapper) PendingAffiliations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PendingAffiliationsParams
+
+	// ------------- Required query parameter "org_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "org_id", r.URL.Query(), &params.OrgId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "org_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PendingAffiliations(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6017,6 +6072,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/ai/features", wrapper.AiFeatures)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/certs/{id}/review", wrapper.ReviewCertByOrg)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/affiliations", wrapper.ApplyAffiliation)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/affiliations/pending", wrapper.PendingAffiliations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/affiliations/mine", wrapper.MyAffiliations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/affiliations/{id}/verify", wrapper.VerifyAffiliation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/affiliations/{id}/primary", wrapper.SetPrimaryAffiliation)

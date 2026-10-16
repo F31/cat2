@@ -63,6 +63,7 @@ func (m *Module) Register(r *module.Registry) error {
 		// 一人多单位（归属核验）
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/affiliations", Handler: m.auth(m.handleApplyAffiliation)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/affiliations/mine", Handler: m.auth(m.handleMyAffiliations)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/affiliations/pending", Handler: m.auth(m.handlePendingAffiliations)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/affiliations/{id}/verify", Handler: m.auth(m.handleVerifyAffiliation)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/affiliations/{id}/primary", Handler: m.auth(m.handleSetPrimary)},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/affiliations/{id}/resolve", Handler: m.auth(m.handleResolveAffiliation), Admin: true},
@@ -77,7 +78,7 @@ func (m *Module) Register(r *module.Registry) error {
 		audit.Point{Action: "verify:affiliation:resolve", Path: "/api/admin/v1/affiliations/{id}/resolve", Required: true, LogFailed: true, Module: "verify"},
 		audit.Point{Action: "verify:org_admin:reset", Path: "/api/admin/v1/orgs/{id}/admins/reset", Required: true, LogFailed: true, Module: "verify"},
 	)
-	r.StateMachines = append(r.StateMachines, domain.RealnameMachine)
+	r.StateMachines = append(r.StateMachines, domain.RealnameMachine, domain.MachineCert, domain.MachineAffiliation)
 	r.CapProviders = append(r.CapProviders, capProvider{m})
 	return nil
 }
@@ -104,6 +105,9 @@ func (m *Module) ApplyAffiliation(ctx context.Context, userID, orgID int64, role
 }
 func (m *Module) AffiliationsOf(ctx context.Context, userID int64) ([]contract.Affiliation, error) {
 	return m.svc.AffiliationsOf(ctx, userID)
+}
+func (m *Module) PendingAffiliations(ctx context.Context, orgID, reviewerID int64, limit int) ([]contract.Affiliation, error) {
+	return m.svc.PendingAffiliations(ctx, orgID, reviewerID, limit)
 }
 func (m *Module) VerifyAffiliation(ctx context.Context, affID, reviewerID int64, pass bool, reason string) error {
 	return m.svc.VerifyAffiliation(ctx, affID, reviewerID, pass, reason)

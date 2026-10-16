@@ -57,6 +57,56 @@ func ValidName(s string) bool {
 	return t != "" && len([]rune(t)) <= 64
 }
 
+// 状态机 #3 认证申请 与 #4 身份核验（p4 §6.3；表驱动穷举校验由装配根统一执行）。
+const (
+	CertStatePending  = "pending"
+	CertStateApproved = "approved"
+	CertStateRejected = "rejected"
+
+	CertEventSubmit  = "submit"
+	CertEventApprove = "approve"
+	CertEventReject  = "reject"
+	CertEventRetry   = "retry"
+)
+
+// MachineCert 状态机 #3：待审核 → 已通过/已驳回；驳回可修改重提。
+var MachineCert = statemachine.Def{
+	Name:     "verify.cert",
+	States:   []string{CertStatePending, CertStateApproved, CertStateRejected},
+	Terminal: []string{CertStateApproved},
+	Transitions: []statemachine.Transition{
+		{From: CertStatePending, Event: CertEventApprove, To: CertStateApproved, Actor: "*"},
+		{From: CertStatePending, Event: CertEventReject, To: CertStateRejected, Actor: "*"},
+		{From: CertStateRejected, Event: CertEventRetry, To: CertStatePending, Actor: "*"},
+		{From: CertStateRejected, Event: CertEventSubmit, To: CertStatePending, Actor: "*"},
+	},
+}
+
+const (
+	AffStatePending  = "pending"
+	AffStateVerified = "verified"
+	AffStateRejected = "rejected"
+	AffStateRevoked  = "revoked"
+
+	AffEventApply  = "apply"
+	AffEventVerify = "verify"
+	AffEventReject = "reject"
+	AffEventRevoke = "revoke"
+)
+
+// MachineAffiliation 状态机 #4：待核验 → 已核验/已驳回；已核验可撤销（不可自行改回）。
+var MachineAffiliation = statemachine.Def{
+	Name:     "verify.affiliation",
+	States:   []string{AffStatePending, AffStateVerified, AffStateRejected, AffStateRevoked},
+	Terminal: []string{AffStateRevoked},
+	Transitions: []statemachine.Transition{
+		{From: AffStatePending, Event: AffEventVerify, To: AffStateVerified, Actor: "*"},
+		{From: AffStatePending, Event: AffEventReject, To: AffStateRejected, Actor: "*"},
+		{From: AffStateVerified, Event: AffEventRevoke, To: AffStateRevoked, Actor: "*"},
+		{From: AffStateRejected, Event: AffEventApply, To: AffStatePending, Actor: "*"},
+	},
+}
+
 // StateOf 由最近一条实名认证记录推导当前状态（无记录=未实名）。
 func StateOf(status int16, has bool) string {
 	if !has {

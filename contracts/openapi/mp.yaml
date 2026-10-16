@@ -2774,6 +2774,18 @@ paths:
       responses:
         '200': { description: 归属, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /affiliations/pending:
+    get:
+      tags: [verify]
+      summary: 组织待核验归属（组织管理员视角；红点数据）
+      operationId: pendingAffiliations
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: org_id, in: query, required: true, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /affiliations/mine:
     get:
       tags: [verify]

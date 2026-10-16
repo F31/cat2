@@ -123,6 +123,8 @@ type Facade interface {
 	VerifyAffiliation(ctx context.Context, affID, reviewerID int64, pass bool, reason string) error
 	// SetPrimaryAffiliation 设为主单位（唯一）。
 	SetPrimaryAffiliation(ctx context.Context, userID, affID int64) error
+	// PendingAffiliations 某组织待核验归属（组织管理员视角；红点数据）。
+	PendingAffiliations(ctx context.Context, orgID, reviewerID int64, limit int) ([]Affiliation, error)
 	// ResolveAffiliation 平台代处理（组织管理员超 7 天未处理）。
 	ResolveAffiliation(ctx context.Context, affID, operatorID int64, pass bool, reason string) error
 

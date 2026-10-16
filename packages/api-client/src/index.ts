@@ -116,6 +116,25 @@ export interface ContentItem {
 }
 
 /** AI 生成草稿字段。 */
+/** 单位归属（一人多单位）。 */
+export interface Affiliation {
+  id: string
+  user_id: string
+  org_id: string
+  role?: string
+  is_primary: boolean
+  status: number
+  reject_reason?: string
+}
+
+/** 组织管理员。 */
+export interface OrgAdmin {
+  org_id: string
+  user_id: string
+  status: number
+  confirmed_at?: number
+}
+
 export interface AiField {
   field: string
   value: string
@@ -532,6 +551,35 @@ export function createClient(opts: ClientOptions) {
       return call<{ ref: string; phone: string }>('GET', `/aggregate/contact${qs({ ref })}`)
     },
     // ---- AI（p5 框架；不可用时抛 code=30001，前端回退原表单/关键词搜索） ----
+    // ---- 认证全类型与组织机制（p4 §6） ----
+    reviewCertByOrg(id: string, pass: boolean, reason = '') {
+      return call<{ reviewed: boolean }>('POST', `/certs/${id}/review`, { pass, reason })
+    },
+    applyAffiliation(orgId: string, role: string, proofFileIds: string[] = []) {
+      return call<Affiliation>('POST', '/affiliations', { org_id: orgId, role, proof_file_ids: proofFileIds })
+    },
+    myAffiliations() {
+      return call<{ items: Affiliation[] }>('GET', '/affiliations/mine')
+    },
+    pendingAffiliations(orgId: string, limit = 50) {
+      return call<{ items: Affiliation[] }>('GET', `/affiliations/pending?org_id=${encodeURIComponent(orgId)}&limit=${limit}`)
+    },
+    verifyAffiliation(id: string, pass: boolean, reason = '') {
+      return call<{ verified: boolean }>('POST', `/affiliations/${id}/verify`, { pass, reason })
+    },
+    setPrimaryAffiliation(id: string) {
+      return call<{ primary: boolean }>('POST', `/affiliations/${id}/primary`, {})
+    },
+    orgAdmins(orgId: string) {
+      return call<{ items: OrgAdmin[] }>('GET', `/orgs/${orgId}/admins`)
+    },
+    inviteOrgAdmin(orgId: string, userId: string) {
+      return call<{ invited: boolean }>('POST', `/orgs/${orgId}/admins`, { user_id: userId })
+    },
+    confirmOrgAdmin(inviteId: string) {
+      return call<{ confirmed: boolean }>('POST', `/org-admin-invites/${inviteId}/confirm`, {})
+    },
+
     aiFeatures() {
       return call<AiFeatures>('GET', '/ai/features')
     },

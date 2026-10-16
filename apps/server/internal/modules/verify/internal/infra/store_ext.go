@@ -121,6 +121,28 @@ func (s *Store) OrphanAffiliations(ctx context.Context, orgID int64, olderThanDa
 	return out, rows.Err()
 }
 
+// PendingAffiliations 组织待核验归属。
+func (s *Store) PendingAffiliations(ctx context.Context, orgID int64, limit int) ([]Affiliation, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+affCols+` FROM vfy_affiliation WHERE org_id=$1 AND status=0 ORDER BY created_at LIMIT $2`, orgID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Affiliation
+	for rows.Next() {
+		a, err := scanAff(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // InsertOrgAdmin 邀请管理员（待确认）。
 func (s *Store) InsertOrgAdmin(ctx context.Context, tx db.Tx, id, orgID, inviterID, inviteeID int64) error {
 	_, err := tx.Exec(ctx, `
@@ -256,4 +278,16 @@ func scanCertFull(row pgx.Row) (Cert, error) {
 	}
 	_ = json.Unmarshal(material, &c.MaterialIDs)
 	return c, err
+}
+
+// LatestOfType 某账号某类认证的最近一条。
+func (s *Store) LatestOfType(ctx context.Context, userID int64, certType int16) (Cert, error) {
+	return scanCertFull(s.pool.QueryRow(ctx, `
+		SELECT `+certCols+`, reviewer_type FROM vfy_certification
+		WHERE user_id=$1 AND cert_type=$2 ORDER BY submitted_at DESC LIMIT 1`, userID, certType))
+}
+
+// GetAffiliationByUserOrg 按 user+org 取归属。
+func (s *Store) GetAffiliationByUserOrg(ctx context.Context, userID, orgID int64) (Affiliation, error) {
+	return scanAff(s.pool.QueryRow(ctx, `SELECT `+affCols+` FROM vfy_affiliation WHERE user_id=$1 AND org_id=$2`, userID, orgID))
 }

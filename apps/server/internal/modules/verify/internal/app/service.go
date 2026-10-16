@@ -23,11 +23,14 @@ import (
 type Repo interface {
 	Insert(ctx context.Context, tx db.Tx, c infra.Cert) error
 	GetCert(ctx context.Context, id int64) (infra.Cert, error)
+	LatestOfType(ctx context.Context, userID int64, certType int16) (infra.Cert, error)
 	InsertPending(ctx context.Context, tx db.Tx, c infra.Cert, reviewerType int16, extra []byte) error
 	DecideCert(ctx context.Context, tx db.Tx, id, reviewerID int64, status int16, reason string) (bool, error)
 	PendingCerts(ctx context.Context, reviewerType int16, orgID int64, limit int) ([]infra.Cert, error)
 	InsertAffiliation(ctx context.Context, tx db.Tx, a infra.Affiliation) error
 	GetAffiliation(ctx context.Context, id int64) (infra.Affiliation, error)
+	GetAffiliationByUserOrg(ctx context.Context, userID, orgID int64) (infra.Affiliation, error)
+	PendingAffiliations(ctx context.Context, orgID int64, limit int) ([]infra.Affiliation, error)
 	AffiliationsOf(ctx context.Context, userID int64) ([]infra.Affiliation, error)
 	DecideAffiliation(ctx context.Context, tx db.Tx, id, reviewerID int64, status int16, reason string) (bool, error)
 	SetPrimary(ctx context.Context, tx db.Tx, userID, id int64) error

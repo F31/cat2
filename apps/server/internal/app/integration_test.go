@@ -4941,3 +4941,51 @@ func TestIntegrationVerifyCertTypesAndOrgAdmin(t *testing.T) {
 	}
 	_ = other
 }
+
+// 认证/核验状态机（p4 §6.3）：驳回后可重提；重复处理被拒（先到先处理语义）。
+func TestIntegrationVerifyStateMachines(t *testing.T) {
+	h := newTestApp(t)
+	uid, tok := loginUser(t, h)
+	_, admTok := loginAdmin(t, h)
+	_ = uid
+
+	// 企业认证 → 平台驳回 → 申请人可重提（状态机 rejected→pending）
+	_, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+		"cert_type": 4, "agreed": true, "material_file_ids": []int64{1},
+	})
+	var c1 struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &c1)
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/certs/%d/review", c1.ID), admTok,
+		map[string]any{"pass": false, "reason": "材料不清晰"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("驳回失败: %d %+v", s, e)
+	}
+	// 重提（新记录，进入待审）
+	_, env = h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+		"cert_type": 4, "agreed": true, "material_file_ids": []int64{2},
+	})
+	var c2 struct {
+		ID     int64 `json:"id,string"`
+		Status int16 `json:"status"`
+	}
+	_ = json.Unmarshal(env.Data, &c2)
+	if c2.ID == 0 || c2.Status != 0 {
+		t.Fatalf("驳回后应可重提: %+v", env)
+	}
+	// 重复审核同一条（已处理）→ 404/100006
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/certs/%d/review", c1.ID), admTok,
+		map[string]any{"pass": true}); s != http.StatusNotFound || e.Code != 100006 {
+		t.Fatalf("重复审核应 404/100006: %d %+v", s, e)
+	}
+	// 通过 c2 → 授 verified
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/certs/%d/review", c2.ID), admTok,
+		map[string]any{"pass": true}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("通过失败: %d %+v", s, e)
+	}
+	var badges int
+	_ = h.app.Pool.QueryRow(context.Background(), `SELECT count(1) FROM vfy_badge_grant WHERE subject_id=$1 AND badge_code='verified'`, uid).Scan(&badges)
+	if badges == 0 {
+		t.Fatal("通过应授 verified 徽标")
+	}
+}

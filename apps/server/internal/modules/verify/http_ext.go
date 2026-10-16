@@ -78,6 +78,17 @@ func (m *Module) handleMyAffiliations(w http.ResponseWriter, req *http.Request) 
 	writeData(w, map[string]any{"items": items})
 }
 
+func (m *Module) handlePendingAffiliations(w http.ResponseWriter, req *http.Request) {
+	orgID, _ := strconv.ParseInt(req.URL.Query().Get("org_id"), 10, 64)
+	limit, _ := strconv.Atoi(req.URL.Query().Get("limit"))
+	items, err := m.svc.PendingAffiliations(req.Context(), orgID, userIDFrom(req.Context()), limit)
+	if err != nil {
+		writeVerifyErrExt(w, err)
+		return
+	}
+	writeData(w, map[string]any{"items": items})
+}
+
 func (m *Module) handleVerifyAffiliation(w http.ResponseWriter, req *http.Request) {
 	affID, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
 	var body struct {

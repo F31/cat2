@@ -54,6 +54,12 @@ func (s *Service) CertifyFor(ctx context.Context, userID int64, in contract.Cert
 		raw, _ := jsonMarshal(in.Extra)
 		extra = raw
 	}
+	// 状态机 #3：仅「已驳回」记录重提时才走 rejected→pending 转移（首次提交无需转移）
+	if latest, err := s.repo.LatestOfType(ctx, userID, in.CertType); err == nil && latest.Status == contract.CertRejected {
+		if _, err := s.engine.Apply(ctx, domain.MachineCert, latest.ID, domain.CertStateRejected, domain.CertEventSubmit, "user"); err != nil {
+			return contract.Cert{}, err
+		}
+	}
 	rec := infra.Cert{ID: int64(ids.New()), UserID: userID, CertType: in.CertType,
 		TargetOrgID: in.TargetOrgID, MaterialIDs: in.MaterialFileIDs, Status: contract.CertPending}
 	if err := s.pool.InTx(ctx, func(tx db.Tx) error {
@@ -83,9 +89,15 @@ func (s *Service) ReviewCert(ctx context.Context, certID, reviewerID int64, revi
 		}
 	}
 	status := contract.CertRejected
+	event := domain.CertEventReject
 	if pass {
 		status = contract.CertApproved
+		event = domain.CertEventApprove
 		reason = ""
+	}
+	// 状态机 #3：待审核 → 已通过/已驳回
+	if _, err := s.engine.Apply(ctx, domain.MachineCert, certID, domain.CertStatePending, event, "reviewer"); err != nil {
+		return err
 	}
 	if err := s.pool.InTx(ctx, func(tx db.Tx) error {
 		if _, err := s.repo.DecideCert(ctx, tx, certID, reviewerID, status, reason); err != nil {
@@ -152,6 +164,12 @@ func (s *Service) ApplyAffiliation(ctx context.Context, userID, orgID int64, rol
 	if len(proofFileIDs) > maxMaterials {
 		return contract.Affiliation{}, ErrMaterialsRequired
 	}
+	// 状态机 #4：仅已驳回的归属重新申请时才走 rejected→pending 转移
+	if prev, err := s.repo.GetAffiliationByUserOrg(ctx, userID, orgID); err == nil && prev.Status == contract.AffRejected {
+		if _, err := s.engine.Apply(ctx, domain.MachineAffiliation, prev.ID, domain.AffStateRejected, domain.AffEventApply, "user"); err != nil {
+			return contract.Affiliation{}, err
+		}
+	}
 	a := infra.Affiliation{ID: int64(ids.New()), UserID: userID, OrgID: orgID, Role: role, ProofIDs: proofFileIDs}
 	if err := s.pool.InTx(ctx, func(tx db.Tx) error {
 		if err := s.repo.InsertAffiliation(ctx, tx, a); err != nil {
@@ -192,9 +210,15 @@ func (s *Service) VerifyAffiliation(ctx context.Context, affID, reviewerID int64
 		return ErrNoPermission
 	}
 	status := contract.AffRejected
+	event := domain.AffEventReject
 	if pass {
 		status = contract.AffVerified
+		event = domain.AffEventVerify
 		reason = ""
+	}
+	// 状态机 #4：待核验 → 已核验/已驳回
+	if _, err := s.engine.Apply(ctx, domain.MachineAffiliation, affID, domain.AffStatePending, event, "org_admin"); err != nil {
+		return err
 	}
 	var decided bool
 	if err := s.pool.InTx(ctx, func(tx db.Tx) error {
@@ -229,12 +253,34 @@ func (s *Service) SetPrimaryAffiliation(ctx context.Context, userID, affID int64
 	return s.pool.InTx(ctx, func(tx db.Tx) error { return s.repo.SetPrimary(ctx, tx, userID, affID) })
 }
 
+// PendingAffiliations 待核验列表（仅组织管理员可见）。
+func (s *Service) PendingAffiliations(ctx context.Context, orgID, reviewerID int64, limit int) ([]contract.Affiliation, error) {
+	ok, err := s.repo.ActiveOrgAdmin(ctx, orgID, reviewerID)
+	if err != nil || !ok {
+		return nil, ErrNoPermission
+	}
+	rows, err := s.repo.PendingAffiliations(ctx, orgID, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contract.Affiliation, 0, len(rows))
+	for _, a := range rows {
+		out = append(out, toAffiliation(a))
+	}
+	return out, nil
+}
+
 // ResolveAffiliation 平台代处理（组织管理员超 7 天未处理）。
 func (s *Service) ResolveAffiliation(ctx context.Context, affID, operatorID int64, pass bool, reason string) error {
 	status := contract.AffRejected
+	event := domain.AffEventReject
 	if pass {
 		status = contract.AffVerified
+		event = domain.AffEventVerify
 		reason = "平台代处理"
+	}
+	if _, err := s.engine.Apply(ctx, domain.MachineAffiliation, affID, domain.AffStatePending, event, "platform"); err != nil {
+		return err
 	}
 	var decided bool
 	if err := s.pool.InTx(ctx, func(tx db.Tx) error {

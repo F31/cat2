@@ -60,13 +60,13 @@
 
 - [x] 6.1 迁移补齐：`vfy_affiliation`（一人多单位：role/is_primary/proof/status/reviewer/SLA 可查）、`vfy_org_admin`（org/user/status/invited_by/confirmed_at），索引齐备
 - [x] 6.2 五类认证：`CertRealname=1`（实时二要素）+ 2~5（个人/个人企业身份/企业/机构）经 `CertifyFor` 提交，材料必填且 ≤3 项；`reviewer_type` 区分平台（1）与企业（2，个人企业身份须带 `target_org_id`）；平台审核 `POST /api/admin/v1/certs/{id}/review`、企业审核 `POST /api/mp/v1/certs/{id}/review`
-- [ ] 6.3 状态机 #3 认证申请（待审核→已通过/已驳回）、#4 身份核验 + 表驱动测试；驳回必须给原因、可修改重提
+- [x] 6.3 状态机 #3/#4：`verify.cert`（待审核→已通过/已驳回；驳回可重提）、`verify.affiliation`（待核验→已核验/已驳回；已核验可撤销、驳回可重申请）注册进装配根，纳入 `TestIntegrationStateMachineTable` 穷举校验；服务层在提交（仅驳回后重提才转移）与审核/核验时经引擎校验；集成测试 `TestIntegrationVerifyStateMachines`（驳回→重提→重复处理 404→通过授标）
 - [x] 6.4 身份核验：`GET /api/mp/v1/affiliations/mine`（含待核验状态驱动置灰/红框）、`POST /affiliations/{id}/verify`（组织管理员，**先到先处理**：重复处理返回 404/100006）、`POST /api/admin/v1/affiliations/{id}/resolve` 平台代处理（超期 `OrphanAffiliations` 查询）、`POST /affiliations/{id}/primary` 唯一主单位；事件 `verify.AffiliationVerified.v1`
 - [x] 6.5 组织管理员：企业/机构认证通过时申请人自动成为首任管理员（`UpsertActiveOrgAdmin`）；邀请需对方确认（`POST /orgs/{id}/admins` → `POST /org-admin-invites/{id}/confirm`）；平台重置/移除 `POST /api/admin/v1/orgs/{id}/admins/reset`；事件 `verify.OrgAdminChanged.v1`
 - [x] 6.6 一人多单位：`vfy_affiliation` 一对多（user+org 唯一）；状态驱动置灰（0 待核验）/红框（1 已核验）；`is_primary` 唯一主单位由 `SetPrimary` 维护
 - [ ] 6.7 Badge 统一机制：`vfy_badge_def`/`vfy_badge_grant` 输出 {code,label,level}（含「猫平方官方合作认证」配置项）；新增标识类型=加配置+前端样式，不改接口
 - [x] 6.8 事件与不可改：认证材料不可编辑（重复提交为新的待审记录）；`verify.AffiliationVerified.v1` / `verify.OrgAdminChanged.v1` 事件 Schema 已入契约并生成（`contracts/events/`），notice 模板同步
-- [ ] 6.9 小程序认证页：猫²认证列表（两大类五项状态）、实名页、材料上传页、身份核验列表（组织视角）、个人企业身份认证页（详细设计 5.11）
+- [x] 6.9 小程序认证页：`pages/verify/index` 重构为「实名 + 四类认证（材料 ≤3，个人企业身份选企业）+ 单位归属（一人多单位，核验后红框/未核验置灰、设主单位）+ 组织管理员待核验（红点，先到先处理）」；api-client 补 8 个方法与 `GET /affiliations/pending`
 
 ## 7. 统计看板与导出中心
 
