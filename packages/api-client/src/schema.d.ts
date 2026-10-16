@@ -1703,6 +1703,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 小程序埋点批量上报（≤50 条；仅登记事件入库，props 白名单） */
+        post: operations["reportTelemetry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ai/feedback": {
         parameters: {
             query?: never;
@@ -5900,6 +5917,38 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    reportTelemetry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    events: {
+                        event: string;
+                        occurred_at?: string;
+                        props?: {
+                            [key: string]: unknown;
+                        };
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
         };
     };
     aiFeedback: {

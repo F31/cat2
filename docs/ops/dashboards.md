@@ -47,6 +47,16 @@
   → 付费(catcube_order_paid_total → catcube_member_opened_total / catcube_cube_opened_total)
 ```
 
+## 平台看板接口（p4 §7.1）
+
+`GET /api/admin/v1/dashboard` 返回实时指标（不在业务表写统计）：用户总数/今日新增/已实名、内容展示中、今日搜索与匹配点击（埋点）、今日联系发起（埋点）、在期会员、今日支付单与 GMV、活跃圈/立方、审核积压与超 SLA、死信、AI 调用与降级。
+
+## 埋点（p4 §7.2）
+
+- 事件登记：`contracts/telemetry/README.md`（8 个漏斗事件；属性白名单）。
+- 存储：`tlm_event`（独立前缀，不污染业务表）；上报 `POST /api/mp/v1/telemetry`（≤50 条/次）。
+- 服务端二次过滤：未登记事件丢弃、props 仅白名单键、值含手机号/证件号形态剔除。
+
 ## 按模块拆分
 
 `obs` 日志与指标统一带 `module` 维度（日志字段 `module`，指标建议后续加 `module` 标签）以便判断哪个模块需要独立拆分（技术方案 11.5）。

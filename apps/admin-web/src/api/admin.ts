@@ -190,6 +190,22 @@ export const adminApi = {
     return call<{ items: AdminMenu[] }>('GET', '/admin/v1/menus')
   },
 
+  exports(all = false) {
+    return call<{ items: Array<{ id: string; template: string; status: number; rows: number; error?: string }> }>(
+      'GET',
+      `/admin/v1/exports?all=${all ? 1 : 0}`,
+    )
+  },
+  createExport(template: string, from: number, to: number) {
+    return call<{ id: string; status: number }>('POST', '/admin/v1/exports', { template, from, to })
+  },
+  downloadExport(id: string) {
+    return call<{ url: string }>('GET', `/admin/v1/exports/${id}/download`)
+  },
+  dashboard() {
+    return call<{ metrics: Record<string, number> }>('GET', '/admin/v1/dashboard')
+  },
+
   audits(f: { actor_id?: string; action?: string; result?: string; target_ref?: string; limit?: number }) {
     const qs = new URLSearchParams()
     Object.entries(f).forEach(([k, v]) => {

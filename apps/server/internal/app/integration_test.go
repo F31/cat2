@@ -4989,3 +4989,95 @@ func TestIntegrationVerifyStateMachines(t *testing.T) {
 		t.Fatal("通过应授 verified 徽标")
 	}
 }
+
+// 导出中心与埋点/看板（p4 §7.1/§7.2/§7.4）：申请→异步生成→下载（水印）；埋点白名单；看板指标。
+func TestIntegrationExportAndTelemetryDashboard(t *testing.T) {
+	h := newTestApp(t)
+	uid, tok := loginUser(t, h)
+	_, admTok := loginAdmin(t, h)
+	ctx := context.Background()
+	_ = uid
+
+	// 造一点数据：下单支付（对账/订单导出）
+	_, env := h.doH(http.MethodPost, "/api/mp/v1/orders", tok, map[string]any{
+		"biz_type": "member", "amount_fen": 9900,
+		"price_snapshot": map[string]any{"price_fen": 9900, "years": 1},
+	}, map[string]string{"Idempotency-Key": fmt.Sprintf("it-export-%d", time.Now().UnixNano())})
+	var order struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &order)
+	payOrderAndNotify(t, h, tok, order.ID)
+
+	// 1) 埋点：允许事件入库 + props 白名单（手机号形态剔除）+ 未登记事件丢弃
+	_, env = h.do(http.MethodPost, "/api/mp/v1/telemetry", tok, map[string]any{
+		"events": []map[string]any{
+			{"event": "search", "props": map[string]any{"keyword": "钣金", "type": "content.project", "hack": "x"}},
+			{"event": "contact_initiate", "props": map[string]any{"ref": "user:1", "note": "13812345678"}},
+			{"event": "not_registered", "props": map[string]any{}},
+		},
+	})
+	var tele struct {
+		Accepted int `json:"accepted"`
+	}
+	_ = json.Unmarshal(env.Data, &tele)
+	if tele.Accepted != 2 {
+		t.Fatalf("应接受 2 条（未登记丢弃）: %+v", env)
+	}
+	var props []byte
+	if err := h.app.Pool.QueryRow(ctx, `SELECT props FROM tlm_event WHERE event='contact_initiate' ORDER BY id DESC LIMIT 1`).Scan(&props); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(props), "13812345678") || strings.Contains(string(props), "hack") {
+		t.Fatalf("props 应经白名单过滤: %s", props)
+	}
+
+	// 2) 导出：申请 → worker 生成 → 下载 URL + 水印 + 审计
+	_, env = h.do(http.MethodPost, "/api/admin/v1/exports", admTok, map[string]any{"template": "reconciliation"})
+	var exp struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &exp)
+	if exp.ID == 0 {
+		t.Fatalf("导出申请失败: %+v", env)
+	}
+	if _, err := h.app.Sched.RunOnce(ctx, "ops.export_runner"); err != nil {
+		t.Fatal(err)
+	}
+	var status int16
+	var key, watermark string
+	if err := h.app.Pool.QueryRow(ctx, `SELECT status, COALESCE(object_key,''), COALESCE(watermark,'') FROM sys_export_task WHERE id=$1`, exp.ID).Scan(&status, &key, &watermark); err != nil {
+		t.Fatal(err)
+	}
+	if status != 2 || key == "" || watermark == "" {
+		t.Fatalf("导出应生成完成（含水印）: status=%d key=%q wm=%q", status, key, watermark)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/admin/v1/exports/%d/download", exp.ID), admTok, nil)
+	if env.Code != 0 || len(env.Data) == 0 {
+		t.Fatalf("下载应返回地址: %+v", env)
+	}
+	// 导出审计（action=export:create）
+	var auditN int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM sys_audit WHERE action='export:create'`).Scan(&auditN)
+	if auditN == 0 {
+		t.Fatal("导出应写审计")
+	}
+	// 3) 未登记模板拒绝
+	if _, e := h.do(http.MethodPost, "/api/admin/v1/exports", admTok, map[string]any{"template": "unknown"}); e.Code == 0 {
+		t.Fatal("未登记模板应拒绝")
+	}
+
+	// 4) 看板：核心指标可用
+	_, env = h.do(http.MethodGet, "/api/admin/v1/dashboard", admTok, nil)
+	var dash struct {
+		Metrics map[string]any `json:"metrics"`
+	}
+	if err := json.Unmarshal(env.Data, &dash); err != nil || dash.Metrics == nil {
+		t.Fatalf("看板失败: %+v err=%v", env, err)
+	}
+	for _, k := range []string{"users_total", "orders_paid_today", "gmv_fen_today", "review_backlog", "circles_active", "ai_calls_today"} {
+		if _, ok := dash.Metrics[k]; !ok {
+			t.Fatalf("看板缺指标 %s", k)
+		}
+	}
+}

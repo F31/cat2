@@ -1704,6 +1704,15 @@ type ApplySubscribeQuotaJSONBody struct {
 	TemplateCode string `json:"template_code"`
 }
 
+// ReportTelemetryJSONBody defines parameters for ReportTelemetry.
+type ReportTelemetryJSONBody struct {
+	Events []struct {
+		Event      string                  `json:"event"`
+		OccurredAt *string                 `json:"occurred_at,omitempty"`
+		Props      *map[string]interface{} `json:"props,omitempty"`
+	} `json:"events"`
+}
+
 // DeactivateAccountParams defines parameters for DeactivateAccount.
 type DeactivateAccountParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
@@ -1864,6 +1873,9 @@ type MarkSessionReadJSONRequestBody MarkSessionReadJSONBody
 
 // ApplySubscribeQuotaJSONRequestBody defines body for ApplySubscribeQuota for application/json ContentType.
 type ApplySubscribeQuotaJSONRequestBody ApplySubscribeQuotaJSONBody
+
+// ReportTelemetryJSONRequestBody defines body for ReportTelemetry for application/json ContentType.
+type ReportTelemetryJSONRequestBody ReportTelemetryJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -2239,6 +2251,9 @@ type ServerInterface interface {
 	// ApplySubscribeQuota 申请订阅消息授权额度（上下文动作处调用）
 	// (POST /subscribe-quota/apply)
 	ApplySubscribeQuota(w http.ResponseWriter, r *http.Request)
+	// ReportTelemetry 小程序埋点批量上报（≤50 条；仅登记事件入库，props 白名单）
+	// (POST /telemetry)
+	ReportTelemetry(w http.ResponseWriter, r *http.Request)
 	// GetMe 当前用户摘要
 	// (GET /users/me)
 	GetMe(w http.ResponseWriter, r *http.Request)
@@ -5774,6 +5789,20 @@ func (siw *ServerInterfaceWrapper) ApplySubscribeQuota(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// ReportTelemetry operation middleware
+func (siw *ServerInterfaceWrapper) ReportTelemetry(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReportTelemetry(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMe operation middleware
 func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
 
@@ -6068,6 +6097,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/onboard-draft", wrapper.AiOnboardDraft)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/publish-draft", wrapper.AiPublishDraft)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/search", wrapper.AiSearch)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/telemetry", wrapper.ReportTelemetry)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/feedback", wrapper.AiFeedback)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/ai/features", wrapper.AiFeatures)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/certs/{id}/review", wrapper.ReviewCertByOrg)

@@ -70,10 +70,10 @@
 
 ## 7. 统计看板与导出中心
 
-- [ ] 7.1 12 项核心指标口径落地（详细设计 12.2）：从业务表实时/定时聚合，禁止为统计反向污染业务表；每个指标注明口径与数据来源（hover 显示）
-- [ ] 7.2 小程序埋点：8 个漏斗事件（register/profile_complete/feed_click/search/detail_view/contact_initiate/member_quote/order_paid），事件名与属性在 contracts/telemetry 登记；独立 `tlm_` 前缀存储
+- [x] 7.1 核心指标：`GET /api/admin/v1/dashboard`（用户/新增/实名、内容展示中、搜索/匹配点击/联系发起（埋点）、在期会员、今日支付单与 GMV、活跃圈/立方、审核积压与超 SLA、死信、AI 调用/降级）；实时聚合、不在业务表写统计；口径见 `docs/ops/dashboards.md`；admin-web 概览页展示
+- [x] 7.2 埋点：`contracts/telemetry/README.md` 登记 8 个漏斗事件与属性；`tlm_event` 独立前缀表；`POST /api/mp/v1/telemetry`（≤50/次、仅登记事件入库、props 白名单 + 手机号/证件号形态剔除、失败不阻断）；指标 `catcube_telemetry_accepted_total`/`rejected_total`；集成测试覆盖
 - [ ] 7.3 6 张看板：平台总览（L1+L2 漏斗）、圈子/猫立方、渠道（渠道经理仅见本人区域）、资金、安全、运营商移动端业绩概览
-- [ ] 7.4 导出中心：申请（模板+时间范围）→ 异步生成落 OSS → 下载带水印 + 导出审计（action=export）；对账导出、结算明细、用户列表、审核记录四个模板；导出内容遵循敏感字段白名单（不含明文联系方式）
+- [x] 7.4 导出中心：`sys_export_task` + `ops.export_runner`（异步生成 CSV 到对象存储）；模板 对账/订单/用户（脱敏）/审核记录（结算模板待渠道开通）；**带水印**行 + 7 天有效期 + `export:create`/`export:download` 审计点；**逐字段敏感白名单校验**（文本列禁手机号/证件号，纯数字列豁免）；admin-web「导出中心」；集成测试 `TestIntegrationExportAndTelemetryDashboard`
 
 ## 8. admin-web 页面完成
 

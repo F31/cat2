@@ -20,6 +20,7 @@ const FALLBACK: MenuProps['items'] = [
   { key: '/feature-flags', label: '特性开关' },
   { key: '/settings', label: '业务配置' },
   { key: '/audits', label: '审计轨迹' },
+  { key: '/exports', label: '导出中心' },
 ]
 
 export default function AdminLayout() {

@@ -43,6 +43,51 @@ paths:
                             type: array
                             items: { $ref: '#/components/schemas/AdminSection' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /exports:
+    get:
+      tags: [admin-governance]
+      summary: 导出任务列表（管理员）
+      operationId: adminExports
+      parameters:
+        - { name: all, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+    post:
+      tags: [admin-governance]
+      summary: 申请导出（异步生成，带水印与导出审计）
+      operationId: adminCreateExport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template]
+              properties:
+                template: { type: string, enum: [reconciliation, orders, users, reviews, settlements] }
+                from: { type: integer }
+                to: { type: integer }
+      responses:
+        '200': { description: 任务, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /exports/{id}/download:
+    get:
+      tags: [admin-governance]
+      summary: 下载导出文件（带水印）
+      operationId: adminDownloadExport
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 下载地址, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /dashboard:
+    get:
+      tags: [admin-governance]
+      summary: 数据概览（12+ 项核心指标，口径见 docs/ops/dashboards.md）
+      operationId: adminDashboard
+      responses:
+        '200': { description: 指标, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
   /audits:
     get:
       tags: [admin-governance]

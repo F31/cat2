@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,12 +21,15 @@ import (
 	"catcube/internal/kernel/obs"
 	"catcube/internal/kernel/settings"
 	idcontract "catcube/internal/modules/identity/contract"
+	"catcube/internal/ports"
 	"catcube/pkg/ids"
 )
 
 // Deps 装配依赖。
 type Deps struct {
 	Pool     *db.Pool
+	Storage  ports.Storage
+	Audit    *audit.Recorder
 	Identity idcontract.Facade
 	Outbox   eventbus.OutboxStore
 	Bus      *eventbus.Bus
@@ -47,6 +52,14 @@ func (m *Module) Register(r *module.Registry) error {
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/dead-letters", Handler: m.auth(m.handleList), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/dead-letters/{eventID}/replay", Handler: m.auth(m.handleReplay), Admin: true},
+		// 导出中心（p4 §7.4）：申请 → 异步生成 → 下载（带水印 + 导出审计）
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/exports", Handler: m.auth(m.handleCreateExport), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/exports", Handler: m.auth(m.handleListExports), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/exports/{id}/download", Handler: m.auth(m.handleDownloadExport), Admin: true},
+		// 小程序埋点（p4 §7.2：独立 tlm_ 存储，仅登记事件可入库）
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/telemetry", Handler: m.auth(m.handleTelemetry)},
+		// 数据概览（p4 §7.1：12 项核心指标）
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/dashboard", Handler: m.auth(m.handleDashboard), Admin: true},
 		// 审计查询（治理：who/where/when/what/result 五维筛选；p4 §5.5）
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/audits", Handler: m.auth(m.handleAudits), Admin: true},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/audits/{id}", Handler: m.auth(m.handleAuditDetail), Admin: true},
@@ -60,6 +73,8 @@ func (m *Module) Register(r *module.Registry) error {
 	)
 	r.Settings = append(r.Settings, Schemas...)
 	r.Jobs = append(r.Jobs,
+		// 导出生成（worker）
+		module.JobDef{Name: "ops.export_runner", Interval: 10 * time.Second, Run: m.exportRunner},
 		// 安全监控：denied 突增告警（p4 §5.6）
 		module.JobDef{Name: "ops.security_monitor", Interval: time.Minute, Run: m.securityMonitor},
 		// 审计留存归档（p4 §5.7）：超期行标记归档 + 边界哈希
@@ -69,6 +84,8 @@ func (m *Module) Register(r *module.Registry) error {
 		audit.Point{Action: "ops:dead_letter:replay", Path: "/api/admin/v1/dead-letters/{eventID}/replay", Required: true, LogFailed: true, Module: "ops"},
 		audit.Point{Action: "ops:feature_flag:set", Path: "/api/admin/v1/feature-flags/{key}", Required: true, LogFailed: true, Module: "ops"},
 		audit.Point{Action: "ops:setting:set", Path: "/api/admin/v1/settings/{key}", Required: true, LogFailed: true, Module: "ops"},
+		audit.Point{Action: "export:create", Path: "/api/admin/v1/exports", Required: true, LogFailed: true, Module: "ops"},
+		audit.Point{Action: "export:download", Path: "/api/admin/v1/exports/{id}/download", Required: true, LogFailed: true, Module: "ops"},
 	)
 	return nil
 }
@@ -433,4 +450,22 @@ func writeErr(w http.ResponseWriter, code int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{"code": code, "message": message})
+}
+
+// ---- 通用小工具（导出/埋点共用）----
+
+func decodeJSON(req *http.Request, v any) error {
+	return json.NewDecoder(io.LimitReader(req.Body, 1<<20)).Decode(v)
+}
+
+func jsonUnmarshal(raw []byte, v any) error { return json.Unmarshal(raw, v) }
+
+// replayAudit 审计写入器（可空）。
+func (m *Module) replayAudit() *audit.Recorder { return m.deps.Audit }
+
+// logErr 记录运维错误（排障用）。
+func logErr(action string, err error) {
+	if err != nil {
+		slog.Error("ops: "+action, "err", err)
+	}
 }

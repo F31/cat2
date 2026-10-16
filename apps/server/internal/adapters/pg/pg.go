@@ -325,6 +325,33 @@ CREATE TABLE IF NOT EXISTS sys_outbox (
 ALTER TABLE sys_outbox ADD COLUMN IF NOT EXISTS trace_id varchar(32);
 CREATE INDEX IF NOT EXISTS idx_sys_outbox_status ON sys_outbox(status, occurred_at);
 
+CREATE TABLE IF NOT EXISTS sys_export_task (
+	id bigint PRIMARY KEY,
+	template varchar(32) NOT NULL,           -- reconciliation/settlements/users/reviews
+	params jsonb NOT NULL DEFAULT '{}'::jsonb,
+	requester_id bigint NOT NULL,
+	status smallint NOT NULL DEFAULT 0,      -- 0待生成/1生成中/2完成/3失败
+	object_key text,
+	rows int NOT NULL DEFAULT 0,
+	watermark varchar(128),
+	err varchar(500),
+	created_at timestamptz NOT NULL DEFAULT now(),
+	finished_at timestamptz,
+	expires_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_sys_export_status ON sys_export_task(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_sys_export_requester ON sys_export_task(requester_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS tlm_event (
+	id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+	user_id bigint,
+	event varchar(64) NOT NULL,              -- 漏斗事件（contracts/telemetry 登记）
+	props jsonb NOT NULL DEFAULT '{}'::jsonb,
+	occurred_at timestamptz NOT NULL DEFAULT now(),
+	created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_tlm_event_name ON tlm_event(event, occurred_at DESC);
+
 CREATE TABLE IF NOT EXISTS sys_event_processed (
 	consumer text NOT NULL,
 	event_id text NOT NULL,

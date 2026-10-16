@@ -62,6 +62,33 @@ func (e AdminListContentsParamsKind) Valid() bool {
 	}
 }
 
+// Defines values for AdminCreateExportJSONBodyTemplate.
+const (
+	Orders         AdminCreateExportJSONBodyTemplate = "orders"
+	Reconciliation AdminCreateExportJSONBodyTemplate = "reconciliation"
+	Reviews        AdminCreateExportJSONBodyTemplate = "reviews"
+	Settlements    AdminCreateExportJSONBodyTemplate = "settlements"
+	Users          AdminCreateExportJSONBodyTemplate = "users"
+)
+
+// Valid indicates whether the value is a known member of the AdminCreateExportJSONBodyTemplate enum.
+func (e AdminCreateExportJSONBodyTemplate) Valid() bool {
+	switch e {
+	case Orders:
+		return true
+	case Reconciliation:
+		return true
+	case Reviews:
+		return true
+	case Settlements:
+		return true
+	case Users:
+		return true
+	default:
+		return false
+	}
+}
+
 // AdminMember defines model for AdminMember.
 type AdminMember struct {
 	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
@@ -321,6 +348,22 @@ type AdminTakedownContentJSONBody struct {
 	Reason string `json:"reason"`
 }
 
+// AdminExportsParams defines parameters for AdminExports.
+type AdminExportsParams struct {
+	All   *string `form:"all,omitempty" json:"all,omitempty"`
+	Limit *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// AdminCreateExportJSONBody defines parameters for AdminCreateExport.
+type AdminCreateExportJSONBody struct {
+	From     *int                              `json:"from,omitempty"`
+	Template AdminCreateExportJSONBodyTemplate `json:"template"`
+	To       *int                              `json:"to,omitempty"`
+}
+
+// AdminCreateExportJSONBodyTemplate defines parameters for AdminCreateExport.
+type AdminCreateExportJSONBodyTemplate string
+
 // AdminSetFeatureFlagJSONBody defines parameters for AdminSetFeatureFlag.
 type AdminSetFeatureFlagJSONBody struct {
 	Enabled bool   `json:"enabled"`
@@ -393,6 +436,9 @@ type AdminReviewCertJSONRequestBody AdminReviewCertJSONBody
 // AdminTakedownContentJSONRequestBody defines body for AdminTakedownContent for application/json ContentType.
 type AdminTakedownContentJSONRequestBody AdminTakedownContentJSONBody
 
+// AdminCreateExportJSONRequestBody defines body for AdminCreateExport for application/json ContentType.
+type AdminCreateExportJSONRequestBody AdminCreateExportJSONBody
+
 // AdminSetFeatureFlagJSONRequestBody defines body for AdminSetFeatureFlag for application/json ContentType.
 type AdminSetFeatureFlagJSONRequestBody AdminSetFeatureFlagJSONBody
 
@@ -434,12 +480,24 @@ type ServerInterface interface {
 	// AdminTakedownContent 下架内容（记录原因）
 	// (POST /contents/{id}/takedown)
 	AdminTakedownContent(w http.ResponseWriter, r *http.Request, id string)
+	// AdminDashboard 数据概览（12+ 项核心指标，口径见 docs/ops/dashboards.md）
+	// (GET /dashboard)
+	AdminDashboard(w http.ResponseWriter, r *http.Request)
 	// AdminDeadLetters 死信队列（按时间倒序）
 	// (GET /dead-letters)
 	AdminDeadLetters(w http.ResponseWriter, r *http.Request)
 	// AdminReplayDeadLetter 死信重放（复位 status=0/retry=0）
 	// (POST /dead-letters/{eventID}/replay)
 	AdminReplayDeadLetter(w http.ResponseWriter, r *http.Request, eventID string)
+	// AdminExports 导出任务列表（管理员）
+	// (GET /exports)
+	AdminExports(w http.ResponseWriter, r *http.Request, params AdminExportsParams)
+	// AdminCreateExport 申请导出（异步生成，带水印与导出审计）
+	// (POST /exports)
+	AdminCreateExport(w http.ResponseWriter, r *http.Request)
+	// AdminDownloadExport 下载导出文件（带水印）
+	// (GET /exports/{id}/download)
+	AdminDownloadExport(w http.ResponseWriter, r *http.Request, id string)
 	// AdminFeatureFlags 特性开关列表（灰度）
 	// (GET /feature-flags)
 	AdminFeatureFlags(w http.ResponseWriter, r *http.Request)
@@ -825,6 +883,20 @@ func (siw *ServerInterfaceWrapper) AdminTakedownContent(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// AdminDashboard operation middleware
+func (siw *ServerInterfaceWrapper) AdminDashboard(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminDashboard(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminDeadLetters operation middleware
 func (siw *ServerInterfaceWrapper) AdminDeadLetters(w http.ResponseWriter, r *http.Request) {
 
@@ -856,6 +928,92 @@ func (siw *ServerInterfaceWrapper) AdminReplayDeadLetter(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminReplayDeadLetter(w, r, eventID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminExports operation middleware
+func (siw *ServerInterfaceWrapper) AdminExports(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AdminExportsParams
+
+	// ------------- Optional query parameter "all" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "all", r.URL.Query(), &params.All, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "all"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "all", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminExports(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminCreateExport operation middleware
+func (siw *ServerInterfaceWrapper) AdminCreateExport(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCreateExport(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminDownloadExport operation middleware
+func (siw *ServerInterfaceWrapper) AdminDownloadExport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminDownloadExport(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1475,6 +1633,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/menus", wrapper.AdminMenus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports", wrapper.AdminExports)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/exports", wrapper.AdminCreateExport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports/{id}/download", wrapper.AdminDownloadExport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/dashboard", wrapper.AdminDashboard)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/audits", wrapper.AdminAudits)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/audits/{id}", wrapper.AdminAuditDetail)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/review-tasks/{id}/suggestion", wrapper.AdminReviewSuggestion)

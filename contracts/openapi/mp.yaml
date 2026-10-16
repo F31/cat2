@@ -2707,6 +2707,31 @@ paths:
               schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { $ref: '#/components/schemas/AiSearchQuery' } } } ] }
         '400': { $ref: '#/components/responses/BadRequest' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /telemetry:
+    post:
+      tags: [telemetry]
+      summary: 小程序埋点批量上报（≤50 条；仅登记事件入库，props 白名单）
+      operationId: reportTelemetry
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events]
+              properties:
+                events:
+                  type: array
+                  items:
+                    type: object
+                    required: [event]
+                    properties:
+                      event: { type: string }
+                      occurred_at: { type: string }
+                      props: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
   /ai/feedback:
     post:
       tags: [ai]
