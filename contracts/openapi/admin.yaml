@@ -81,6 +81,16 @@ paths:
       responses:
         '200': { description: 下载地址, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
+  /users/{id}/360:
+    get:
+      tags: [admin-governance]
+      summary: 用户 360（只读聚合：identity/profile/verify/membership/content/cube/circle/trust）
+      operationId: adminUser360
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 聚合视图, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /badges:
     get:
       tags: [admin-governance]

@@ -214,6 +214,12 @@ export const adminApi = {
       steps: Array<{ key: string; label: string; users: number; conversion: number }>
     }>('GET', `/admin/v1/dashboard/funnel?days=${days}`)
   },
+  user360(id: string) {
+    return call<{ user_id: string; sections: Record<string, Record<string, unknown>> }>(
+      'GET',
+      `/admin/v1/users/${id}/360`,
+    )
+  },
   badgeDefs() {
     return call<{ items: Array<{ code: string; label: string; level: number }> }>('GET', '/admin/v1/badges')
   },

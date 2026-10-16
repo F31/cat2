@@ -5178,3 +5178,66 @@ func TestIntegrationDashboardSectionsFunnelAndBadges(t *testing.T) {
 	// 审计由敏感路由声明保证（此处不强制写审计；仅校验声明存在）
 	_ = auditN
 }
+
+// 用户 360（p4 §4.1）：只读聚合多模块数据；后台权限门槛（非管理员 403）。
+func TestIntegrationUser360(t *testing.T) {
+	h := newTestApp(t)
+	uid, tok := loginUser(t, h)
+	_, admTok := loginAdmin(t, h)
+	ctx := context.Background()
+
+	// 造跨模块数据：实名、名片、会员、订单、内容、建圈
+	setCard(t, h, tok, "王五", "310000", []string{"A01"}, nil, nil)
+	if _, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+		"cert_type": 1, "real_name": "王五", "id_card_no": "310101199001010011", "agreed": true,
+	}); env.Code != 0 {
+		t.Fatalf("实名失败: %+v", env)
+	}
+	_, env := h.doH(http.MethodPost, "/api/mp/v1/orders", tok, map[string]any{
+		"biz_type": "member", "amount_fen": 9900,
+		"price_snapshot": map[string]any{"price_fen": 9900, "years": 1},
+	}, map[string]string{"Idempotency-Key": fmt.Sprintf("it-360-%d", time.Now().UnixNano())})
+	var order struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &order)
+	payOrderAndNotify(t, h, tok, order.ID)
+	fulfillMemberOrder(t, h, order.ID)
+	if _, env := h.do(http.MethodPost, "/api/mp/v1/circles", tok, map[string]any{
+		"name": "360圈", "type": 2, "duration_days": 30,
+	}); env.Code != 0 {
+		t.Fatalf("建圈失败: %+v", env)
+	}
+
+	// 非管理员访问 → 403
+	if s, e := h.do(http.MethodGet, fmt.Sprintf("/api/admin/v1/users/%d/360", uid), tok, nil); s != http.StatusForbidden || e.Code != 3 {
+		t.Fatalf("非管理员应 403/3: %d %+v", s, e)
+	}
+	// 管理员 → 聚合视图
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/admin/v1/users/%d/360", uid), admTok, nil)
+	var view struct {
+		UserID   string                    `json:"user_id"`
+		Sections map[string]map[string]any `json:"sections"`
+	}
+	if err := json.Unmarshal(env.Data, &view); err != nil {
+		t.Fatalf("360 解析失败: %v", err)
+	}
+	if view.UserID == "" {
+		t.Fatalf("应返回用户标识: %+v", env)
+	}
+	for _, section := range []string{"identity", "profile", "verify", "membership", "content", "cube", "circle", "trust"} {
+		if _, ok := view.Sections[section]; !ok {
+			t.Fatalf("360 缺区段 %s: %+v", section, view.Sections)
+		}
+	}
+	if view.Sections["verify"]["certs"] == nil {
+		t.Fatal("verify 区应含认证记录")
+	}
+	if view.Sections["membership"]["member"] == nil {
+		t.Fatal("membership 区应含会员状态（已支付开通）")
+	}
+	if view.Sections["circle"]["circles"] == nil {
+		t.Fatal("circle 区应含所属圈子")
+	}
+	_ = ctx
+}

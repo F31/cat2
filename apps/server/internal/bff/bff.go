@@ -20,6 +20,7 @@ import (
 	msgcontract "catcube/internal/modules/msg/contract"
 	profilecontract "catcube/internal/modules/profile/contract"
 	socialcontract "catcube/internal/modules/social/contract"
+	trustcontract "catcube/internal/modules/trust/contract"
 	verifycontract "catcube/internal/modules/verify/contract"
 	"catcube/internal/ports"
 	"catcube/internal/shared/entityref"
@@ -32,6 +33,7 @@ type Deps struct {
 	Profile    profilecontract.Facade
 	Social     socialcontract.Facade
 	Msg        msgcontract.Facade
+	Trust      trustcontract.Facade
 	Verify     verifycontract.Facade
 	Membership membershipcontract.Facade
 	Content    contentcontract.Facade
@@ -60,6 +62,8 @@ func (a *Aggregator) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/mp/v1/aggregate/cube-home", a.auth(a.handleCubeHome))
 	// 圈详情聚合（非成员裁剪视图：圈信息+成员数+圈主+加入状态）
 	mux.HandleFunc("GET /api/mp/v1/aggregate/circle-detail", a.optionalAuth(a.handleCircleDetail))
+	// 用户 360（后台治理，只读聚合；p4 §4.1）
+	mux.HandleFunc("GET /api/admin/v1/users/{id}/360", a.adminAuth(a.handleUser360))
 }
 
 // CubeHomeData 猫立方首页聚合。
@@ -311,6 +315,31 @@ func contactKey(uid int64) string {
 func nextDay() time.Time {
 	n := time.Now()
 	return time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, n.Location()).AddDate(0, 0, 1)
+}
+
+// adminAuth 后台只读聚合的硬门槛：登录 + 平台管理员（非管理员 403）。
+func (a *Aggregator) adminAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		token := ""
+		if h := req.Header.Get("Authorization"); len(h) > 7 && h[:7] == "Bearer " {
+			token = h[7:]
+		}
+		if token == "" {
+			writeErrCode(w, http.StatusUnauthorized, 2, "未登录")
+			return
+		}
+		uid, _, err := a.deps.Identity.Authenticate(req.Context(), token)
+		if err != nil {
+			writeErrCode(w, http.StatusUnauthorized, 2, "登录已失效")
+			return
+		}
+		admin, err := a.deps.Identity.IsAdmin(req.Context(), uid)
+		if err != nil || !admin {
+			writeErrCode(w, http.StatusForbidden, 3, "无后台权限")
+			return
+		}
+		next(w, req.WithContext(context.WithValue(req.Context(), ctxUserID{}, uid)))
+	}
 }
 
 func (a *Aggregator) auth(next http.HandlerFunc) http.HandlerFunc {

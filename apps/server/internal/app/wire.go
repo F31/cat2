@@ -355,7 +355,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		Identity: identityMod.Facade(), Discovery: discoveryMod.Facade(), Profile: profileMod.Facade(),
 		Social: socialMod.Facade(), Msg: msgMod.Facade(), Verify: verifyMod.Facade(),
 		Membership: membershipMod.Facade(), Content: contentMod.Facade(),
-		Cube: cubeMod.Facade(), Circle: circleMod.Facade(), Cache: cache,
+		Cube: cubeMod.Facade(), Circle: circleMod.Facade(), Trust: trustMod.Facade(), Cache: cache,
 		ContactDailyLimit: cfg.ContactDailyLimit,
 	}).Register(a.Mux)
 

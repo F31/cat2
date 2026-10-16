@@ -15,6 +15,7 @@ import Settings from './pages/Settings'
 import AuditTrail from './pages/AuditTrail'
 import Exports from './pages/Exports'
 import Badges from './pages/Badges'
+import User360 from './pages/User360'
 import Dashboard from './pages/Dashboard'
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="audits" element={<AuditTrail />} />
         <Route path="exports" element={<Exports />} />
         <Route path="badges" element={<Badges />} />
+        <Route path="users/:id/360" element={<User360 />} />
       </Route>
     </Routes>
   )

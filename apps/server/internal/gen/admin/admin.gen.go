@@ -316,6 +316,9 @@ type PathUserID = string
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
 
+// Forbidden defines model for Forbidden.
+type Forbidden = Error
+
 // NotFound defines model for NotFound.
 type NotFound = Error
 
@@ -605,6 +608,9 @@ type ServerInterface interface {
 	// AdminListUsers 用户列表（按状态/关键字）
 	// (GET /users)
 	AdminListUsers(w http.ResponseWriter, r *http.Request, params AdminListUsersParams)
+	// AdminUser360 用户 360（只读聚合：identity/profile/verify/membership/content/cube/circle/trust）
+	// (GET /users/{id}/360)
+	AdminUser360(w http.ResponseWriter, r *http.Request, id string)
 	// AdminBanUser 封禁账号（递增 authz_ver，旧令牌立即失效；记录原因审计）
 	// (POST /users/{id}/ban)
 	AdminBanUser(w http.ResponseWriter, r *http.Request, id PathUserID)
@@ -1606,6 +1612,32 @@ func (siw *ServerInterfaceWrapper) AdminListUsers(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// AdminUser360 operation middleware
+func (siw *ServerInterfaceWrapper) AdminUser360(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminUser360(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminBanUser operation middleware
 func (siw *ServerInterfaceWrapper) AdminBanUser(w http.ResponseWriter, r *http.Request) {
 
@@ -1782,6 +1814,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports", wrapper.AdminExports)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/exports", wrapper.AdminCreateExport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports/{id}/download", wrapper.AdminDownloadExport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/users/{id}/360", wrapper.AdminUser360)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/badges", wrapper.AdminBadgeDefs)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/badges/{code}", wrapper.AdminUpsertBadge)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/badges/grant", wrapper.AdminGrantBadge)
