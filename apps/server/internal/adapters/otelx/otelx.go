@@ -40,6 +40,19 @@ func (c Config) withDefaults() Config {
 	return c
 }
 
+// buildResource 统一的 resource（service.name + 环境/SDK 信息，Trace/Metric/Log 共用）。
+func buildResource(ctx context.Context, cfg Config) (*resource.Resource, error) {
+	res, err := resource.New(ctx,
+		resource.WithAttributes(attribute.String("service.name", cfg.ServiceName)),
+		resource.WithFromEnv(),      // OTEL_RESOURCE_ATTRIBUTES / OTEL_SERVICE_NAME
+		resource.WithTelemetrySDK(), // 语言/SDK 版本
+	)
+	if err != nil {
+		return nil, fmt.Errorf("otelx: 构建 resource 失败: %w", err)
+	}
+	return res, nil
+}
+
 // Setup 配置全局 TracerProvider/MeterProvider（OTLP gRPC）与 W3C 传播器。
 // 无论是否启用都会设置 TraceContext+Baggage 传播器（供中间件提取上游 traceparent）。
 // 返回的 shutdown 用于优雅退出（flush 未发送的 span/metric）。
@@ -53,13 +66,9 @@ func Setup(ctx context.Context, cfg Config) (func(context.Context) error, error)
 		return noop, nil
 	}
 
-	res, err := resource.New(ctx,
-		resource.WithAttributes(attribute.String("service.name", cfg.ServiceName)),
-		resource.WithFromEnv(),      // OTEL_RESOURCE_ATTRIBUTES / OTEL_SERVICE_NAME
-		resource.WithTelemetrySDK(), // 语言/SDK 版本
-	)
+	res, err := buildResource(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("otelx: 构建 resource 失败: %w", err)
+		return nil, err
 	}
 
 	topts := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(cfg.Endpoint)}

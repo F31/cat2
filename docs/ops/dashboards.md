@@ -65,7 +65,7 @@
 
 ## 按模块拆分
 
-`obs` 日志与指标统一带 `module` 维度（日志字段 `module`，指标建议后续加 `module` 标签）以便判断哪个模块需要独立拆分（技术方案 11.5）。
+`obs` 日志与指标统一带 `module` 维度（日志字段 `module`；OTel 指标镜像带 `module` 标签，见下节）以便判断哪个模块需要独立拆分（技术方案 11.5）。
 
 ## 健康与容量
 
@@ -80,7 +80,10 @@
 
 服务端已内建 OTel SDK 接入点，**默认关闭**（与业务同口径：确认后再开），关闭时行为与既有轻量 trace/`/metrics` 完全一致。
 
-- 代码：`internal/adapters/otelx`（`Setup`：组装 OTLP gRPC Trace/Metric Exporter + Batch/Periodic 处理器 + W3C 传播器），`kernel/obs`（HTTP 中间件起 server span，续接上游 `traceparent`；`obs.SpanFromContext` 供业务补录属性）。
+- 代码：`internal/adapters/otelx`（`Setup`：组装 OTLP gRPC Trace/Metric Exporter + Batch/Periodic 处理器 + W3C 传播器；`SetupLogs`：OTLP 日志导出 + slog 桥接），`kernel/obs`（HTTP 中间件起 server span，续接上游 `traceparent`；`obs.SpanFromContext` 供业务补录属性；`obs.NewTeeHandler` 控制台 + OTel 双出口；`obs.RegisterOTelMetrics` 指标镜像）。
+- **统一入口（p6 §5.1）**：启用后 trace / metric / log 三路同源出口到 OTLP。
+  - 日志：`slog` 记录经 `otelx.NewLogHandler` 转为 OTel 日志记录，与控制台 JSON 并存（`obs.NewTeeHandler`），**脱敏在最外层**（`NewRedactingHandler` 先于扇出，OTLP 不含敏感信息）；使用 `InfoContext`/`obs.Log(ctx)` 时按 ctx 关联 `trace_id`/`span_id`。
+  - 指标：`obs.RegisterOTelMetrics` 将内置 `/metrics` 注册表镜像为 OTel 异步 Gauge（`catcube.metric.snapshot`），每条观测带 `module` 标签（由指标名前缀推导，未命中归 `core`）。
 - 环境变量：
   | 变量 | 默认 | 说明 |
   | --- | --- | --- |
@@ -96,5 +99,5 @@
   Collector 接收 OTLP（4317/4318），`debug` 输出到 stdout，并在 `:8889` 以 Prometheus 格式暴露指标供监控栈抓取。接入托管后端（Tempo/Jaeger/云 APM）时在 `otel-collector.yaml` 增加对应 exporter 并加入 pipelines。
 - 降级：导出端点不可达时 Exporter 异步失败且被静默（`otel.SetErrorHandler`），业务与日志不受影响；请求级 `trace_id` 仍由中间件生成/透传。
 
-测试：`internal/kernel/obs/obs_trace_test.go`（装配 SDK 时导出 server span 且父 span 续接上游；未装配时回退轻量生成）、`internal/adapters/otelx/otelx_test.go`（关闭 no-op / 启用构建与默认值）。
+测试：`internal/kernel/obs/obs_trace_test.go`（装配 SDK 时导出 server span 且父 span 续接上游；未装配时回退轻量生成）、`internal/adapters/otelx/otelx_test.go`（关闭 no-op / 启用构建与默认值）、`otelx/logs_test.go`（slog→OTel 桥接：级别/正文/组属性展平、关闭返回 nil）、`kernel/obs/otel_metrics_test.go`（指标镜像带 `module` 标签）、`kernel/obs/tee_test.go`（扇出前先脱敏）。
 

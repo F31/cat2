@@ -56,6 +56,26 @@ func main() {
 				slog.Warn("otel 关闭异常", "err", err)
 			}
 		}()
+		// OTel 日志桥接与指标镜像（p6 §5.1）：启用时在控制台 JSON 出口之外再扇出到 OTLP
+		logHandler, shutdownLogs, err := otelx.SetupLogs(ctx, otelx.Config{
+			Enabled: cfg.OTelEnabled, ServiceName: cfg.OTelService, Endpoint: cfg.OTelEndpoint,
+			Insecure: cfg.OTelInsecure, SampleRatio: cfg.OTelSampleRatio,
+		})
+		if err != nil {
+			fatal(err)
+		}
+		defer func() {
+			sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := shutdownLogs(sctx); err != nil {
+				slog.Warn("otel 日志关闭异常", "err", err)
+			}
+		}()
+		if logHandler != nil {
+			base := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+			slog.SetDefault(slog.New(obs.NewRedactingHandler(obs.NewTeeHandler(base, logHandler))))
+			obs.RegisterOTelMetrics()
+		}
 		a, err := app.Wire(ctx, cfg)
 		if err != nil {
 			fatal(err)
@@ -115,6 +135,7 @@ func main() {
 		fmt.Printf("已授予 %d 个账号平台管理员（目标 %d 个手机号）\n", n, len(phones))
 	case "seed":
 		dir := "../../contracts/seeds/dict"
+		wordsPath := "../../contracts/seeds/sensitive/words.json"
 		if len(os.Args) > 2 {
 			dir = os.Args[2]
 		}
@@ -129,7 +150,11 @@ func main() {
 		if err != nil {
 			fatal(err)
 		}
-		fmt.Printf("字典种子导入完成：%d 条（%s）\n", n, dir)
+		wn, err := app.SeedSensitive(ctx, a, wordsPath)
+		if err != nil {
+			fatal(err)
+		}
+		fmt.Printf("种子导入完成：字典 %d 条（%s）、敏感词/引流词 %d 条（%s）\n", n, dir, wn, wordsPath)
 	default:
 		fmt.Println("未知命令:", os.Args[1])
 		os.Exit(1)

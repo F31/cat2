@@ -35,7 +35,7 @@
 
 ## 5. 可观测完善
 
-- [ ] 5.1 OTel 全链路核查：trace/metric/log 统一入口，指标带 module 标签（◐：**OTel SDK 已接入** `internal/adapters/otelx` + `kernel/obs` server span，OTLP Trace/Metric 导出与 S1 Collector 就绪；log 仍走 slog+脱敏、OTel log 桥接与 OTel 指标 `module` 标签随监控栈接入）
+- [x] 5.1 OTel 全链路核查：trace/metric/log 统一入口，指标带 module 标签。`internal/adapters/otelx`：`Setup`（OTLP Trace/Metric）+ `SetupLogs`（OTLP Log）+ slog 桥接 `NewLogHandler`；`kernel/obs`：server span、`NewTeeHandler`（控制台 + OTel 双出口，脱敏在外层）、`RegisterOTelMetrics`（内置 `/metrics` 镜像为 OTel 异步 Gauge，逐条带 `module` 标签，按指标名前缀推导）；`cmd/catcube` 启用时装配三路。单测 `otelx/logs_test.go` + `obs/otel_metrics_test.go` + `obs/tee_test.go`。（实际 Collector 接收与后端面板仍随 S1 监控栈启用）
 - [x] 5.2 日志结构化与脱敏：`obs` 统一 `WithRequestID/WithModule/WithUserID` + `RedactingHandler`（密钥字段屏蔽、手机号/证件号/姓名掩码、值内嵌手机号抹除）；入口 `slog.SetDefault(RedactingHandler)`；扫描脚本 `tools/logscan`（接入 `make lint`）；单测（脱敏）+ 扫描器测试；`make lint` 通过
 - [x] 5.3 业务看板口径与埋点：实现漏斗指标（注册/匹配曝光与点击/联系发起/会员转化/猫立方开通/支付成功与回调失败/审核积压与 SLA/Outbox/审计链/履约兜底），经 `GET /metrics` 暴露；口径文档 `docs/ops/dashboards.md`；集成测试 `TestIntegrationBusinessMetrics`（Grafana 面板随 S1 监控栈接入）
 - [x] 5.4 告警清单与初始阈值：应用层已实现（`outbox_backlog_high`/`outbox_oldest_age_high`/`outbox_dead_high`/`fulfillment_retry_exceeded`/`review_sla_overdue`/`review_backlog_high`/`audit_chain_broken`/`contact_scrape_suspected`，阈值经 `CATCUBE_ALERT_*` 可配）；P99/错误率/DB/Redis 等接入层告警与处置动作见 `docs/ops/alerts.md`

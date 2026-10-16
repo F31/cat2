@@ -132,7 +132,7 @@ func RequestIDMiddleware(next http.Handler) http.Handler {
 		dur := time.Since(start)
 		span.SetAttributes(attribute.Int64("http.server.duration_ms", dur.Milliseconds()))
 		span.End()
-		slog.Info("http", "request_id", id, "trace_id", traceID, "span_id", spanID,
+		slog.InfoContext(ctx, "http", "request_id", id, "trace_id", traceID, "span_id", spanID,
 			"method", r.Method, "path", r.URL.Path, "dur_ms", dur.Milliseconds())
 	})
 }
@@ -286,6 +286,51 @@ type RedactingHandler struct{ Inner slog.Handler }
 
 // NewRedactingHandler 包装。
 func NewRedactingHandler(inner slog.Handler) slog.Handler { return RedactingHandler{Inner: inner} }
+
+// TeeHandler 将同一条记录扇出到多个 Handler（控制台 + OTel 日志桥接，p6 §5.1）。
+// Enabled 取任一为真；Handle/WithAttrs/WithGroup 同步作用于全部子 Handler。
+func NewTeeHandler(handlers ...slog.Handler) slog.Handler { return TeeHandler{Handlers: handlers} }
+
+// TeeHandler 多路日志 Handler。
+type TeeHandler struct{ Handlers []slog.Handler }
+
+func (h TeeHandler) Enabled(ctx context.Context, l slog.Level) bool {
+	for _, x := range h.Handlers {
+		if x.Enabled(ctx, l) {
+			return true
+		}
+	}
+	return false
+}
+
+func (h TeeHandler) Handle(ctx context.Context, r slog.Record) error {
+	var firstErr error
+	for _, x := range h.Handlers {
+		if !x.Enabled(ctx, r.Level) {
+			continue
+		}
+		if err := x.Handle(ctx, r.Clone()); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func (h TeeHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	out := make([]slog.Handler, len(h.Handlers))
+	for i, x := range h.Handlers {
+		out[i] = x.WithAttrs(attrs)
+	}
+	return TeeHandler{Handlers: out}
+}
+
+func (h TeeHandler) WithGroup(name string) slog.Handler {
+	out := make([]slog.Handler, len(h.Handlers))
+	for i, x := range h.Handlers {
+		out[i] = x.WithGroup(name)
+	}
+	return TeeHandler{Handlers: out}
+}
 
 func (h RedactingHandler) Enabled(ctx context.Context, l slog.Level) bool {
 	return h.Inner.Enabled(ctx, l)

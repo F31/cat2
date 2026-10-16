@@ -11,7 +11,7 @@
 | 2 性能与容量 | ◐ | 造数与压测工具 ✅ 且本地并发 100 全达标；S1 正式复跑待环境 |
 | 3 部署与可靠性 | ◐ | S0/S1 编排、健康检查与优雅停机、PITR 配置与演练 ✅；云环境 PITR 演练待执行 |
 | 4 降级矩阵 | ✅ | 搜索/内容安全/notice/Redis/履约/AI 六类降级均已自动化验证 |
-| 5 可观测 | ◐ | 结构化日志+脱敏+trace 贯通+`/metrics`+看板口径+告警清单 ✅；监控栈接入与 OTel SDK 待环境 |
+| 5 可观测 | ◐ | 结构化日志+脱敏+trace 贯通+`/metrics`+看板口径+告警清单+OTel trace/metric/log 统一入口与指标 `module` 标签 ✅；监控栈后端接入待环境 |
 | 6 灰度发布 | ◐ | 特性开关（用户/比例/白名单）✅；小程序审核发版与灰度批次执行属外部 |
 | 7 验收与追溯 | ◐ | PRD 11.4 追溯矩阵、待确认复核、上线检查单 ✅；签署与 #13/#3 结论待外部 |
 | p4 非阻塞部分 | ✅ | 审计体系（装饰器/脱敏/AuditPoint+CI/查询页/告警/留存）、认证全类型与组织机制、标识配置、导出中心、看板与埋点均已落地并测试 |
@@ -63,7 +63,8 @@
 - ✅ trace 贯通：W3C `traceparent` 透传/生成；事件与 Outbox 携带 trace，订阅方上下文续接（`TestIntegrationTracePropagation`）
 - ✅ 指标：`GET /metrics`（Prometheus 文本）；看板口径 `docs/ops/dashboards.md`（注册/画像/匹配点击/联系发起/会员转化/支付成功率/猫立方开通/审核积压/Outbox/审计链/履约/AI）
 - ✅ 告警：应用层 8 类 + 接入层清单与阈值 `docs/ops/alerts.md`；`TestIntegrationOutboxBacklogAlert`、`TestIntegrationAuditChainBrokenAlert` 等
-- ◐ 监控栈（Prometheus/Grafana 或云监控）接入与面板/规则生效；OTel SDK 接入（需联网依赖）
+- ✅ OTel 全链路入口：`otelx.Setup`（Trace/Metric）+ `SetupLogs`（Log，slog 桥接）+ `obs.RegisterOTelMetrics`（`/metrics` 镜像为 OTel Gauge，带 `module` 标签）+ `obs.NewTeeHandler`（控制台 + OTLP，脱敏在外层）；默认关闭，单测覆盖（`otelx/logs_test.go`、`obs/otel_metrics_test.go`、`obs/tee_test.go`）
+- ◐ 监控栈（Prometheus/Grafana 或云监控）后端接入与面板/规则生效（Collector 接收与导出后端配置随 S1 环境）
 
 ## 6. 灰度发布
 

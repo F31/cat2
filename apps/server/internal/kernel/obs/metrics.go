@@ -117,6 +117,32 @@ func (m *Metrics) Render() string {
 
 func metricBase(name string) string { return strings.TrimSuffix(name, "_total") }
 
+// metricSample 指标快照项（OTel 桥接用：名称 + 模块标签 + 当前值）。
+type metricSample struct {
+	name   string
+	module string
+	value  float64
+}
+
+// snapshot 当前全部计数/状态值的快照（供 OTel 桥接读取）。
+func (m *Metrics) snapshot() []metricSample {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]metricSample, 0, len(m.counters)+len(m.gauges))
+	for k, v := range m.counters {
+		n := metricBase(baseName(k))
+		out = append(out, metricSample{name: n, module: metricModule(n), value: v})
+	}
+	for k, v := range m.gauges {
+		n := metricBase(baseName(k))
+		out = append(out, metricSample{name: n, module: metricModule(n), value: v})
+	}
+	return out
+}
+
+// baseName 去掉标签后缀，取纯指标名（`name{label="v"}` → `name`）。
+func baseName(k string) string { return strings.SplitN(k, "{", 2)[0] }
+
 func sanitizeMetric(k string) string {
 	// Prometheus 指标名/标签名必须为 [a-zA-Z_:][a-zA-Z0-9_:]*
 	out := strings.ReplaceAll(k, "=\"", "=\"")

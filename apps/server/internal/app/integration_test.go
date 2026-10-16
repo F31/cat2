@@ -5811,3 +5811,57 @@ func TestIntegrationAIModuleExcluded(t *testing.T) {
 		t.Fatalf("未装载 ai 不应影响主链路: %+v", env)
 	}
 }
+
+// 敏感词/引流词种子导入（p0 §4.2）：幂等入库且词库即时生效。
+func TestIntegrationSensitiveWordSeed(t *testing.T) {
+	h := newTestApp(t)
+	ctx := context.Background()
+	const path = "../../../../contracts/seeds/sensitive/words.json"
+
+	n, err := SeedSensitive(ctx, h.app, path)
+	if err != nil {
+		t.Fatalf("导入失败: %v", err)
+	}
+	if n == 0 {
+		t.Fatal("应导入词条")
+	}
+	var first int
+	if err := h.app.Pool.QueryRow(ctx, `SELECT count(*) FROM trs_sensitive_word WHERE status=1`).Scan(&first); err != nil {
+		t.Fatal(err)
+	}
+	// 幂等：重复导入条数稳定、库内不新增
+	n2, err := SeedSensitive(ctx, h.app, path)
+	if err != nil {
+		t.Fatalf("重复导入失败: %v", err)
+	}
+	if n2 != n {
+		t.Fatalf("幂等导入条数应稳定: %d != %d", n2, n)
+	}
+	var second int
+	if err := h.app.Pool.QueryRow(ctx, `SELECT count(*) FROM trs_sensitive_word WHERE status=1`).Scan(&second); err != nil {
+		t.Fatal(err)
+	}
+	if second != first {
+		t.Fatalf("重复导入不应新增记录: %d != %d", second, first)
+	}
+	// 词库已加载：引流词命中（category=diversion 写入）
+	var trustMod *trust.Module
+	for _, m := range h.app.Modules {
+		if tm, ok := m.(*trust.Module); ok {
+			trustMod = tm
+		}
+	}
+	if trustMod == nil {
+		t.Fatal("trust 模块未装载")
+	}
+	if _, hit := trustMod.FilterSensitive("详情请加我微信私聊"); !hit {
+		t.Fatal("引流词应命中")
+	}
+	var cat string
+	if err := h.app.Pool.QueryRow(ctx, `SELECT category FROM trs_sensitive_word WHERE word='加我微信'`).Scan(&cat); err != nil {
+		t.Fatal(err)
+	}
+	if cat != "diversion" {
+		t.Fatalf("引流词类目应为 diversion: %s", cat)
+	}
+}

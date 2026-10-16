@@ -37,7 +37,7 @@
 - [x] 业务看板口径与指标（`/metrics`）→ `docs/ops/dashboards.md`
 - [x] 告警清单与初始阈值 → `docs/ops/alerts.md`
 - [ ] 监控栈接入（Prometheus/Grafana 或云监控）与面板/告警规则生效 → `外部`
-- [x] OTel 接入（p1 §5.6）→ `internal/adapters/otelx` + `kernel/obs` server span；S1 `otel-collector` 服务与 `deploy/compose/otel-collector.yaml`；默认关闭（`CATCUBE_OTEL_ENABLED`），启用步骤见 `docs/ops/dashboards.md`
+- [x] OTel 接入（p1 §5.6 / p6 §5.1）→ trace/metric/log 统一入口：`internal/adapters/otelx`（`Setup`/`SetupLogs`）+ `kernel/obs`（server span、`NewTeeHandler`、`RegisterOTelMetrics`，指标带 `module` 标签）；S1 `otel-collector` 服务与 `deploy/compose/otel-collector.yaml`；默认关闭（`CATCUBE_OTEL_ENABLED`），启用步骤见 `docs/ops/dashboards.md`
 - [ ] 监控栈（Prometheus/Grafana 或云监控）抓取 `/metrics` 与 Collector `:8889` 并配置面板/告警 → 待环境
 
 ## 5. 灰度与回滚

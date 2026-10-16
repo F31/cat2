@@ -484,6 +484,16 @@ func SeedDict(ctx context.Context, a *App, dir string) (int, error) {
 	return 0, fmt.Errorf("dict 模块未装载")
 }
 
+// SeedSensitive 幂等导入敏感词/引流词种子（seed 子命令）。
+func SeedSensitive(ctx context.Context, a *App, path string) (int, error) {
+	for _, m := range a.Modules {
+		if tm, ok := m.(*trust.Module); ok {
+			return tm.SeedWords(ctx, path)
+		}
+	}
+	return 0, fmt.Errorf("trust 模块未装载")
+}
+
 // adminSectionsFor 后台菜单声明（装配根集中声明，p4 改为模块 AdminSection + 操作级权限点）。
 func adminSectionsFor(mods []module.Module) []module.AdminSection {
 	decl := map[string][]module.AdminSection{

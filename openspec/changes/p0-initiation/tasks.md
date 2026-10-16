@@ -39,7 +39,7 @@
 ## 4. 数据准备
 
 - [ ] 4.1 字典种子初稿（`contracts/seeds/`）：行业/子行业两级、区域（省市县）、合作需求/合作提供、会议/活动领域、主体类型六类
-- [ ] 4.2 敏感词/引流词库初稿（「加我微信/私下联系」等，PRD 9.3）
+- [x] 4.2 敏感词/引流词库初稿：`contracts/seeds/sensitive/words.json`（category=diversion 引流词 / sensitive 违规词）；`trust.SeedWords` 幂等导入 `trs_sensitive_word` 并即时 `LoadWords` 生效；`catcube seed` 一并导入；`TestIntegrationSensitiveWordSeed`（幂等 + 命中）
 
 ## 5. 退出标准
 

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -159,6 +160,51 @@ func (m *Module) LoadWords(ctx context.Context) error {
 	m.words = words
 	m.mu.Unlock()
 	return rows.Err()
+}
+
+// sensitiveSeed contracts/seeds/sensitive/words.json 的文件格式。
+type sensitiveSeed struct {
+	Version int `json:"version"`
+	Groups  []struct {
+		Category string   `json:"category"`
+		Words    []string `json:"words"`
+	} `json:"groups"`
+}
+
+// SeedWords 幂等导入敏感词/引流词库（seed 子命令调用；word 唯一，重复则更新类目并启用）。
+func (m *Module) SeedWords(ctx context.Context, path string) (int, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	var seed sensitiveSeed
+	if err := json.Unmarshal(raw, &seed); err != nil {
+		return 0, fmt.Errorf("解析敏感词种子失败: %w", err)
+	}
+	n := 0
+	for _, g := range seed.Groups {
+		cat := strings.TrimSpace(g.Category)
+		if cat == "" {
+			cat = "sensitive"
+		}
+		for _, w := range g.Words {
+			w = strings.TrimSpace(w)
+			if w == "" {
+				continue
+			}
+			if _, err := m.deps.Pool.Exec(ctx, `
+				INSERT INTO trs_sensitive_word (word, category, status) VALUES ($1,$2,1)
+				ON CONFLICT (word) DO UPDATE SET category=EXCLUDED.category, status=1`,
+				w, cat); err != nil {
+				return n, err
+			}
+			n++
+		}
+	}
+	if err := m.LoadWords(ctx); err != nil {
+		return n, err
+	}
+	return n, nil
 }
 
 // FilterSensitive 本地敏感词前置过滤（含引流词）；命中先提示再记分。
