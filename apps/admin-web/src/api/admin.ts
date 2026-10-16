@@ -62,6 +62,15 @@ export interface AdminMenu {
   module: string
 }
 
+export interface SettingItem {
+  key: string
+  type: string
+  value: string
+  default?: string
+  description?: string
+  sensitive?: boolean
+}
+
 export interface FeatureFlag {
   key: string
   enabled: boolean
@@ -155,6 +164,13 @@ export const adminApi = {
 
   menus() {
     return call<{ items: AdminMenu[] }>('GET', '/admin/v1/menus')
+  },
+
+  settings() {
+    return call<{ items: SettingItem[] }>('GET', '/admin/v1/settings')
+  },
+  setSetting(key: string, value: string) {
+    return call<{ saved: boolean }>('PUT', `/admin/v1/settings/${key}`, { value })
   },
 
   featureFlags() {

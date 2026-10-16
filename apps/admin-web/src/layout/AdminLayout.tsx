@@ -18,6 +18,7 @@ const FALLBACK: MenuProps['items'] = [
   { key: '/templates', label: '通知模板' },
   { key: '/dead-letters', label: '死信队列' },
   { key: '/feature-flags', label: '特性开关' },
+  { key: '/settings', label: '业务配置' },
 ]
 
 export default function AdminLayout() {

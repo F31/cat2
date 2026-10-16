@@ -43,6 +43,48 @@ paths:
                             type: array
                             items: { $ref: '#/components/schemas/AdminSection' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /settings:
+    get:
+      tags: [admin-governance]
+      summary: 业务配置列表（含声明、当前值与默认值）
+      operationId: adminSettings
+      responses:
+        '200':
+          description: 配置列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { $ref: '#/components/schemas/SettingItem' } }
+  /settings/{key}:
+    put:
+      tags: [admin-governance]
+      summary: 修改业务配置（热生效）
+      operationId: adminSetSetting
+      parameters:
+        - { name: key, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [value], properties: { value: { type: string } } }
+      responses:
+        '200':
+          description: 结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { type: object, properties: { saved: { type: boolean } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /feature-flags:
     get:
       tags: [admin-governance]
@@ -533,6 +575,16 @@ components:
       type: object
       properties:
         status: { type: integer }
+    SettingItem:
+      type: object
+      required: [key, type, value]
+      properties:
+        key: { type: string }
+        type: { type: string }
+        value: { type: string }
+        default: { type: string }
+        description: { type: string }
+        sensitive: { type: boolean }
     FeatureFlag:
       type: object
       required: [key, enabled]

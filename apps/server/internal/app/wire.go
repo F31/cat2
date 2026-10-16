@@ -187,7 +187,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine,
 		Resolver: entityReg, Realtime: local.RealtimeNoop{}, Audit: auditRec, Storage: storage,
 	})
-	settingsReg := settings.NewRegistry(nil)
+	settingsReg := settings.NewRegistry(pg.NewSettings(pool))
 	discoveryMod := discovery.New(discovery.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Settings: settingsReg, Outbox: outbox,
 	})
@@ -215,8 +215,9 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	})
 	flagStore := featureflag.NewStore(pool)
 	opsMod := ops.New(ops.Deps{Pool: pool, Identity: identityMod.Facade(), Outbox: outbox, Bus: bus,
-		Flags: flagStore})
-	aiMod := ai.New(ai.Deps{Pool: pool, Flags: flagStore, LLM: llm.NewDevClient(), Auth: authFunc})
+		Flags: flagStore, Settings: settingsReg})
+	aiMod := ai.New(ai.Deps{Pool: pool, Flags: flagStore, LLM: llm.NewDevClient(), Auth: authFunc,
+		Settings: settingsReg, Dict: dictMod.Facade()})
 	mods := []module.Module{
 		dictMod,
 		mediaMod,

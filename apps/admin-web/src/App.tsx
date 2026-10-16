@@ -11,6 +11,7 @@ import Members from './pages/Members'
 import Templates from './pages/Templates'
 import DeadLetters from './pages/DeadLetters'
 import FeatureFlags from './pages/FeatureFlags'
+import Settings from './pages/Settings'
 import Dashboard from './pages/Dashboard'
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="templates" element={<Templates />} />
         <Route path="dead-letters" element={<DeadLetters />} />
         <Route path="feature-flags" element={<FeatureFlags />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
   )

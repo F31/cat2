@@ -203,6 +203,16 @@ type SLAMetric struct {
 	Pending          int `json:"pending"`
 }
 
+// SettingItem defines model for SettingItem.
+type SettingItem struct {
+	Default     *string `json:"default,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Key         string  `json:"key"`
+	Sensitive   *bool   `json:"sensitive,omitempty"`
+	Type        string  `json:"type"`
+	Value       string  `json:"value"`
+}
+
 // StatusData defines model for StatusData.
 type StatusData struct {
 	Status *int `json:"status,omitempty"`
@@ -296,6 +306,11 @@ type AdminResolveReviewJSONBody struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
+// AdminSetSettingJSONBody defines parameters for AdminSetSetting.
+type AdminSetSettingJSONBody struct {
+	Value string `json:"value"`
+}
+
 // AdminListUsersParams defines parameters for AdminListUsers.
 type AdminListUsersParams struct {
 	Status *int    `form:"status,omitempty" json:"status,omitempty"`
@@ -319,6 +334,9 @@ type AdminRefundJSONRequestBody AdminRefundJSONBody
 
 // AdminResolveReviewJSONRequestBody defines body for AdminResolveReview for application/json ContentType.
 type AdminResolveReviewJSONRequestBody AdminResolveReviewJSONBody
+
+// AdminSetSettingJSONRequestBody defines body for AdminSetSetting for application/json ContentType.
+type AdminSetSettingJSONRequestBody AdminSetSettingJSONBody
 
 // AdminBanUserJSONRequestBody defines body for AdminBanUser for application/json ContentType.
 type AdminBanUserJSONRequestBody AdminBanUserJSONBody
@@ -370,6 +388,12 @@ type ServerInterface interface {
 	// AdminResolveReview 复核结论（通过/驳回，驳回须填原因）
 	// (POST /review-tasks/{id}/resolve)
 	AdminResolveReview(w http.ResponseWriter, r *http.Request, id string)
+	// AdminSettings 业务配置列表（含声明、当前值与默认值）
+	// (GET /settings)
+	AdminSettings(w http.ResponseWriter, r *http.Request)
+	// AdminSetSetting 修改业务配置（热生效）
+	// (PUT /settings/{key})
+	AdminSetSetting(w http.ResponseWriter, r *http.Request, key string)
 	// AdminListUsers 用户列表（按状态/关键字）
 	// (GET /users)
 	AdminListUsers(w http.ResponseWriter, r *http.Request, params AdminListUsersParams)
@@ -801,6 +825,46 @@ func (siw *ServerInterfaceWrapper) AdminResolveReview(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// AdminSettings operation middleware
+func (siw *ServerInterfaceWrapper) AdminSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminSetSetting operation middleware
+func (siw *ServerInterfaceWrapper) AdminSetSetting(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "key" -------------
+	var key string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", r.PathValue("key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminSetSetting(w, r, key)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminListUsers operation middleware
 func (siw *ServerInterfaceWrapper) AdminListUsers(w http.ResponseWriter, r *http.Request) {
 
@@ -1033,6 +1097,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/menus", wrapper.AdminMenus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/settings", wrapper.AdminSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/settings/{key}", wrapper.AdminSetSetting)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/feature-flags", wrapper.AdminFeatureFlags)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/feature-flags/{key}", wrapper.AdminSetFeatureFlag)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/dead-letters", wrapper.AdminDeadLetters)

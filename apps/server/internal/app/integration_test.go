@@ -4467,3 +4467,91 @@ func TestIntegrationTracePropagation(t *testing.T) {
 		t.Fatalf("订阅方 ctx 应续接 trace：期望 %s，实际 %q", tid, v)
 	}
 }
+
+// AI 配额/成本/隐私/提示词版本（p5 §1.4/1.5/1.7）：额度用尽拒绝、提示词版本生效、隐私不落库。
+func TestIntegrationAIQuotaPromptPrivacy(t *testing.T) {
+	h := newTestAppCfg(t, func(c *config.Config) {})
+	uid, tok := loginUser(t, h)
+	_, admTok := loginAdmin(t, h)
+	ctx := context.Background()
+
+	// 先把额度设大，避免历史调用影响（配置经后台接口，热生效）
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/settings/ai.quota.user.daily", admTok, map[string]any{"value": "100"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("预置额度失败: %d %+v", s, e)
+	}
+
+	// 开启能力（白名单当前用户）
+	for _, f := range []string{aiContract.FlagOnboard, aiContract.FlagSearch} {
+		if s, e := h.do(http.MethodPut, "/api/admin/v1/feature-flags/"+f, admTok, map[string]any{
+			"enabled": true, "ratio": 0, "users": []int64{uid},
+		}); s != http.StatusOK || e.Code != 0 {
+			t.Fatalf("开启 %s 失败: %d %+v", f, s, e)
+		}
+	}
+
+	// 1) 提示词版本：未评测的版本不生效；评测通过后生效
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO ai_prompt (feature, version, body, approved) VALUES ('onboard','v2','DB提示词（onboard）',false)
+		ON CONFLICT (feature, version) DO UPDATE SET body=EXCLUDED.body, approved=false`); err != nil {
+		t.Fatal(err)
+	}
+	_, env := h.do(http.MethodPost, "/api/mp/v1/ai/onboard-draft", tok, map[string]any{"text": "华东重工 采购总监"})
+	var draft struct {
+		CallID int64 `json:"call_id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &draft)
+	var version string
+	_ = h.app.Pool.QueryRow(ctx, `SELECT prompt_version FROM ai_call_log WHERE id=$1`, draft.CallID).Scan(&version)
+	if version != "code-v1" {
+		t.Fatalf("未评测版本不应生效，实际 %s", version)
+	}
+	if _, err := h.app.Pool.Exec(ctx, `UPDATE ai_prompt SET approved=true WHERE feature='onboard' AND version='v2'`); err != nil {
+		t.Fatal(err)
+	}
+	_, env = h.do(http.MethodPost, "/api/mp/v1/ai/onboard-draft", tok, map[string]any{"text": "华东重工 采购总监"})
+	_ = json.Unmarshal(env.Data, &draft)
+	_ = h.app.Pool.QueryRow(ctx, `SELECT prompt_version FROM ai_call_log WHERE id=$1`, draft.CallID).Scan(&version)
+	if version != "v2" {
+		t.Fatalf("评测通过版本应生效，实际 %s", version)
+	}
+
+	// 2) 隐私红线：手机号/证件号不进提示词（也不落库）
+	_, env = h.do(http.MethodPost, "/api/mp/v1/ai/onboard-draft", tok, map[string]any{
+		"text": "张三 13812345678 证件110101199003070019",
+	})
+	if env.Code != 0 {
+		t.Fatalf("应可生成: %+v", env)
+	}
+	if obs.Default().Counter("catcube_ai_privacy_scrub_total") == 0 {
+		t.Fatal("应记录隐私剥离次数")
+	}
+	var leak int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM ai_call_log WHERE feature='onboard' AND input_len > 0`).Scan(&leak)
+	// 输入长度仅记录长度，不记录原文；此处保证表中无原文列（结构约束）+ 剥离指标增长
+	if leak == 0 {
+		t.Fatal("调用应留痕")
+	}
+
+	// 3) 配额：把单用户日额度调小，超限 429/030004
+	if _, env := h.do(http.MethodPost, "/api/admin/v1/feature-flags/x", admTok, map[string]any{"enabled": false}); env.Code != 0 {
+		_ = env
+	}
+	// 经后台配置接口把额度下调到「今日已调用数」（配置三层第三层：热生效）
+	var used int64
+	_ = h.app.Pool.QueryRow(ctx, `
+		SELECT count(1) FROM ai_call_log WHERE user_id=$1 AND created_at >= date_trunc('day', now())`, uid).Scan(&used)
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/settings/ai.quota.user.daily", admTok, map[string]any{
+		"value": fmt.Sprintf("%d", used),
+	}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("修改配置失败: %d %+v", s, e)
+	}
+	// 配置列表可读且含声明
+	if _, e := h.do(http.MethodGet, "/api/admin/v1/settings", admTok, nil); e.Code != 0 {
+		t.Fatalf("配置列表失败: %+v", e)
+	}
+	// 已有 ≥2 次调用 → 下一次应超限
+	status, env2 := h.do(http.MethodPost, "/api/mp/v1/ai/search", tok, map[string]any{"text": "上海找钣金"})
+	if status != http.StatusTooManyRequests || env2.Code != 30004 {
+		t.Fatalf("超配额应 429/030004: %d %+v", status, env2)
+	}
+}

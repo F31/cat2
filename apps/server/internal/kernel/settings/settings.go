@@ -13,8 +13,8 @@ type ValueType string
 
 const (
 	TypeInt    ValueType = "int"
-	TypeFen    ValueType = "fen"    // 金额分
-	TypeRate   ValueType = "rate"   // 折扣系数万分比
+	TypeFen    ValueType = "fen"  // 金额分
+	TypeRate   ValueType = "rate" // 折扣系数万分比
 	TypeBool   ValueType = "bool"
 	TypeString ValueType = "string"
 )
@@ -42,6 +42,30 @@ type Store interface {
 	Get(ctx context.Context, scope, key string) (Entry, bool, error)
 	Set(ctx context.Context, e Entry) error
 	List(ctx context.Context, scope string) ([]Entry, error)
+}
+
+// GetSchema 取配置声明（校验键是否登记）。
+func (r *Registry) GetSchema(key string) (Schema, error) {
+	s, ok := r.schemas[key]
+	if !ok {
+		return Schema{}, fmt.Errorf("settings: 未登记的配置键 %q", key)
+	}
+	return s, nil
+}
+
+// Set 写入配置（scope=platform/space:<id>）。
+func (r *Registry) Set(ctx context.Context, spaceID int16, key, value string, operator int64) error {
+	if _, err := r.GetSchema(key); err != nil {
+		return err
+	}
+	if r.store == nil {
+		return fmt.Errorf("settings: 未配置存储")
+	}
+	scope := "platform"
+	if spaceID > 1 {
+		scope = fmt.Sprintf("space:%d", spaceID)
+	}
+	return r.store.Set(ctx, Entry{Scope: scope, Key: key, Value: value, Operator: operator})
 }
 
 // Registry 配置注册与读取。

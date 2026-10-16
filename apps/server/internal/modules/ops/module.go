@@ -12,6 +12,7 @@ import (
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/featureflag"
 	"catcube/internal/kernel/module"
+	"catcube/internal/kernel/settings"
 	idcontract "catcube/internal/modules/identity/contract"
 )
 
@@ -22,6 +23,7 @@ type Deps struct {
 	Outbox   eventbus.OutboxStore
 	Bus      *eventbus.Bus
 	Flags    *featureflag.Store
+	Settings *settings.Registry
 }
 
 // Module ops 模块。
@@ -39,6 +41,9 @@ func (m *Module) Register(r *module.Registry) error {
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/dead-letters", Handler: m.auth(m.handleList), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/dead-letters/{eventID}/replay", Handler: m.auth(m.handleReplay), Admin: true},
+		// 业务配置（配置三层第三层：后台改，热生效）
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/settings", Handler: m.auth(m.handleSettings), Admin: true},
+		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/settings/{key}", Handler: m.auth(m.handleSetSetting), Admin: true},
 		// 特性开关（灰度发布）：后台配置 + 客户端评估
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/feature-flags", Handler: m.auth(m.handleFlags), Admin: true},
 		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/feature-flags/{key}", Handler: m.auth(m.handleSetFlag), Admin: true},
@@ -61,6 +66,53 @@ func (m *Module) handleList(w http.ResponseWriter, req *http.Request) {
 		})
 	}
 	writeData(w, map[string]any{"items": items})
+}
+
+// handleSettings 后台：业务配置列表（含声明与当前值）。
+func (m *Module) handleSettings(w http.ResponseWriter, req *http.Request) {
+	if m.deps.Settings == nil {
+		writeData(w, map[string]any{"items": []any{}})
+		return
+	}
+	items := make([]map[string]any, 0)
+	for _, sc := range m.deps.Settings.Schemas() {
+		cur, err := m.deps.Settings.Get(req.Context(), 1, sc.Key)
+		value := sc.Default
+		if err == nil {
+			value = cur
+		}
+		items = append(items, map[string]any{
+			"key": sc.Key, "type": string(sc.Type), "value": value,
+			"default": sc.Default, "description": sc.Description, "sensitive": sc.Sensitive,
+		})
+	}
+	writeData(w, map[string]any{"items": items})
+}
+
+// handleSetSetting 后台：修改业务配置（热生效；敏感项不回显明文）。
+func (m *Module) handleSetSetting(w http.ResponseWriter, req *http.Request) {
+	key := req.PathValue("key")
+	if key == "" || m.deps.Settings == nil {
+		writeErr(w, 1, "参数错误")
+		return
+	}
+	if _, err := m.deps.Settings.GetSchema(key); err != nil {
+		writeErr(w, 1, "未登记的配置项")
+		return
+	}
+	var body struct {
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeErr(w, 1, "参数错误")
+		return
+	}
+	op := userIDFrom(req.Context())
+	if err := m.deps.Settings.Set(req.Context(), 1, key, body.Value, op); err != nil {
+		writeErr(w, 9, "服务错误")
+		return
+	}
+	writeData(w, map[string]any{"saved": true})
 }
 
 // handleFlags 后台：开关列表。

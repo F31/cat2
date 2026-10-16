@@ -21,6 +21,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 业务配置列表（含声明、当前值与默认值） */
+        get: operations["adminSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** 修改业务配置（热生效） */
+        put: operations["adminSetSetting"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/feature-flags": {
         parameters: {
             query?: never;
@@ -327,6 +361,14 @@ export interface components {
         StatusData: {
             status?: number;
         };
+        SettingItem: {
+            key: string;
+            type: string;
+            value: string;
+            default?: string;
+            description?: string;
+            sensitive?: boolean;
+        };
         FeatureFlag: {
             key: string;
             enabled: boolean;
@@ -525,6 +567,63 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    adminSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 配置列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["SettingItem"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    adminSetSetting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    value: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            saved?: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
     adminFeatureFlags: {

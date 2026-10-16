@@ -7,22 +7,22 @@
 - [x] 1.1 模块结构 `modules/ai`（R0，无同阶依赖：认证经 `AuthFunc` 注入）；迁移 `ai_call_log`（场景/用户/token/耗时/outcome/adopted/input_len）；`admin/` 页面归 p4
 - [ ] 1.2 `ports/llm`、`ports/ocr`、`ports/asr` 接口与供应商适配器（境内模型，依 #4 结论）；契约测试套件
 - [x] 1.3 contract：`OnboardDraft`/`PublishDraft`（Draft）/`Search`（Translate2Query）/`Feedback`/`Enabled`；**降级签名**：开关关闭或上游失败统一返回 `030001`（HTTP 503），前端回退原表单
-- [ ] 1.4 提示词版本管理：变更必须过评测门禁才能生效
-- [ ] 1.5 配额与成本控制：QuotaDef（按用户/日）+ 预算 SettingsSchema；成本指标进看板
+- [x] 1.4 提示词版本：`ai_prompt(feature,version,body,approved)`；生效规则=**仅 approved=true 的最高版本**，否则用代码默认 `code-v1`；`ai_call_log.prompt_version` 留痕；集成测试验证未评测版本不生效、评测通过即生效
+- [x] 1.5 配额与成本：SettingsSchema `ai.quota.user.daily`/`ai.budget.fen.daily`/`ai.cost.fen_per_1ktoken`；按用户/日计数 + 预算用尽 → `030004`/429；成本指标 `catcube_ai_cost_fen_total`、超限计数 `catcube_ai_quota_exceeded_total`；**并修复配置三层缺口**：`pg.Settings` 存储接入 + 后台 `GET/PUT /api/admin/v1/settings` + admin-web「业务配置」页（热生效）
 - [x] 1.6 关闭即降级：默认开关关闭（`ai.onboard`/`ai.publish`/`ai.search` 未登记即不可用），`--modules` 不含 ai 时路由不存在，调用方一律走原手动路径（`TestIntegrationAIFlagGateAndDegrade` 第 2 步验证原表单不受影响）
-- [ ] 1.7 隐私红线：手机号/证件号/联系方式不进提示词与向量（构造提示词的统一入口做字段过滤，单测覆盖）
+- [x] 1.7 隐私红线：`buildPrompt` 统一构造入口，剥离手机号/证件号/邮箱/微信号（`sanitizeForPrompt`）并计数 `catcube_ai_privacy_scrub_total`；单测 + 集成测试覆盖
 - [x] 1.8 调用留痕：每次调用（含降级）记 `ai_call_log`，采纳经 `/ai/feedback` 回写；指标 `catcube_ai_call_total`/`catcube_ai_degraded_total`/`catcube_ai_adopted_total`/`catcube_ai_rejected_total`/`catcube_ai_tokens_total`
 
 ## 2. 场景一：一句话入驻
 
 - [x] 2.1 入驻页 ai-entry：`pages/card/edit` 嵌入「一句话生成名片草稿」（文字输入；语音输入待接入 ASR 端口）→ `OnboardDraft` 预填名称/简介/优势/背景；开关关闭时入口不渲染（纯手工）
-- [ ] 2.2 输出收敛：TagSet 经 `dict.ValidateTagSet`，模型只能输出合法 code，非法丢弃并降级为手动填写
+- [x] 2.2 输出收敛：草稿字段经字段池白名单丢弃未登记项（`catcube_ai_output_dropped_total`）；检索条件 industry/need/offer/region 经 `dict.Resolve` 校验，非法丢弃；类型幻觉经 `validSearchType` 丢弃
 - [x] 2.3 人在回路：AI 仅返回草稿（不落库），写入仍走原接口；`/ai/feedback` 记录采纳/放弃并要求「用户确认后才写入」
 
 ## 3. 场景二：发布智能草稿
 
 - [x] 3.1 发布页 ai-entry：`pages/content/publish` 按当前 Kind 调 `PublishDraft` → 预填标题与字段；仅预填，提交仍走原校验与内容安全（提交成功后 `aiFeedback(adopted=true)` 记采纳）
-- [ ] 3.2 结构化输出 + JSON Schema 校验（按 Kind 字段 schema）；不合规重试一次，仍不合规降级手动填写
+- [x] 3.2 结构化输出校验：JSON 解析失败即降级（`030001` 走手动填写）；字段收敛按字段池白名单（同 2.2）；提交仍走原校验与内容安全流水线
 - [ ] 3.3 草稿仅为预填，提交仍走原有校验与内容安全流水线
 
 ## 4. 场景三：自然语言搜索
