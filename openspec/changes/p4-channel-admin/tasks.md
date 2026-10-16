@@ -29,16 +29,16 @@
 
 ## 3. 后台 RBAC 与权限点
 
-- [ ] 3.1 迁移 `sys_admin_user` / `sys_admin_role` / `sys_admin_user_role` / `sys_admin_role_permission`（N:M，内核表放 `adapters/pg` KernelTables）；五内置角色（超管/运营/审核员/财务/渠道经理）+ `decision-checklist-13.md §2.2` 矩阵作**默认种子**；角色带 `space_id/region_code`、`protected`、`builtin`
-- [ ] 3.2 AdminSection 增强：菜单级（路由可见性）+ 操作级（action 级按钮可用性）两级；权限点命名 `<module>:<resource>:<action>`，统一登记在 contracts（只增不改名，废弃标 deprecated）
-- [ ] 3.3 服务端强制校验为唯一权威（前端隐藏仅体验）；后台登录 denied 记审计（防爆破）
+- [x] 3.1 迁移四张 `sys_admin_*` 表（`kernel/rbac.Schema` 并入 `pg.KernelTables`）；五内置角色 + §2.2 矩阵**默认种子**（`rbac.Seed`，角色首建时写默认权限，此后可配）；`space_id/region_code`、`protected`、`builtin` 齐备
+- [◐] 3.2 权限点命名 `<module>:<resource>:<action>` 与注册表 `rbac.Registry()`、`requirePerm` 守卫、菜单级过滤（`/menus` 按模块+`ops.rbac` 特判）已落地；**待办**：为各模块 Admin 路由批量标注所需权限点（action 级全覆盖）
+- [x] 3.3 服务端唯一权威（`requireAdmin`/`requirePerm`；403 记 `admin:access:denied`/`admin:perm:denied` 审计，`TestIntegrationAdminRBAC`）
 - [ ] 3.4 后台账号强制二次验证；敏感操作（退款/封禁/改价格比例/导出/结算）二次确认 + 审计
 - [ ] 3.5 内核 policy「复核≠执行」互斥规则（同一结算单/退款单操作人≠复核人）
-- [ ] 3.6 五角色-权限点**默认矩阵**表驱动用例（含「明确禁止」列的负向用例：运营不得碰资金、审核员不得处置内容以外的资源等，详细设计 10.3）
-- [ ] 3.7 admin-web shell 按 RBAC 过滤菜单；渠道经理数据范围默认仅本人区域，**区域（`space_id`/`region_code`）由运营管理员动态配置**（随角色数据范围，D5）
-- [ ] 3.8 **角色权限可配置**（ADR-002）：后台「角色与权限」页 + 接口 `GET/PUT /api/admin/v1/roles/{code}/permissions`、`POST/DELETE /api/admin/v1/roles`（自定义角色，`builtin` 不可删）、账号角色分配 `PUT /api/admin/v1/admin-users/{id}/roles`；改动即时生效（权限缓存版本号）并审计 `ops:rbac:*`
-- [ ] 3.9 RBAC 红线策略：超管 `protected` 不可编辑/降级/删除；**反提权**（只能授予自身权限子集，不得改 protected 角色）；**防自锁**（禁止移除最后一个 `ops:rbac:manage`）；违反一律 denied 记审计
-- [ ] 3.10 RBAC 测试：默认矩阵生效、改权限即时生效、超管不可改、反提权 denied、防自锁、自定义角色创建/删除、数据范围（space_id/region_code）过滤
+- [◐] 3.6 默认矩阵与负向用例已覆盖（`TestIntegrationAdminRBAC`：默认矩阵、反提权 denied、超管不可改、内置不可删、自定义角色增删）；**待办**：五角色×全权限点的完整表驱动矩阵用例
+- [◐] 3.7 菜单按 RBAC 过滤已落地（`/menus` 按模块过滤，`ops.rbac` 仅 `ops:rbac:manage` 可见）；**待办**：角色 `space_id/region_code` 数据范围过滤（随 p4 §1/§2 渠道数据接入）
+- [x] 3.8 角色权限可配置：后台「角色与权限」页（`apps/admin-web/src/pages/Roles.tsx`）+ 接口（permissions/roles/roles/{code}/permissions/admin-users/{id}/roles）；自定义角色（内置不可删）；改动即时生效（无缓存直接查库）并审计 `ops:rbac:*`
+- [x] 3.9 RBAC 红线：超管 `protected` 不可编辑/降级/删除；反提权（`SetRolePerms`/`AssignRoles` 只能授予自身子集）；防锁死（保留 `ops:rbac:manage` 持有者/超管）；违反记 `ops:rbac:*` denied 审计
+- [◐] 3.10 测试：`kernel/rbac` 单测 + `TestIntegrationAdminRBAC`（默认矩阵/可配/超管保护/反提权/自定义角色/内置不可删/审计）；**待办**：数据范围（space_id/region_code）过滤用例
 
 ## 4. 治理分区 governance/
 
