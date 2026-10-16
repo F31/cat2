@@ -1287,6 +1287,19 @@ type Unauthorized = Error
 // UpstreamError defines model for UpstreamError.
 type UpstreamError = Error
 
+// ApplyAffiliationJSONBody defines parameters for ApplyAffiliation.
+type ApplyAffiliationJSONBody struct {
+	OrgId        string  `json:"org_id"`
+	ProofFileIds *[]int  `json:"proof_file_ids,omitempty"`
+	Role         *string `json:"role,omitempty"`
+}
+
+// VerifyAffiliationJSONBody defines parameters for VerifyAffiliation.
+type VerifyAffiliationJSONBody struct {
+	Pass   bool    `json:"pass"`
+	Reason *string `json:"reason,omitempty"`
+}
+
 // AggregateCircleDetailParams defines parameters for AggregateCircleDetail.
 type AggregateCircleDetailParams struct {
 	Ref string `form:"ref" json:"ref"`
@@ -1395,6 +1408,12 @@ type ShareMyCardParams struct {
 // SubmitCertParams defines parameters for SubmitCert.
 type SubmitCertParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// ReviewCertByOrgJSONBody defines parameters for ReviewCertByOrg.
+type ReviewCertByOrgJSONBody struct {
+	Pass   bool    `json:"pass"`
+	Reason *string `json:"reason,omitempty"`
 }
 
 // JoinCircleJSONBody defines parameters for JoinCircle.
@@ -1621,6 +1640,11 @@ type CreateOrderParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// InviteOrgAdminJSONBody defines parameters for InviteOrgAdmin.
+type InviteOrgAdminJSONBody struct {
+	UserId string `json:"user_id"`
+}
+
 // PayNotifyJSONBody defines parameters for PayNotify.
 type PayNotifyJSONBody map[string]interface{}
 
@@ -1679,6 +1703,12 @@ type DeactivateAccountParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// ApplyAffiliationJSONRequestBody defines body for ApplyAffiliation for application/json ContentType.
+type ApplyAffiliationJSONRequestBody ApplyAffiliationJSONBody
+
+// VerifyAffiliationJSONRequestBody defines body for VerifyAffiliation for application/json ContentType.
+type VerifyAffiliationJSONRequestBody VerifyAffiliationJSONBody
+
 // AiFeedbackJSONRequestBody defines body for AiFeedback for application/json ContentType.
 type AiFeedbackJSONRequestBody AiFeedbackJSONBody
 
@@ -1708,6 +1738,9 @@ type UpdateMyCardJSONRequestBody = CardUpdate
 
 // SubmitCertJSONRequestBody defines body for SubmitCert for application/json ContentType.
 type SubmitCertJSONRequestBody = CertifyInput
+
+// ReviewCertByOrgJSONRequestBody defines body for ReviewCertByOrg for application/json ContentType.
+type ReviewCertByOrgJSONRequestBody ReviewCertByOrgJSONBody
 
 // CreateCircleJSONRequestBody defines body for CreateCircle for application/json ContentType.
 type CreateCircleJSONRequestBody = CircleCreateInput
@@ -1805,6 +1838,9 @@ type SetNoticePreferenceJSONRequestBody SetNoticePreferenceJSONBody
 // CreateOrderJSONRequestBody defines body for CreateOrder for application/json ContentType.
 type CreateOrderJSONRequestBody = CreateOrderInput
 
+// InviteOrgAdminJSONRequestBody defines body for InviteOrgAdmin for application/json ContentType.
+type InviteOrgAdminJSONRequestBody InviteOrgAdminJSONBody
+
 // PayNotifyJSONRequestBody defines body for PayNotify for application/json ContentType.
 type PayNotifyJSONRequestBody PayNotifyJSONBody
 
@@ -1825,6 +1861,18 @@ type ApplySubscribeQuotaJSONRequestBody ApplySubscribeQuotaJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ApplyAffiliation 申请加入组织（一人多单位，待组织管理员核验）
+	// (POST /affiliations)
+	ApplyAffiliation(w http.ResponseWriter, r *http.Request)
+	// MyAffiliations 我的单位归属（含待核验/已核验/主单位）
+	// (GET /affiliations/mine)
+	MyAffiliations(w http.ResponseWriter, r *http.Request)
+	// SetPrimaryAffiliation 设为主单位（仅已核验归属，唯一）
+	// (POST /affiliations/{id}/primary)
+	SetPrimaryAffiliation(w http.ResponseWriter, r *http.Request, id string)
+	// VerifyAffiliation 核验归属（组织管理员，先到先处理）
+	// (POST /affiliations/{id}/verify)
+	VerifyAffiliation(w http.ResponseWriter, r *http.Request, id string)
 	// AggregateCircleDetail 圈详情聚合（非成员裁剪：圈信息+成员数+圈主+加入状态；游客可看）
 	// (GET /aggregate/circle-detail)
 	AggregateCircleDetail(w http.ResponseWriter, r *http.Request, params AggregateCircleDetailParams)
@@ -1885,6 +1933,9 @@ type ServerInterface interface {
 	// GetMyCerts 我的认证记录
 	// (GET /certs/mine)
 	GetMyCerts(w http.ResponseWriter, r *http.Request)
+	// ReviewCertByOrg 企业/组织审核认证（个人企业身份，评审人须为组织管理员）
+	// (POST /certs/{id}/review)
+	ReviewCertByOrg(w http.ResponseWriter, r *http.Request, id string)
 	// ListMyCircles 我的圈子（我加入的/我创建的）
 	// (GET /circles)
 	ListMyCircles(w http.ResponseWriter, r *http.Request)
@@ -2140,6 +2191,15 @@ type ServerInterface interface {
 	// PayOrder 发起支付（返回预支付参数；一单可多笔）
 	// (POST /orders/{id}/pay)
 	PayOrder(w http.ResponseWriter, r *http.Request, id string)
+	// ConfirmOrgAdmin 被邀请人确认成为组织管理员
+	// (POST /org-admin-invites/{id}/confirm)
+	ConfirmOrgAdmin(w http.ResponseWriter, r *http.Request, id string)
+	// OrgAdmins 组织管理员列表
+	// (GET /orgs/{id}/admins)
+	OrgAdmins(w http.ResponseWriter, r *http.Request, id string)
+	// InviteOrgAdmin 邀请组织管理员（需对方确认）
+	// (POST /orgs/{id}/admins)
+	InviteOrgAdmin(w http.ResponseWriter, r *http.Request, id string)
 	// PayNotify 微信支付回调（验签 + 幂等；重复/乱序安全）
 	// (POST /pay/notify)
 	PayNotify(w http.ResponseWriter, r *http.Request)
@@ -2186,6 +2246,86 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ApplyAffiliation operation middleware
+func (siw *ServerInterfaceWrapper) ApplyAffiliation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyAffiliation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MyAffiliations operation middleware
+func (siw *ServerInterfaceWrapper) MyAffiliations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MyAffiliations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetPrimaryAffiliation operation middleware
+func (siw *ServerInterfaceWrapper) SetPrimaryAffiliation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetPrimaryAffiliation(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// VerifyAffiliation operation middleware
+func (siw *ServerInterfaceWrapper) VerifyAffiliation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.VerifyAffiliation(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // AggregateCircleDetail operation middleware
 func (siw *ServerInterfaceWrapper) AggregateCircleDetail(w http.ResponseWriter, r *http.Request) {
@@ -2713,6 +2853,32 @@ func (siw *ServerInterfaceWrapper) GetMyCerts(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMyCerts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReviewCertByOrg operation middleware
+func (siw *ServerInterfaceWrapper) ReviewCertByOrg(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReviewCertByOrg(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5142,6 +5308,84 @@ func (siw *ServerInterfaceWrapper) PayOrder(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// ConfirmOrgAdmin operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmOrgAdmin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmOrgAdmin(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OrgAdmins operation middleware
+func (siw *ServerInterfaceWrapper) OrgAdmins(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OrgAdmins(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// InviteOrgAdmin operation middleware
+func (siw *ServerInterfaceWrapper) InviteOrgAdmin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InviteOrgAdmin(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PayNotify operation middleware
 func (siw *ServerInterfaceWrapper) PayNotify(w http.ResponseWriter, r *http.Request) {
 
@@ -5771,6 +6015,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/search", wrapper.AiSearch)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/feedback", wrapper.AiFeedback)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/ai/features", wrapper.AiFeatures)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/certs/{id}/review", wrapper.ReviewCertByOrg)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/affiliations", wrapper.ApplyAffiliation)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/affiliations/mine", wrapper.MyAffiliations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/affiliations/{id}/verify", wrapper.VerifyAffiliation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/affiliations/{id}/primary", wrapper.SetPrimaryAffiliation)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/orgs/{id}/admins", wrapper.OrgAdmins)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/orgs/{id}/admins", wrapper.InviteOrgAdmin)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/org-admin-invites/{id}/confirm", wrapper.ConfirmOrgAdmin)
 
 	return m
 }

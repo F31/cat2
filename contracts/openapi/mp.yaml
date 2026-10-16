@@ -2737,6 +2737,115 @@ paths:
           content:
             application/json:
               schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { features: { type: object, additionalProperties: { type: boolean } } } } } } ] }
+  /certs/{id}/review:
+    post:
+      tags: [verify]
+      summary: 企业/组织审核认证（个人企业身份，评审人须为组织管理员）
+      operationId: reviewCertByOrg
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [pass], properties: { pass: { type: boolean }, reason: { type: string } } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /affiliations:
+    post:
+      tags: [verify]
+      summary: 申请加入组织（一人多单位，待组织管理员核验）
+      operationId: applyAffiliation
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [org_id]
+              properties:
+                org_id: { type: string }
+                role: { type: string }
+                proof_file_ids: { type: array, items: { type: integer } }
+      responses:
+        '200': { description: 归属, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /affiliations/mine:
+    get:
+      tags: [verify]
+      summary: 我的单位归属（含待核验/已核验/主单位）
+      operationId: myAffiliations
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /affiliations/{id}/verify:
+    post:
+      tags: [verify]
+      summary: 核验归属（组织管理员，先到先处理）
+      operationId: verifyAffiliation
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [pass], properties: { pass: { type: boolean }, reason: { type: string } } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /affiliations/{id}/primary:
+    post:
+      tags: [verify]
+      summary: 设为主单位（仅已核验归属，唯一）
+      operationId: setPrimaryAffiliation
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /orgs/{id}/admins:
+    get:
+      tags: [verify]
+      summary: 组织管理员列表
+      operationId: orgAdmins
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+    post:
+      tags: [verify]
+      summary: 邀请组织管理员（需对方确认）
+      operationId: inviteOrgAdmin
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [user_id], properties: { user_id: { type: string } } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /org-admin-invites/{id}/confirm:
+    post:
+      tags: [verify]
+      summary: 被邀请人确认成为组织管理员
+      operationId: confirmOrgAdmin
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
 components:
   securitySchemes:
     bearerAuth:

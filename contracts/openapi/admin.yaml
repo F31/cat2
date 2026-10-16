@@ -587,6 +587,58 @@ paths:
                             type: array
                             items: { $ref: '#/components/schemas/AdminMember' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /certs/{id}/review:
+    post:
+      tags: [admin-governance]
+      summary: 平台审核认证（全类型）
+      operationId: adminReviewCert
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [pass], properties: { pass: { type: boolean }, reason: { type: string } } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /certs/pending:
+    get:
+      tags: [admin-governance]
+      summary: 待审认证列表（reviewer_type：1 平台/2 企业）
+      operationId: adminPendingCerts
+      parameters:
+        - { name: reviewer_type, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /affiliations/{id}/resolve:
+    post:
+      tags: [admin-governance]
+      summary: 平台代处理归属核验（组织管理员超 7 天未处理）
+      operationId: adminResolveAffiliation
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [pass], properties: { pass: { type: boolean }, reason: { type: string } } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /orgs/{id}/admins/reset:
+    post:
+      tags: [admin-governance]
+      summary: 平台重置组织管理员（失联代处理/指派）
+      operationId: adminResetOrgAdmin
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [user_id], properties: { user_id: { type: string }, remove: { type: boolean } } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
 components:
   securitySchemes:
     bearerAuth:

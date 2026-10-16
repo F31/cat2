@@ -28,6 +28,7 @@ func emittedTopics() []string {
 		idcontract.EventUserRegistered, idcontract.EventUserDeactivated, idcontract.EventAuthzChanged,
 		profilecontract.EventProfileUpdated, profilecontract.EventOrgCardUpdated,
 		verifycontract.EventCertificationApproved, verifycontract.EventCertificationRejected,
+		verifycontract.EventAffiliationVerified, verifycontract.EventOrgAdminChanged,
 		contentcontract.EventContentSubmitted, contentcontract.EventContentPublished,
 		contentcontract.EventContentTakenDown, contentcontract.EventContentClosed,
 		trustcontract.EventModerationPassed, trustcontract.EventModerationRejected,

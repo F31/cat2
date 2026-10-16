@@ -8,6 +8,8 @@ var Templates = []domain.Template{
 	// identity / profile / verify
 	{Code: "identity.UserRegistered.v1", Module: "identity", EventCode: "identity.UserRegistered.v1", TitleTpl: "欢迎加入猫平方", ContentTpl: "完善名片可提升匹配度，祝你找到对的人。", Channels: []string{"inapp"}, ReceiverRule: "payload.user_id", Closeable: true},
 	{Code: "identity.UserDeactivated.v1", Module: "identity", EventCode: "identity.UserDeactivated.v1", TitleTpl: "账号已注销", ContentTpl: "你的账号已注销，相关数据将按规则处理。", Channels: []string{"inapp"}, ReceiverRule: "payload.user_id", Closeable: false},
+	{Code: "verify.AffiliationVerified.v1", Module: "verify", EventCode: "verify.AffiliationVerified.v1", TitleTpl: "单位归属核验结果", ContentTpl: "你对组织的归属核验已出结果，请在认证页查看。", Channels: []string{"inapp"}, ReceiverRule: "payload.user_id", Closeable: true},
+	{Code: "verify.OrgAdminChanged.v1", Module: "verify", EventCode: "verify.OrgAdminChanged.v1", TitleTpl: "组织管理员变更", ContentTpl: "组织管理员信息有更新。", Channels: []string{"inapp"}, ReceiverRule: "payload.user_id", Closeable: true},
 	{Code: "verify.CertificationApproved.v1", Module: "verify", EventCode: "verify.CertificationApproved.v1", TitleTpl: "实名认证通过", ContentTpl: "你已通过实名认证，可发布内容与创建猫立方。", Channels: []string{"inapp", "subscribe"}, ReceiverRule: "payload.user_id", Closeable: false},
 	{Code: "verify.CertificationRejected.v1", Module: "verify", EventCode: "verify.CertificationRejected.v1", TitleTpl: "实名认证未通过", ContentTpl: "认证未通过，请核对信息后重新提交。", Channels: []string{"inapp", "subscribe"}, ReceiverRule: "payload.user_id", Closeable: false},
 	// content

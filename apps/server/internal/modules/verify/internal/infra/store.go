@@ -27,6 +27,7 @@ type Cert struct {
 	IDNoEnc      []byte
 	Status       int16
 	RejectReason string
+	ReviewerType int16
 	SubmitterAt  time.Time
 	ReviewedAt   *time.Time
 }

@@ -4799,3 +4799,145 @@ func TestIntegrationAuditGovernance(t *testing.T) {
 	}
 	_ = tok
 }
+
+// 认证全类型与组织机制（p4 §6）：五类认证/材料校验、企业审与平台审、组织管理员邀请确认、平台重置。
+func TestIntegrationVerifyCertTypesAndOrgAdmin(t *testing.T) {
+	h := newTestApp(t)
+	applicant, applicantTok := loginUser(t, h)
+	member, memberTok := loginUser(t, h)
+	other, otherTok := loginUser(t, h)
+	_, admTok := loginAdmin(t, h)
+	ctx := context.Background()
+	_ = member
+
+	// 1) 非实名类认证材料必填
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/certs", applicantTok, map[string]any{
+		"cert_type": 4, "agreed": true, "material_file_ids": []int64{},
+	}); s == http.StatusOK && e.Code == 0 {
+		t.Fatal("企业认证缺材料应拒绝")
+	}
+	// 2) 企业认证提交（平台审）→ 通过 → 授 verified 徽标 + 申请人成为组织管理员
+	_, env := h.do(http.MethodPost, "/api/mp/v1/certs", applicantTok, map[string]any{
+		"cert_type": 4, "agreed": true, "material_file_ids": []int64{1, 2},
+	})
+	var cert struct {
+		ID     int64 `json:"id,string"`
+		Status int16 `json:"status"`
+	}
+	_ = json.Unmarshal(env.Data, &cert)
+	if cert.ID == 0 || cert.Status != 0 {
+		t.Fatalf("企业认证应进入待审: %+v", env)
+	}
+	// 平台待审列表包含
+	_, env = h.do(http.MethodGet, "/api/admin/v1/certs/pending?reviewer_type=1", admTok, nil)
+	if env.Code != 0 {
+		t.Fatalf("平台待审列表失败: %+v", env)
+	}
+	// 平台通过
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/certs/%d/review", cert.ID), admTok,
+		map[string]any{"pass": true}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("平台审核失败: %d %+v", s, e)
+	}
+	// 徽标（org 实体 verified）
+	var badgeN int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM vfy_badge_grant WHERE subject_id=$1 AND badge_code='verified' AND revoked_at IS NULL`, applicant).Scan(&badgeN)
+	if badgeN == 0 {
+		t.Fatal("企业认证通过应授予 verified 徽标")
+	}
+	// 申请人自动成为组织管理员（首任）
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM vfy_org_admin WHERE org_id=$1 AND user_id=$1 AND status=1`, applicant).Scan(&badgeN)
+	if badgeN == 0 {
+		t.Fatal("企业认证通过后申请人应为组织管理员")
+	}
+
+	// 3) 组织管理员邀请：需对方确认
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/orgs/%d/admins", applicant), applicantTok,
+		map[string]any{"user_id": fmt.Sprintf("%d", member)}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("邀请管理员失败: %d %+v", s, e)
+	}
+	var inviteID int64
+	if err := h.app.Pool.QueryRow(ctx, `SELECT id FROM vfy_org_admin WHERE org_id=$1 AND user_id=$2`, applicant, member).Scan(&inviteID); err != nil {
+		t.Fatal(err)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/org-admin-invites/%d/confirm", inviteID), memberTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("确认邀请失败: %d %+v", s, e)
+	}
+	// 非组织管理员邀请他人 → 403（member 已成为管理员，改用无关用户 other 验证）
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/orgs/%d/admins", applicant), otherTok,
+		map[string]any{"user_id": fmt.Sprintf("%d", applicant)}); s != http.StatusForbidden {
+		t.Fatalf("非组织管理员邀请他人应 403: %d %+v", s, e)
+	}
+	// 平台重置（移除）
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/orgs/%d/admins/reset", applicant), admTok,
+		map[string]any{"user_id": fmt.Sprintf("%d", member), "remove": true}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("平台重置失败: %d %+v", s, e)
+	}
+	var active int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM vfy_org_admin WHERE org_id=$1 AND user_id=$2 AND status=1`, applicant, member).Scan(&active)
+	if active != 0 {
+		t.Fatal("平台移除后不应在任")
+	}
+
+	// 4) 一人多单位：申请 → 组织管理员核验 → 设为主单位
+	_, env = h.do(http.MethodPost, "/api/mp/v1/affiliations", memberTok, map[string]any{
+		"org_id": fmt.Sprintf("%d", applicant), "role": "采购经理", "proof_file_ids": []int64{3},
+	})
+	var aff struct {
+		ID     int64 `json:"id,string"`
+		Status int16 `json:"status"`
+	}
+	_ = json.Unmarshal(env.Data, &aff)
+	if aff.ID == 0 || aff.Status != 0 {
+		t.Fatalf("归属申请应待核验: %+v", env)
+	}
+	// 非管理员核验 → 403
+	if s, _ := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/affiliations/%d/verify", aff.ID), memberTok, map[string]any{"pass": true}); s != http.StatusForbidden {
+		t.Fatalf("非管理员核验应 403: %d", s)
+	}
+	// 组织管理员（applicant）核验通过
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/affiliations/%d/verify", aff.ID), applicantTok, map[string]any{"pass": true}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("核验失败: %d %+v", s, e)
+	}
+	// 先到先处理：重复核验 → 404（已处理）
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/affiliations/%d/verify", aff.ID), applicantTok, map[string]any{"pass": true}); s != http.StatusNotFound || e.Code != 100006 {
+		t.Fatalf("重复处理应 404/100006: %d %+v", s, e)
+	}
+	// 设为主单位
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/affiliations/%d/primary", aff.ID), memberTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("设主单位失败: %d %+v", s, e)
+	}
+	_, env = h.do(http.MethodGet, "/api/mp/v1/affiliations/mine", memberTok, nil)
+	var mine struct {
+		Items []struct {
+			ID        int64 `json:"id,string"`
+			IsPrimary bool  `json:"is_primary"`
+			Status    int16 `json:"status"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &mine)
+	if len(mine.Items) == 0 || !mine.Items[0].IsPrimary || mine.Items[0].Status != 1 {
+		t.Fatalf("归属应已核验且为主单位: %+v", mine.Items)
+	}
+
+	// 5) 个人企业身份（企业审）：成员提交指向该组织的认证，由组织管理员审核
+	_, env = h.do(http.MethodPost, "/api/mp/v1/certs", memberTok, map[string]any{
+		"cert_type": 3, "agreed": true, "target_org_id": fmt.Sprintf("%d", applicant),
+		"material_file_ids": []int64{4},
+	})
+	var cert2 struct {
+		ID     int64 `json:"id,string"`
+		Status int16 `json:"status"`
+	}
+	_ = json.Unmarshal(env.Data, &cert2)
+	if cert2.ID == 0 || cert2.Status != 0 {
+		t.Fatalf("个人企业身份认证应待企业审: %+v", env)
+	}
+	// 平台不能审企业类（无组织管理员权限 → 用成员令牌演练拒绝）
+	if s, _ := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/certs/%d/review", cert2.ID), memberTok, map[string]any{"pass": true}); s != http.StatusForbidden {
+		t.Fatalf("非组织管理员审企业类应 403: %d", s)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/certs/%d/review", cert2.ID), applicantTok, map[string]any{"pass": true}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("企业审失败: %d %+v", s, e)
+	}
+	_ = other
+}

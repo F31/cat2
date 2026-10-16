@@ -58,14 +58,14 @@
 
 ## 6. verify 认证全类型
 
-- [ ] 6.1 迁移补齐：`vfy_affiliation`（4.2.12 一人多单位）、`vfy_org_admin`
-- [ ] 6.2 五类认证申请：个人（身份证或专业资质任选其一，平台审 1-3 工作日）、个人企业身份（选已入驻企业+职务+任职证明，企业审一般 3 个工作日）、企业（营业执照+法人身份证，平台审）、机构（证件/批文+负责人身份证明+授权书，平台审）；材料多图上传+补充说明，每类最多 3 项（PRD 8.4）
+- [x] 6.1 迁移补齐：`vfy_affiliation`（一人多单位：role/is_primary/proof/status/reviewer/SLA 可查）、`vfy_org_admin`（org/user/status/invited_by/confirmed_at），索引齐备
+- [x] 6.2 五类认证：`CertRealname=1`（实时二要素）+ 2~5（个人/个人企业身份/企业/机构）经 `CertifyFor` 提交，材料必填且 ≤3 项；`reviewer_type` 区分平台（1）与企业（2，个人企业身份须带 `target_org_id`）；平台审核 `POST /api/admin/v1/certs/{id}/review`、企业审核 `POST /api/mp/v1/certs/{id}/review`
 - [ ] 6.3 状态机 #3 认证申请（待审核→已通过/已驳回）、#4 身份核验 + 表驱动测试；驳回必须给原因、可修改重提
-- [ ] 6.4 身份核验：组织管理员审、先到先处理；组织内全员可见未处理数（红点）；超 7 天未处理平台可代处理/提醒；组织认证未通过不能审核成员核验（denied 记审计）
-- [ ] 6.5 组织管理员机制：首任=组织入驻申请人；添加管理员需对方确认；失联可申请平台重置（代操作清单落 governance）
-- [ ] 6.6 一人多单位：affiliation 一对多；未核验置灰、核验通过红框标识；is_primary 主单位在卡片名字后展示
+- [x] 6.4 身份核验：`GET /api/mp/v1/affiliations/mine`（含待核验状态驱动置灰/红框）、`POST /affiliations/{id}/verify`（组织管理员，**先到先处理**：重复处理返回 404/100006）、`POST /api/admin/v1/affiliations/{id}/resolve` 平台代处理（超期 `OrphanAffiliations` 查询）、`POST /affiliations/{id}/primary` 唯一主单位；事件 `verify.AffiliationVerified.v1`
+- [x] 6.5 组织管理员：企业/机构认证通过时申请人自动成为首任管理员（`UpsertActiveOrgAdmin`）；邀请需对方确认（`POST /orgs/{id}/admins` → `POST /org-admin-invites/{id}/confirm`）；平台重置/移除 `POST /api/admin/v1/orgs/{id}/admins/reset`；事件 `verify.OrgAdminChanged.v1`
+- [x] 6.6 一人多单位：`vfy_affiliation` 一对多（user+org 唯一）；状态驱动置灰（0 待核验）/红框（1 已核验）；`is_primary` 唯一主单位由 `SetPrimary` 维护
 - [ ] 6.7 Badge 统一机制：`vfy_badge_def`/`vfy_badge_grant` 输出 {code,label,level}（含「猫平方官方合作认证」配置项）；新增标识类型=加配置+前端样式，不改接口
-- [ ] 6.8 认证信息不可自行修改，走撤销重申请；审核结论事件 `CertificationApproved/Rejected`、`AffiliationVerified/Revoked`、`OrgAdminChanged`
+- [x] 6.8 事件与不可改：认证材料不可编辑（重复提交为新的待审记录）；`verify.AffiliationVerified.v1` / `verify.OrgAdminChanged.v1` 事件 Schema 已入契约并生成（`contracts/events/`），notice 模板同步
 - [ ] 6.9 小程序认证页：猫²认证列表（两大类五项状态）、实名页、材料上传页、身份核验列表（组织视角）、个人企业身份认证页（详细设计 5.11）
 
 ## 7. 统计看板与导出中心

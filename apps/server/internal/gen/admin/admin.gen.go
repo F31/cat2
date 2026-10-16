@@ -277,6 +277,12 @@ type NotFound = Error
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Error
 
+// AdminResolveAffiliationJSONBody defines parameters for AdminResolveAffiliation.
+type AdminResolveAffiliationJSONBody struct {
+	Pass   bool    `json:"pass"`
+	Reason *string `json:"reason,omitempty"`
+}
+
 // AdminAuditsParams defines parameters for AdminAudits.
 type AdminAuditsParams struct {
 	ActorId   *string `form:"actor_id,omitempty" json:"actor_id,omitempty"`
@@ -286,6 +292,18 @@ type AdminAuditsParams struct {
 	From      *string `form:"from,omitempty" json:"from,omitempty"`
 	To        *string `form:"to,omitempty" json:"to,omitempty"`
 	Limit     *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// AdminPendingCertsParams defines parameters for AdminPendingCerts.
+type AdminPendingCertsParams struct {
+	ReviewerType *int `form:"reviewer_type,omitempty" json:"reviewer_type,omitempty"`
+	Limit        *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// AdminReviewCertJSONBody defines parameters for AdminReviewCert.
+type AdminReviewCertJSONBody struct {
+	Pass   bool    `json:"pass"`
+	Reason *string `json:"reason,omitempty"`
 }
 
 // AdminListContentsParams defines parameters for AdminListContents.
@@ -321,6 +339,12 @@ type AdminListMembersParams struct {
 type AdminListOrdersParams struct {
 	Status *int `form:"status,omitempty" json:"status,omitempty"`
 	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// AdminResetOrgAdminJSONBody defines parameters for AdminResetOrgAdmin.
+type AdminResetOrgAdminJSONBody struct {
+	Remove *bool  `json:"remove,omitempty"`
+	UserId string `json:"user_id"`
 }
 
 // AdminRefundJSONBody defines parameters for AdminRefund.
@@ -360,11 +384,20 @@ type AdminBanUserJSONBody struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
+// AdminResolveAffiliationJSONRequestBody defines body for AdminResolveAffiliation for application/json ContentType.
+type AdminResolveAffiliationJSONRequestBody AdminResolveAffiliationJSONBody
+
+// AdminReviewCertJSONRequestBody defines body for AdminReviewCert for application/json ContentType.
+type AdminReviewCertJSONRequestBody AdminReviewCertJSONBody
+
 // AdminTakedownContentJSONRequestBody defines body for AdminTakedownContent for application/json ContentType.
 type AdminTakedownContentJSONRequestBody AdminTakedownContentJSONBody
 
 // AdminSetFeatureFlagJSONRequestBody defines body for AdminSetFeatureFlag for application/json ContentType.
 type AdminSetFeatureFlagJSONRequestBody AdminSetFeatureFlagJSONBody
+
+// AdminResetOrgAdminJSONRequestBody defines body for AdminResetOrgAdmin for application/json ContentType.
+type AdminResetOrgAdminJSONRequestBody AdminResetOrgAdminJSONBody
 
 // AdminRefundJSONRequestBody defines body for AdminRefund for application/json ContentType.
 type AdminRefundJSONRequestBody AdminRefundJSONBody
@@ -380,12 +413,21 @@ type AdminBanUserJSONRequestBody AdminBanUserJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// AdminResolveAffiliation 平台代处理归属核验（组织管理员超 7 天未处理）
+	// (POST /affiliations/{id}/resolve)
+	AdminResolveAffiliation(w http.ResponseWriter, r *http.Request, id string)
 	// AdminAudits 审计查询（who/where/when/what/result 五维筛选）
 	// (GET /audits)
 	AdminAudits(w http.ResponseWriter, r *http.Request, params AdminAuditsParams)
 	// AdminAuditDetail 审计详情（含哈希链字段与快照）
 	// (GET /audits/{id})
 	AdminAuditDetail(w http.ResponseWriter, r *http.Request, id string)
+	// AdminPendingCerts 待审认证列表（reviewer_type：1 平台/2 企业）
+	// (GET /certs/pending)
+	AdminPendingCerts(w http.ResponseWriter, r *http.Request, params AdminPendingCertsParams)
+	// AdminReviewCert 平台审核认证（全类型）
+	// (POST /certs/{id}/review)
+	AdminReviewCert(w http.ResponseWriter, r *http.Request, id string)
 	// AdminListContents 内容列表（按类型/状态）
 	// (GET /contents)
 	AdminListContents(w http.ResponseWriter, r *http.Request, params AdminListContentsParams)
@@ -419,6 +461,9 @@ type ServerInterface interface {
 	// AdminListOrders 订单列表（按状态）
 	// (GET /orders)
 	AdminListOrders(w http.ResponseWriter, r *http.Request, params AdminListOrdersParams)
+	// AdminResetOrgAdmin 平台重置组织管理员（失联代处理/指派）
+	// (POST /orgs/{id}/admins/reset)
+	AdminResetOrgAdmin(w http.ResponseWriter, r *http.Request, id string)
 	// AdminRefund 发起退款
 	// (POST /refunds)
 	AdminRefund(w http.ResponseWriter, r *http.Request)
@@ -459,6 +504,32 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// AdminResolveAffiliation operation middleware
+func (siw *ServerInterfaceWrapper) AdminResolveAffiliation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminResolveAffiliation(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // AdminAudits operation middleware
 func (siw *ServerInterfaceWrapper) AdminAudits(w http.ResponseWriter, r *http.Request) {
@@ -588,6 +659,78 @@ func (siw *ServerInterfaceWrapper) AdminAuditDetail(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminAuditDetail(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminPendingCerts operation middleware
+func (siw *ServerInterfaceWrapper) AdminPendingCerts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AdminPendingCertsParams
+
+	// ------------- Optional query parameter "reviewer_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "reviewer_type", r.URL.Query(), &params.ReviewerType, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "reviewer_type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reviewer_type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminPendingCerts(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminReviewCert operation middleware
+func (siw *ServerInterfaceWrapper) AdminReviewCert(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminReviewCert(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -912,6 +1055,32 @@ func (siw *ServerInterfaceWrapper) AdminListOrders(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminListOrders(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminResetOrgAdmin operation middleware
+func (siw *ServerInterfaceWrapper) AdminResetOrgAdmin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminResetOrgAdmin(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1328,6 +1497,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/refunds", wrapper.AdminRefund)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/fulfillments/{orderID}/retry", wrapper.AdminRetryFulfillment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/members", wrapper.AdminListMembers)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/certs/{id}/review", wrapper.AdminReviewCert)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/certs/pending", wrapper.AdminPendingCerts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/affiliations/{id}/resolve", wrapper.AdminResolveAffiliation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/orgs/{id}/admins/reset", wrapper.AdminResetOrgAdmin)
 
 	return m
 }

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/verify.AffiliationVerified.v1.json",
+  "title": "verify.AffiliationVerified.v1",
+  "description": "一人多单位归属核验结果（组织管理员或平台代处理）。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "verify.AffiliationVerified.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["affiliation_id", "user_id", "org_id", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "affiliation_id": { "type": "string", "description": "int64 字符串" },
+        "user_id": { "type": "string" },
+        "org_id": { "type": "string" },
+        "status": { "type": "integer", "description": "1 已核验 / 2 已驳回" }
+      }
+    }
+  }
+}

@@ -41,6 +41,38 @@ CREATE TABLE IF NOT EXISTS vfy_badge_grant (
 	UNIQUE (subject_type, subject_id, badge_code)
 );
 
+CREATE TABLE IF NOT EXISTS vfy_affiliation (
+	id bigint PRIMARY KEY,
+	user_id bigint NOT NULL,
+	org_id bigint NOT NULL,
+	role varchar(64),                        -- 职务/角色（展示用）
+	is_primary boolean NOT NULL DEFAULT false,
+	proof_file_ids jsonb,                    -- 任职证明等材料（≤3）
+	status smallint NOT NULL DEFAULT 0,      -- 0待核验/1已核验/2已驳回/3已撤销
+	reject_reason varchar(500),
+	reviewer_id bigint,                      -- 组织管理员或平台
+	reviewed_at timestamptz,
+	created_at timestamptz NOT NULL DEFAULT now(),
+	updated_at timestamptz NOT NULL DEFAULT now(),
+	UNIQUE (user_id, org_id)
+);
+CREATE INDEX IF NOT EXISTS idx_vfy_aff_org ON vfy_affiliation(org_id, status);
+CREATE INDEX IF NOT EXISTS idx_vfy_aff_user ON vfy_affiliation(user_id, status);
+
+CREATE TABLE IF NOT EXISTS vfy_org_admin (
+	id bigint PRIMARY KEY,
+	org_id bigint NOT NULL,
+	user_id bigint NOT NULL,
+	status smallint NOT NULL DEFAULT 0,      -- 0待确认/1在任/2已移除
+	invited_by bigint,
+	confirmed_at timestamptz,
+	reason varchar(500),
+	created_at timestamptz NOT NULL DEFAULT now(),
+	updated_at timestamptz NOT NULL DEFAULT now(),
+	UNIQUE (org_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_vfy_org_admin_user ON vfy_org_admin(user_id, status);
+
 INSERT INTO vfy_badge_def (code, label, level) VALUES
 	('realname', '实名', 1),
 	('verified', '已认证', 2),

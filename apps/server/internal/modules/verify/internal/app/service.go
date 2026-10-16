@@ -22,6 +22,21 @@ import (
 // Repo 应用层所需仓储能力（PG 实现见 infra.Store）。
 type Repo interface {
 	Insert(ctx context.Context, tx db.Tx, c infra.Cert) error
+	GetCert(ctx context.Context, id int64) (infra.Cert, error)
+	InsertPending(ctx context.Context, tx db.Tx, c infra.Cert, reviewerType int16, extra []byte) error
+	DecideCert(ctx context.Context, tx db.Tx, id, reviewerID int64, status int16, reason string) (bool, error)
+	PendingCerts(ctx context.Context, reviewerType int16, orgID int64, limit int) ([]infra.Cert, error)
+	InsertAffiliation(ctx context.Context, tx db.Tx, a infra.Affiliation) error
+	GetAffiliation(ctx context.Context, id int64) (infra.Affiliation, error)
+	AffiliationsOf(ctx context.Context, userID int64) ([]infra.Affiliation, error)
+	DecideAffiliation(ctx context.Context, tx db.Tx, id, reviewerID int64, status int16, reason string) (bool, error)
+	SetPrimary(ctx context.Context, tx db.Tx, userID, id int64) error
+	InsertOrgAdmin(ctx context.Context, tx db.Tx, id, orgID, inviterID, inviteeID int64) error
+	ConfirmOrgAdmin(ctx context.Context, tx db.Tx, inviteID, userID int64) (bool, error)
+	UpsertActiveOrgAdmin(ctx context.Context, tx db.Tx, id, orgID, userID int64) error
+	RemoveOrgAdmin(ctx context.Context, tx db.Tx, orgID, userID int64, reason string) error
+	OrgAdminsOf(ctx context.Context, orgID int64) ([]infra.OrgAdmin, error)
+	ActiveOrgAdmin(ctx context.Context, orgID, userID int64) (bool, error)
 	LatestRealname(ctx context.Context, userID int64) (infra.Cert, error)
 	CertsOf(ctx context.Context, userID int64) ([]infra.Cert, error)
 	GrantBadge(ctx context.Context, tx db.Tx, subjectType string, subjectID int64, code string) error
