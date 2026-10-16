@@ -401,6 +401,16 @@ func (e SearchParamsType) Valid() bool {
 	}
 }
 
+// AiCSReply defines model for AiCSReply.
+type AiCSReply struct {
+	Answer string `json:"answer"`
+	CallId string `json:"call_id"`
+
+	// Escalated true=超出知识范围，转人工
+	Escalated *bool `json:"escalated,omitempty"`
+	Tokens    *int  `json:"tokens,omitempty"`
+}
+
 // AiDraft defines model for AiDraft.
 type AiDraft struct {
 	CallId string    `json:"call_id"`
@@ -1321,6 +1331,11 @@ type AggregateDetailParams struct {
 	Ref string `form:"ref" json:"ref"`
 }
 
+// AiCustomerServiceJSONBody defines parameters for AiCustomerService.
+type AiCustomerServiceJSONBody struct {
+	Question string `json:"question"`
+}
+
 // AiFeedbackJSONBody defines parameters for AiFeedback.
 type AiFeedbackJSONBody struct {
 	Adopted bool   `json:"adopted"`
@@ -1724,6 +1739,9 @@ type ApplyAffiliationJSONRequestBody ApplyAffiliationJSONBody
 // VerifyAffiliationJSONRequestBody defines body for VerifyAffiliation for application/json ContentType.
 type VerifyAffiliationJSONRequestBody VerifyAffiliationJSONBody
 
+// AiCustomerServiceJSONRequestBody defines body for AiCustomerService for application/json ContentType.
+type AiCustomerServiceJSONRequestBody AiCustomerServiceJSONBody
+
 // AiFeedbackJSONRequestBody defines body for AiFeedback for application/json ContentType.
 type AiFeedbackJSONRequestBody AiFeedbackJSONBody
 
@@ -1906,6 +1924,9 @@ type ServerInterface interface {
 	// AggregateDetail 详情页聚合（名片+Badges+会员等级+关注状态；内容类含归属人名片）；游客可看（登录态可选）
 	// (GET /aggregate/detail)
 	AggregateDetail(w http.ResponseWriter, r *http.Request, params AggregateDetailParams)
+	// AiCustomerService 智能客服问答（开关 ai.cs；知识范围限平台规则与操作指引，越界转人工）
+	// (POST /ai/cs)
+	AiCustomerService(w http.ResponseWriter, r *http.Request)
 	// AiFeatures AI 能力开关清单（按当前用户灰度评估）
 	// (GET /ai/features)
 	AiFeatures(w http.ResponseWriter, r *http.Request)
@@ -2501,6 +2522,20 @@ func (siw *ServerInterfaceWrapper) AggregateDetail(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AggregateDetail(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AiCustomerService operation middleware
+func (siw *ServerInterfaceWrapper) AiCustomerService(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AiCustomerService(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6100,6 +6135,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/telemetry", wrapper.ReportTelemetry)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/feedback", wrapper.AiFeedback)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/ai/features", wrapper.AiFeatures)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/cs", wrapper.AiCustomerService)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/certs/{id}/review", wrapper.ReviewCertByOrg)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/affiliations", wrapper.ApplyAffiliation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/affiliations/pending", wrapper.PendingAffiliations)

@@ -46,6 +46,18 @@ func (DevClient) Complete(_ context.Context, prompt string, _ map[string]any) ([
 			"type":    "content.project",
 			"region":  "310000",
 		})
+	case strings.Contains(prompt, "客服"):
+		// 知识范围限平台规则/操作指引：命中平台主题给指引，否则转人工（p5 §5.2）。
+		if inScope(text) {
+			return json.Marshal(map[string]any{
+				"answer":   "关于「" + text + "」：可在「我的」页按指引操作，如有疑问请联系人工客服。",
+				"escalate": false,
+			})
+		}
+		return json.Marshal(map[string]any{
+			"answer":   "抱歉，该问题超出我的服务范围，已为你转人工客服。",
+			"escalate": true,
+		})
 	default: // publish
 		return json.Marshal(map[string]any{
 			"title": text,
@@ -63,6 +75,16 @@ func (DevClient) Embed(_ context.Context, _ string) ([]float32, error) {
 }
 
 var _ ports.LLM = DevClient{}
+
+// inScope 命中平台规则/操作主题才答；否则转人工（仅 dev 规则）。
+func inScope(text string) bool {
+	for _, kw := range []string{"会员", "认证", "实名", "发布", "订单", "退款", "名片", "搜索", "猫立方", "圈", "邀请", "联系方式"} {
+		if strings.Contains(text, kw) {
+			return true
+		}
+	}
+	return false
+}
 
 func extractUserText(prompt string) string {
 	for _, line := range strings.Split(prompt, "\n") {

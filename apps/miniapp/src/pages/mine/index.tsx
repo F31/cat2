@@ -84,6 +84,9 @@ export default function Mine() {
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/social/follows' })}>
             <Text>关注与粉丝</Text>
           </View>
+          <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/support/index' })}>
+            <Text>客服</Text>
+          </View>
         </View>
       </StateView>
     </View>

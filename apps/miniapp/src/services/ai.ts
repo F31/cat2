@@ -4,6 +4,7 @@ import { api } from './request'
 const FLAG_ONBOARD = 'ai.onboard'
 const FLAG_PUBLISH = 'ai.publish'
 const FLAG_SEARCH = 'ai.search'
+const FLAG_CS = 'ai.cs'
 
 let cache: Record<string, boolean> | null = null
 
@@ -22,6 +23,7 @@ export async function aiFeatures(force = false): Promise<Record<string, boolean>
 export const AI_ONBOARD = FLAG_ONBOARD
 export const AI_PUBLISH = FLAG_PUBLISH
 export const AI_SEARCH = FLAG_SEARCH
+export const AI_CS = FLAG_CS
 
 /** 是否 AI 不可用错误（030001：开关关闭/上游失败）。 */
 export function isAiUnavailable(e: unknown): boolean {
@@ -40,4 +42,9 @@ export async function draftOnboard(text: string) {
 /** 自然语言 → 结构化检索；不可用时抛错，调用方按关键词搜索。 */
 export async function parseSearch(text: string) {
   return api.aiSearch(text)
+}
+
+/** 智能客服问答；不可用时抛错，调用方提示人工客服（工作时间 9:00-18:00）。 */
+export async function askSupport(question: string) {
+  return api.aiCustomerService(question)
 }

@@ -137,6 +137,43 @@ func TestAIEvalTagSetLegality(t *testing.T) {
 	}
 }
 
+// 智能客服知识范围：平台主题应作答（escalate=false），越界转人工（escalate=true）。
+func TestAIEvalCustomerServiceScope(t *testing.T) {
+	ctx := context.Background()
+	client := llm.NewDevClient()
+
+	type csOut struct {
+		Answer   string `json:"answer"`
+		Escalate bool   `json:"escalate"`
+	}
+	cases := []struct {
+		q            string
+		wantEscalate bool
+	}{
+		{"如何发布项目？", false},
+		{"会员怎么开通？", false},
+		{"实名认证要多久？", false},
+		{"今天北京天气怎么样？", true},
+		{"帮我写一首诗", true},
+	}
+	for _, c := range cases {
+		raw, err := client.Complete(ctx, evalPrompt("cs", "", c.q), nil)
+		if err != nil {
+			t.Fatalf("客服样例降级: %v", err)
+		}
+		var out csOut
+		if err := json.Unmarshal(raw, &out); err != nil {
+			t.Fatalf("客服输出非法 JSON: %v", err)
+		}
+		if out.Answer == "" {
+			t.Fatalf("客服应有回答: %q", c.q)
+		}
+		if out.Escalate != c.wantEscalate {
+			t.Fatalf("知识范围判定错误 q=%q escalate=%v want=%v", c.q, out.Escalate, c.wantEscalate)
+		}
+	}
+}
+
 // 隐私红线在评测集上同样成立：提示词不得包含手机号/证件号原文。
 func TestAIEvalPrivacy(t *testing.T) {
 	clean, removed := sanitizeForPrompt("张三 13812345678 证件110101199003070019 邮箱a@b.com")

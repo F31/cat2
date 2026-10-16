@@ -655,3 +655,52 @@ page {
   font-size: 24rpx;
   color: #666;
 }
+
+/* 客服 */
+.support-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  padding: 24rpx;
+  margin-bottom: 16rpx;
+  border-radius: 12rpx;
+  background: #ffffff;
+}
+.support-head__title {
+  font-size: 30rpx;
+  font-weight: 600;
+}
+.support-head__sub {
+  font-size: 24rpx;
+  color: #666;
+}
+.support-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  padding: 16rpx;
+  border-radius: 12rpx;
+  background: #f5f7fb;
+}
+.support-msg {
+  padding: 16rpx 20rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  max-width: 80%;
+}
+.support-msg--user {
+  align-self: flex-end;
+  background: #d4411e;
+  color: #ffffff;
+}
+.support-msg--ai {
+  align-self: flex-start;
+  background: #ffffff;
+  color: #333;
+}
+.support-msg__hint {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #d4411e;
+}

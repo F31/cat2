@@ -1754,6 +1754,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ai/cs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 智能客服问答（开关 ai.cs；知识范围限平台规则与操作指引，越界转人工） */
+        post: operations["aiCustomerService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/certs/{id}/review": {
         parameters: {
             query?: never;
@@ -2200,6 +2217,13 @@ export interface components {
             industry?: string[];
             need?: string[];
             offer?: string[];
+            tokens?: number;
+        };
+        AiCSReply: {
+            call_id: string;
+            answer: string;
+            /** @description true=超出知识范围，转人工 */
+            escalated?: boolean;
             tokens?: number;
         };
         Envelope: {
@@ -6007,6 +6031,36 @@ export interface operations {
                     };
                 };
             };
+        };
+    };
+    aiCustomerService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    question: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 回答（escalated=true 表示转人工） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["AiCSReply"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     reviewCertByOrg: {

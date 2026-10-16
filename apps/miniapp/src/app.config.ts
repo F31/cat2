@@ -19,6 +19,7 @@ export default defineAppConfig({
     { root: 'pages/verify', pages: ['index'] },
     { root: 'pages/cube', pages: ['create', 'detail', 'project', 'task', 'report', 'plan'] },
     { root: 'pages/circle', pages: ['create', 'detail', 'publish', 'settings'] },
+    { root: 'pages/support', pages: ['index'] },
   ],
   window: {
     backgroundTextStyle: 'light',

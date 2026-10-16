@@ -39,6 +39,12 @@ const (
 
 const maxInputRunes = 500
 
+// maxAnswerRunes 客服回答长度上限（超出截断，防超长输出）。
+const maxAnswerRunes = 1000
+
+// escalateHint 越界/无法回答时的转人工话术（人工电话与工作时间见前端客服页）。
+const escalateHint = "抱歉，该问题超出我的服务范围，已为你转人工客服。工作时间 9:00-18:00，也可拨打页面顶部人工客服电话。"
+
 // AuthFunc 认证函数（装配根注入，避免 R0 同阶依赖 identity）。
 type AuthFunc func(ctx context.Context, accessToken string) (userID int64, err error)
 
@@ -115,6 +121,8 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/ai/publish-draft", Handler: m.auth(m.handlePublish)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/ai/search", Handler: m.auth(m.handleSearch)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/ai/feedback", Handler: m.auth(m.handleFeedback)},
+		// 场景四：智能客服（平台规则/操作指引问答；越界转人工）
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/ai/cs", Handler: m.auth(m.handleCS)},
 		// 能力开关清单（前端据此决定是否展示 AI 入口）
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/ai/features", Handler: m.auth(m.handleFeatures)},
 		// 后台管理（p5 §7.2）：提示词版本与用量/采纳率/成本
@@ -240,6 +248,8 @@ func defaultPrompt(feature string) string {
 		return "请解析为检索条件（search），输出 JSON：{keyword,type,region,industry,need,offer}"
 	case "review":
 		return "请对下面待审内容做预分类与摘要（review），输出 JSON：{category(fraud/ad/abuse/porn/other),risk(0-3),summary}"
+	case "cs":
+		return "你是平台智能客服，仅回答平台规则与操作指引（客服/cs），输出 JSON：{answer,escalate(bool)}；问题超出该范围或无法确定时 escalate=true 并给出转人工话术"
 	default:
 		return "请把下面文本整理为内容草稿（publish），输出 JSON：{title, fields:[{field,value}]}"
 	}
@@ -318,6 +328,49 @@ func (m *Module) Search(ctx context.Context, userID int64, text string) (contrac
 	q.CallID = callID
 	q.Tokens = tokens
 	return q, nil
+}
+
+// CustomerService 智能客服：知识范围限平台规则与操作指引，越界或不确定 → 转人工。
+func (m *Module) CustomerService(ctx context.Context, userID int64, question string) (contract.CSReply, error) {
+	if strings.TrimSpace(question) == "" || len([]rune(question)) > maxInputRunes {
+		return contract.CSReply{}, errBadInput
+	}
+	if !m.Enabled(ctx, userID, contract.FlagCS) {
+		return contract.CSReply{}, errUnavailable
+	}
+	if err := m.checkQuota(ctx, userID); err != nil {
+		return contract.CSReply{}, err
+	}
+	prompt, version, scrubbed := m.buildFeaturePrompt(ctx, "cs", "", question)
+	start := time.Now()
+	raw, tokens, err := m.callLLM(ctx, prompt)
+	latency := int(time.Since(start).Milliseconds())
+	if err != nil {
+		m.logCall(ctx, "cs", userID, 0, latency, "degraded", len([]rune(question)), version, scrubbed)
+		return contract.CSReply{}, errUnavailable
+	}
+	var parsed struct {
+		Answer   string `json:"answer"`
+		Escalate bool   `json:"escalate"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		m.logCall(ctx, "cs", userID, 0, latency, "degraded", len([]rune(question)), version, scrubbed)
+		return contract.CSReply{}, errUnavailable
+	}
+	answer := strings.TrimSpace(parsed.Answer)
+	escalated := parsed.Escalate
+	if answer == "" { // 无有效回答一律转人工，避免空答误导
+		escalated = true
+	}
+	if escalated && answer == "" {
+		answer = escalateHint
+	}
+	if len([]rune(answer)) > maxAnswerRunes {
+		answer = string([]rune(answer)[:maxAnswerRunes])
+	}
+	callID := int64(ids.New())
+	m.logCallWithID(ctx, callID, "cs", userID, tokens, latency, "ok", len([]rune(question)), version, scrubbed)
+	return contract.CSReply{CallID: callID, Answer: answer, Escalated: escalated, Tokens: tokens}, nil
 }
 
 // ReviewSuggestion 审核辅助：预分类 + 风险 + 摘要（只读建议，不自动裁决）。
@@ -551,6 +604,23 @@ func (m *Module) handleSearch(w http.ResponseWriter, req *http.Request) {
 	writeData(w, q)
 }
 
+// handleCS 智能客服问答。
+func (m *Module) handleCS(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		Question string `json:"question"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	r, err := m.CustomerService(req.Context(), userIDFrom(req.Context()), body.Question)
+	if err != nil {
+		writeAIErr(w, err)
+		return
+	}
+	writeData(w, r)
+}
+
 func (m *Module) handleFeedback(w http.ResponseWriter, req *http.Request) {
 	var body struct {
 		CallID  string `json:"call_id"`
@@ -575,6 +645,7 @@ func (m *Module) handleFeatures(w http.ResponseWriter, req *http.Request) {
 		contract.FlagOnboard: m.Enabled(req.Context(), uid, contract.FlagOnboard),
 		contract.FlagPublish: m.Enabled(req.Context(), uid, contract.FlagPublish),
 		contract.FlagSearch:  m.Enabled(req.Context(), uid, contract.FlagSearch),
+		contract.FlagCS:      m.Enabled(req.Context(), uid, contract.FlagCS),
 	}})
 }
 

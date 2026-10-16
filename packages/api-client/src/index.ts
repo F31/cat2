@@ -165,6 +165,14 @@ export interface AiFeatures {
   features: Record<string, boolean>
 }
 
+/** 智能客服回复（escalated=true 表示超出知识范围，转人工）。 */
+export interface AiCSReply {
+  call_id: string
+  answer: string
+  escalated?: boolean
+  tokens?: number
+}
+
 export interface DetailData {
   ref: string
   type: string
@@ -594,6 +602,9 @@ export function createClient(opts: ClientOptions) {
     },
     aiFeedback(callId: string, adopted: boolean) {
       return call<{ ok: boolean }>('POST', '/ai/feedback', { call_id: callId, adopted })
+    },
+    aiCustomerService(question: string) {
+      return call<AiCSReply>('POST', '/ai/cs', { question })
     },
 
     explainMatch(ref: string) {

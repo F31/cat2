@@ -2762,6 +2762,25 @@ paths:
           content:
             application/json:
               schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { features: { type: object, additionalProperties: { type: boolean } } } } } } ] }
+  /ai/cs:
+    post:
+      tags: [ai]
+      summary: 智能客服问答（开关 ai.cs；知识范围限平台规则与操作指引，越界转人工）
+      operationId: aiCustomerService
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [question], properties: { question: { type: string, maxLength: 500 } } }
+      responses:
+        '200':
+          description: 回答（escalated=true 表示转人工）
+          content:
+            application/json:
+              schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { $ref: '#/components/schemas/AiCSReply' } } } ] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /certs/{id}/review:
     post:
       tags: [verify]
@@ -3205,6 +3224,14 @@ components:
         industry: { type: array, items: { type: string } }
         need: { type: array, items: { type: string } }
         offer: { type: array, items: { type: string } }
+        tokens: { type: integer }
+    AiCSReply:
+      type: object
+      required: [call_id, answer]
+      properties:
+        call_id: { type: string }
+        answer: { type: string }
+        escalated: { type: boolean, description: 'true=超出知识范围，转人工' }
         tokens: { type: integer }
     Envelope:
       type: object

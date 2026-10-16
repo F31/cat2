@@ -5865,3 +5865,71 @@ func TestIntegrationSensitiveWordSeed(t *testing.T) {
 		t.Fatalf("引流词类目应为 diversion: %s", cat)
 	}
 }
+
+// 智能客服（p5 §5）：开关门禁；平台主题作答，越界转人工；上游故障降级。
+func TestIntegrationAICustomerService(t *testing.T) {
+	h := newTestApp(t)
+	uid, tok := loginUser(t, h)
+	ctx := context.Background()
+
+	// 1) 默认关闭 → 503/030001
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/ai/cs", tok, map[string]any{"question": "如何发布项目"}); s != http.StatusServiceUnavailable || e.Code != 30001 {
+		t.Fatalf("开关关闭应 503/030001: %d %+v", s, e)
+	}
+
+	// 2) 白名单开启 ai.cs
+	_, admTok := loginAdmin(t, h)
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/feature-flags/"+aiContract.FlagCS, admTok, map[string]any{
+		"enabled": true, "ratio": 0, "users": []int64{uid},
+	}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("开启 ai.cs 失败: %d %+v", s, e)
+	}
+	_, env := h.do(http.MethodGet, "/api/mp/v1/ai/features", tok, nil)
+	var feats struct {
+		Features map[string]bool `json:"features"`
+	}
+	_ = json.Unmarshal(env.Data, &feats)
+	if !feats.Features[aiContract.FlagCS] {
+		t.Fatalf("能力清单应含 ai.cs: %+v", feats.Features)
+	}
+
+	type csReply struct {
+		CallID    int64  `json:"call_id,string"`
+		Answer    string `json:"answer"`
+		Escalated bool   `json:"escalated"`
+		Tokens    int    `json:"tokens"`
+	}
+	// 3) 平台主题 → 作答（不转人工）
+	var inScope csReply
+	_, env = h.do(http.MethodPost, "/api/mp/v1/ai/cs", tok, map[string]any{"question": "会员如何开通"})
+	if err := json.Unmarshal(env.Data, &inScope); err != nil || inScope.CallID == 0 || inScope.Answer == "" {
+		t.Fatalf("平台主题应作答: %+v err=%v", env, err)
+	}
+	if inScope.Escalated {
+		t.Fatal("平台主题不应转人工")
+	}
+	// 4) 越界 → 转人工话术
+	var out csReply
+	_, env = h.do(http.MethodPost, "/api/mp/v1/ai/cs", tok, map[string]any{"question": "今天北京天气怎么样"})
+	if err := json.Unmarshal(env.Data, &out); err != nil || out.Answer == "" || !out.Escalated {
+		t.Fatalf("越界应转人工: %+v err=%v", env, err)
+	}
+	// 留痕：cs 场景记入 ai_call_log
+	var cnt int
+	if err := h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM ai_call_log WHERE user_id=$1 AND feature='cs'`, uid).Scan(&cnt); err != nil {
+		t.Fatal(err)
+	}
+	if cnt < 2 {
+		t.Fatalf("客服调用应留痕: %d", cnt)
+	}
+	// 5) 上游故障 → 030001 降级
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/ai/cs", tok, map[string]any{"question": "会员 [FAULT]"}); s != http.StatusServiceUnavailable || e.Code != 30001 {
+		t.Fatalf("上游故障应降级 503/030001: %d %+v", s, e)
+	}
+	// 6) 超长 → 400/030002
+	long := strings.Repeat("长", 501)
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/ai/cs", tok, map[string]any{"question": long}); s != http.StatusBadRequest || e.Code != 30002 {
+		t.Fatalf("超长应 400/030002: %d %+v", s, e)
+	}
+	_ = ctx
+}

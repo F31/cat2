@@ -10,6 +10,7 @@ const (
 	FlagPublish = "ai.publish"
 	FlagSearch  = "ai.search"
 	FlagReview  = "ai.review" // 审核辅助（预分类/摘要，只读建议）
+	FlagCS      = "ai.cs"     // 智能客服（平台规则/操作指引问答，越界转人工）
 )
 
 // Field 结构化字段（字段名与 dict 字段池一致）。
@@ -47,6 +48,14 @@ type Suggestion struct {
 	Tokens   int    `json:"tokens"`
 }
 
+// CSReply 智能客服回复（知识范围限定平台规则与操作指引；越界转人工）。
+type CSReply struct {
+	CallID    int64  `json:"call_id,string"`
+	Answer    string `json:"answer"`    // 回答（平台规则/操作指引）
+	Escalated bool   `json:"escalated"` // 越界或无法回答 → 转人工话术
+	Tokens    int    `json:"tokens"`
+}
+
 // Prompt 提示词版本（仅 approved=true 的最高版本生效）。
 type Prompt struct {
 	Feature  string `json:"feature"`
@@ -79,6 +88,8 @@ type Facade interface {
 	Feedback(ctx context.Context, userID, callID int64, adopted bool) error
 	// ReviewSuggestion 审核辅助建议（开关 ai.review；不可用返回 030001，调用方按「无建议」处理）。
 	ReviewSuggestion(ctx context.Context, operatorID int64, subjectType string, subjectID int64, text string) (Suggestion, error)
+	// CustomerService 智能客服问答（开关 ai.cs；知识范围限平台规则与操作指引，越界转人工）。
+	CustomerService(ctx context.Context, userID int64, question string) (CSReply, error)
 	// Enabled 能力是否开启（按用户灰度评估）。
 	Enabled(ctx context.Context, userID int64, feature string) bool
 
