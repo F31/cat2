@@ -19,7 +19,7 @@
 ## 3. S1 环境部署
 
 - [x] 3.1 deploy/ S1 编排：`deploy/compose/docker-compose.s1.yml`（api×2 + worker×1 含 scheduler + PG 主从流复制(脚本 `pg-replica-entrypoint.sh`/`init-replication.sql`) + Redis + 备份边车）；`docker compose config` 校验通过；多副本 Job 单活由 PG 咨询锁保证
-- [x] 3.2 `/healthz`（存活）、`/readyz`（就绪，DB 探活）已接入 api healthcheck；停机流程（摘流量→排空→停依赖）见 `deploy/compose/operations.md`
+- [x] 3.2 健康检查与停机：`/healthz`（存活）/`/readyz`（就绪，DB 探活）接入 compose healthcheck（`catcube probe`）；优雅停机 `CATCUBE_DRAIN_SECONDS`（SIGTERM→readyz 503 摘流量→排空窗口→Shutdown 等在途请求；`ready` 改 atomic 消除数据竞争）；演练 `deploy/scripts/drain-drill.sh` 实测 PASS（129 请求 0×5xx、80×503、5s 退出）；流程见 `deploy/compose/operations.md`
 - [x] 3.3 三层配置落地：启动配置（`kernel/config` 环境变量）/业务配置（`kernel/settings`→`sys_settings` 热生效）/特性开关（`kernel/featureflag`→`sys_feature_flag` 灰度）；见 `operations.md`
 - [x] 3.4 备份恢复演练：`deploy/scripts/pitr-drill.sh`（全备→batch-2 模拟故障→按时间点恢复→校验行数/RTO，本机实测 PASS，RTO 111s）；云环境演练与记录留档仍待执行（见 `docs/ops/launch-checklist.md` 第 3 节）
 

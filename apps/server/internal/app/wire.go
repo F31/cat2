@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"catcube/internal/adapters/local"
@@ -85,7 +86,7 @@ type App struct {
 	AlertTh eventbus.AlertThresholds // Outbox 告警阈值（测试/看板）
 	// StateMachines 全模块注册的状态机（表驱动自检，p1 §13.2）
 	StateMachines []statemachine.Def
-	ready         bool
+	ready         atomic.Bool // 就绪（停机时置 false，负载探针据此摘流量）
 }
 
 // Wire 装配。
@@ -385,7 +386,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	a.Mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		if err := pool.Ping(r.Context()); err != nil || !a.ready {
+		if err := pool.Ping(r.Context()); err != nil || !a.ready.Load() {
 			http.Error(w, `{"status":"not_ready"}`, http.StatusServiceUnavailable)
 			return
 		}
@@ -558,13 +559,32 @@ func RunMigrations(ctx context.Context, pool *db.Pool, mods []module.Module) err
 
 // Serve 启动 HTTP（api/admin 角色）。
 func (a *App) Serve(ctx context.Context) error {
-	a.ready = true
+	a.ready.Store(true)
 	srv := &http.Server{Addr: a.Config.HTTPAddr, Handler: obs.RequestIDMiddleware(a.Mux)}
+	drained := make(chan struct{})
 	go func() {
+		defer close(drained)
 		<-ctx.Done()
-		a.ready = false
-		_ = srv.Shutdown(context.Background())
+		// 停机流程（p6 §3.2）：先置未就绪（负载探针据此摘流量）→ 等待排空窗口 → 优雅关闭（等在途请求）。
+		a.ready.Store(false)
+		drain := time.Duration(a.Config.DrainSeconds) * time.Second
+		obs.Log(ctx).Info("开始排空：已置未就绪，等待摘流量", "drain_seconds", a.Config.DrainSeconds)
+		if drain > 0 {
+			// 注意：此处 ctx 已取消（正是触发停机的信号），排空窗口须独立计时
+			time.Sleep(drain)
+		}
+		shutCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutCtx); err != nil {
+			obs.Default().Alert("shutdown_incomplete", err.Error())
+		}
+		obs.Log(ctx).Info("优雅停机完成")
 	}()
 	obs.Log(ctx).Info("catcube 启动", "addr", a.Config.HTTPAddr, "roles", a.Config.Roles)
-	return srv.ListenAndServe()
+	err := srv.ListenAndServe()
+	if err == http.ErrServerClosed {
+		<-drained // 等排空+优雅关闭完成，避免进程提前退出中断在途请求
+		return nil
+	}
+	return err
 }

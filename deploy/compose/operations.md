@@ -12,6 +12,8 @@
 - `GET /readyz`：DB 可连且启动就绪（负载就绪探针；未就绪返回 503，不接流量）。
 
 ## 停机（先摘流量，再排空）
+> 应用侧已实现优雅停机（`CATCUBE_DRAIN_SECONDS`，默认 5s）：收到 SIGTERM → `/readyz` 立即置 503（负载摘流量）→ 等待排空窗口 → `Shutdown` 等在途请求结束 → 退出。演练脚本：`deploy/scripts/drain-drill.sh`（实测：129 请求 0 个 5xx、观察到 80 次 503、5s 内优雅退出）。
+
 1. 负载摘除 api 实例（`readyz` 由负载停止引流；`docker compose stop api` 前先下线）。
 2. 等 api 在途请求结束（graceful，`CATCUBE_HTTP_ADDR` 服务端超时内）。
 3. `docker compose stop worker`：worker/scheduler 处理完当前批次；多副本 Job 由 PG 咨询锁保证单活，重启后自动接管。

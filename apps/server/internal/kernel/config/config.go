@@ -33,6 +33,9 @@ type Config struct {
 	// Moderation 内容安全实现：空=禁用（不机检）/dev=开发演练实现（含降级开关）
 	Moderation string
 
+	// DrainSeconds 停机排空窗口（先置未就绪让负载摘流量，再优雅关闭；p6 §3.2）
+	DrainSeconds int64
+
 	// 监控告警阈值（p6 §4.6/§4.7；0=不告警）
 	AlertOutboxBacklog   int64 // Outbox 积压条数阈值
 	AlertOutboxOldestSec int64 // 最老事件年龄（秒）阈值
@@ -61,6 +64,7 @@ func FromEnv() Config {
 		IdentityEncKey:       getenv("CATCUBE_IDENTITY_ENC_KEY", ""),
 		BlindKey:             getenv("CATCUBE_BLIND_KEY", ""),
 		DevSMSCode:           getenv("CATCUBE_SMS_DEV_CODE", ""),
+		DrainSeconds:         getenvInt("CATCUBE_DRAIN_SECONDS", 5),
 		Moderation:           getenv("CATCUBE_MODERATION", ""),
 		AlertOutboxBacklog:   getenvInt("CATCUBE_ALERT_OUTBOX_BACKLOG", 1000),
 		AlertOutboxOldestSec: getenvInt("CATCUBE_ALERT_OUTBOX_OLDEST_SECONDS", 300),
