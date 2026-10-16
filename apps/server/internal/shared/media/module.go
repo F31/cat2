@@ -121,10 +121,14 @@ func (m *Module) URL(ctx context.Context, fileID int64, spec string) (string, er
 	return m.storage.URL(ctx, bucket, key, sp.ProviderOps)
 }
 
-// Bind 引用计数 +1。
+// Bind 引用计数 +1（owner_ref 为 jsonb：以 {"ref":"type:id"} 结构存储，兼容 EntityRef）。
 func (m *Module) Bind(ctx context.Context, fileID int64, ownerRef string) error {
-	_, err := m.pool.Exec(ctx,
-		`UPDATE med_file SET ref_count=ref_count+1, owner_ref=$2 WHERE id=$1`, fileID, ownerRef)
+	raw, err := json.Marshal(map[string]string{"ref": ownerRef})
+	if err != nil {
+		return err
+	}
+	_, err = m.pool.Exec(ctx,
+		`UPDATE med_file SET ref_count=ref_count+1, owner_ref=$2::jsonb WHERE id=$1`, fileID, raw)
 	return err
 }
 

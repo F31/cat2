@@ -109,6 +109,16 @@ func (b *Bus) dispatch(ctx context.Context, e Event) error {
 	return nil
 }
 
+// BatchStores 可选批量接口（适配器实现则启用批量确认/幂等，提升积压吞吐）。
+type batchDoneStore interface {
+	MarkDoneBatch(ctx context.Context, ids []string) error
+}
+
+type batchProcessedStore interface {
+	SeenBatch(ctx context.Context, consumer string, ids []string) (map[string]bool, error)
+	MarkBatch(ctx context.Context, consumer string, ids []string) error
+}
+
 // Relay worker 轮询 Outbox 投递。返回处理条数。
 func (b *Bus) Relay(ctx context.Context, consumer string, limit int) (int, error) {
 	if b.store == nil {
@@ -118,15 +128,40 @@ func (b *Bus) Relay(ctx context.Context, consumer string, limit int) (int, error
 	if err != nil {
 		return 0, err
 	}
+	// 批量幂等/确认（可用的适配器上启用，减少每事件一次往返）
+	batchDone, _ := b.store.(batchDoneStore)
+	batchProc, _ := b.processed.(batchProcessedStore)
+	var seenSet map[string]bool
+	if batchProc != nil {
+		ids := make([]string, 0, len(events))
+		for _, e := range events {
+			ids = append(ids, e.ID)
+		}
+		seenSet, err = batchProc.SeenBatch(ctx, consumer, ids)
+		if err != nil {
+			return 0, err
+		}
+	}
+	var doneIDs, markedIDs []string
 	n := 0
 	for _, e := range events {
 		if b.processed != nil {
-			seen, err := b.processed.Seen(ctx, consumer, e.ID)
-			if err != nil {
-				return n, err
+			seen := false
+			if seenSet != nil {
+				seen = seenSet[e.ID]
+			} else {
+				var err error
+				seen, err = b.processed.Seen(ctx, consumer, e.ID)
+				if err != nil {
+					return n, err
+				}
 			}
 			if seen {
-				_ = b.store.MarkDone(ctx, e.ID)
+				if batchDone != nil {
+					doneIDs = append(doneIDs, e.ID)
+				} else {
+					_ = b.store.MarkDone(ctx, e.ID)
+				}
 				continue
 			}
 		}
@@ -137,15 +172,29 @@ func (b *Bus) Relay(ctx context.Context, consumer string, limit int) (int, error
 			continue
 		}
 		if b.processed != nil {
-			if err := b.processed.Mark(ctx, consumer, e.ID); err != nil {
+			if batchProc != nil {
+				markedIDs = append(markedIDs, e.ID)
+			} else if err := b.processed.Mark(ctx, consumer, e.ID); err != nil {
 				return n, err
 			}
 		}
-		if err := b.store.MarkDone(ctx, e.ID); err != nil {
+		if batchDone != nil {
+			doneIDs = append(doneIDs, e.ID)
+		} else if err := b.store.MarkDone(ctx, e.ID); err != nil {
 			return n, err
 		}
 		n++
 		obs.Default().Inc("catcube_outbox_relayed_total")
+	}
+	if batchProc != nil && len(markedIDs) > 0 {
+		if err := batchProc.MarkBatch(ctx, consumer, markedIDs); err != nil {
+			return n, err
+		}
+	}
+	if batchDone != nil && len(doneIDs) > 0 {
+		if err := batchDone.MarkDoneBatch(ctx, doneIDs); err != nil {
+			return n, err
+		}
 	}
 	return n, nil
 }

@@ -206,6 +206,16 @@ func (o *Outbox) MarkDone(ctx context.Context, id string) error {
 	return err
 }
 
+// MarkDoneBatch 批量确认（投递通道吞吐优化：一条 UPDATE 代替 N 条）。
+func (o *Outbox) MarkDoneBatch(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	_, err := o.pool.Exec(ctx,
+		`UPDATE sys_outbox SET status=3, delivered_at=now() WHERE event_id = ANY($1)`, ids)
+	return err
+}
+
 func (o *Outbox) MarkRetry(ctx context.Context, id string) error {
 	_, err := o.pool.Exec(ctx,
 		`UPDATE sys_outbox SET status=CASE WHEN retry_count+1>=8 THEN 9 ELSE 2 END, retry_count=retry_count+1 WHERE event_id=$1`, id)
@@ -246,6 +256,40 @@ var _ eventbus.OutboxStore = (*Outbox)(nil)
 type Processed struct{ pool *db.Pool }
 
 func NewProcessed(pool *db.Pool) *Processed { return &Processed{pool: pool} }
+
+// SeenBatch 批量幂等查询：返回已处理的事件 ID 集合。
+func (p *Processed) SeenBatch(ctx context.Context, consumer string, ids []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := p.pool.Query(ctx,
+		`SELECT event_id FROM sys_event_processed WHERE consumer=$1 AND event_id = ANY($2)`, consumer, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
+// MarkBatch 批量登记已处理。
+func (p *Processed) MarkBatch(ctx context.Context, consumer string, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	_, err := p.pool.Exec(ctx,
+		`INSERT INTO sys_event_processed (consumer, event_id, processed_at)
+		 SELECT $1, id, now() FROM unnest($2::text[]) AS id
+		 ON CONFLICT DO NOTHING`, consumer, ids)
+	return err
+}
 
 func (p *Processed) Seen(ctx context.Context, consumer, eventID string) (bool, error) {
 	var n int

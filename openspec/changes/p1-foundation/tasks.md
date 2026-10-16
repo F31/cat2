@@ -136,4 +136,4 @@
 - [x] 15.2 空模块（仅 contract + module.go 骨架）能按阶梯装载；缺依赖启动即失败有测试覆盖
 - [x] 15.3 archcheck 四条规则自检通过，接入 `make lint` 与 CI boundary 门禁
 - [x] 15.4 契约生成管线贯通：改 OpenAPI/事件 Schema → `make gen` → Go stub 与 TS 类型更新（CI 漂移检查兜底）
-- [ ] 15.5 identity 登录/令牌/注销链路集成测试已落地（`make test-integration`）；dict 种子导入后可查询、media 上传→绑定→孤儿清理链路测试待补
+- [x] 15.5 集成覆盖补齐：identity 登录/令牌/注销 ✅；dict 种子导入后可查询 ✅（`TestIntegrationProfileFieldTemplate`）；media 上传→绑定→解绑→置孤儿→清理链路 ✅（`TestIntegrationMediaBindLifecycle`、`TestIntegrationMediaOrphanPurge`）——顺带修复 `media.Bind` 以字符串写 jsonb 列的类型错误

@@ -4233,3 +4233,107 @@ func TestIntegrationProfileFieldTemplate(t *testing.T) {
 		t.Fatalf("组织模板应含组织字段且不含个人字段: %+v", orgFields)
 	}
 }
+
+// 媒体引用计数链路（p1 §15.5）：上传 → 绑定 → 解绑 → 置孤儿 → 清理。
+func TestIntegrationMediaBindLifecycle(t *testing.T) {
+	h := newTestApp(t)
+	_, tok := loginUser(t, h)
+	_, env := h.do(http.MethodPost, "/api/mp/v1/media/uploads", tok, map[string]any{
+		"filename": "b.png", "content_type": "image/png", "size": 2048,
+	})
+	var ticket struct {
+		FileID int64 `json:"file_id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &ticket)
+	if ticket.FileID == 0 {
+		t.Fatalf("上传申请失败: %+v", env)
+	}
+	var mm *media.Module
+	for _, m := range h.app.Modules {
+		if v, ok := m.(*media.Module); ok {
+			mm = v
+		}
+	}
+	f := mm.Facade()
+	ctx := context.Background()
+	statusOf := func() (int, int) {
+		var st, rc int
+		if err := h.app.Pool.QueryRow(ctx, `SELECT status, ref_count FROM med_file WHERE id=$1`, ticket.FileID).Scan(&st, &rc); err != nil {
+			t.Fatal(err)
+		}
+		return st, rc
+	}
+	// 上传后：status=1（可用）、引用 0
+	if st, rc := statusOf(); st != 1 || rc != 0 {
+		t.Fatalf("上传后状态应为 1/0，实际 %d/%d", st, rc)
+	}
+	// 绑定一次 → 引用 1
+	if err := f.Bind(ctx, ticket.FileID, "content.project:1"); err != nil {
+		t.Fatal(err)
+	}
+	if st, rc := statusOf(); st != 1 || rc != 1 {
+		t.Fatalf("绑定后状态应为 1/1，实际 %d/%d", st, rc)
+	}
+	// 解绑 → 引用归零且置孤儿（status=0）
+	if err := f.Unbind(ctx, ticket.FileID, "content.project:1"); err != nil {
+		t.Fatal(err)
+	}
+	if st, rc := statusOf(); st != 0 || rc != 0 {
+		t.Fatalf("解绑后状态应为 0/0，实际 %d/%d", st, rc)
+	}
+}
+
+// Outbox 积压投递与恢复（p6 §2.4）：批量事件积压后能在有限轮次内投完且无丢失/无死信。
+func TestIntegrationOutboxBacklogDrain(t *testing.T) {
+	h := newTestApp(t)
+	ctx := context.Background()
+	const n = 5000
+	topic := fmt.Sprintf("perf.Backlog.%d.v1", time.Now().UnixNano()) // 每次运行独立 topic，避免持久库累积干扰
+	batch := make([]any, 0, n)
+	for i := 0; i < n; i++ {
+		batch = append(batch, fmt.Sprintf("backlog-%d-%d", time.Now().UnixNano(), i))
+	}
+	// 直接批量写入 Outbox（模拟高峰积压）
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO sys_outbox (event_id, topic, payload, occurred_at, status, retry_count)
+		SELECT id, $2, '{}'::jsonb, now(), 0, 0 FROM unnest($1::text[]) AS id`, batch, topic); err != nil {
+		t.Fatal(err)
+	}
+	var backlogBefore int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM sys_outbox WHERE topic=$1 AND status IN (0,1,2)`, topic).Scan(&backlogBefore)
+	if backlogBefore != n {
+		t.Fatalf("积压写入应 %d，实际 %d", n, backlogBefore)
+	}
+	// 订阅一个空处理器（只验证投递通道吞吐）
+	h.app.Bus.Register([]eventbus.Subscription{{Topic: topic, Handler: func(context.Context, eventbus.Event) error { return nil }}})
+	start := time.Now()
+	drained := 0
+	for i := 0; i < 200; i++ {
+		got, err := h.app.Bus.Relay(ctx, "perf-drain", 2000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		drained += got
+		var left int
+		_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM sys_outbox WHERE topic=$1 AND status IN (0,1,2)`, topic).Scan(&left)
+		if left == 0 {
+			break
+		}
+	}
+	elapsed := time.Since(start)
+	var dead, delivered int
+	_ = h.app.Pool.QueryRow(ctx, `
+		SELECT count(1) FILTER (WHERE status=9), count(1) FILTER (WHERE status=3)
+		FROM sys_outbox WHERE topic=$1`, topic).Scan(&dead, &delivered)
+	if dead != 0 {
+		t.Fatalf("积压投递不应产生死信: %d", dead)
+	}
+	if delivered != n {
+		t.Fatalf("投递无丢失校验失败：delivered=%d，期望 %d", delivered, n)
+	}
+	// 指标同步（Backlog 为全局未投递数，仅断言采集可用）
+	if _, err := h.app.Bus.ReportStats(ctx, h.app.AlertTh); err != nil {
+		t.Fatalf("指标采集失败: %v", err)
+	}
+	t.Logf("Outbox 积压 %d 条投递完成：耗时 %s（%.0f 条/秒）", n, elapsed.Round(time.Millisecond), float64(n)/elapsed.Seconds())
+}

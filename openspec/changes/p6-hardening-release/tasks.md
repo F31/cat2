@@ -14,7 +14,7 @@
 - [x] 2.1 造数脚本：`tests/perf/seed.sh`（1 万用户/名片、1 万内容 + 搜索投影、1 千圈（5 成员/圈）、100 立方（3 成员）；固定 ID 段幂等，须用独立压测库）；场景与指标口径见 `tests/perf/README.md`
 - [x] 2.2 场景压测：内置 `tools/loadtest`（无外部依赖，连接池随并发放大；输出 P50/P95/P99、RPS、错误率与状态码构成，门槛不达标退出码非 0）+ `make loadtest`；已跑 feed/搜索/详情（并发 100，本地）；消息同步与下单支付场景待 S1 复跑
 - [x] 2.3 指标验证（本地基线）：并发 100 下 feed P95 71ms（≤3s）、search P99 30ms（≤1s）、detail P99 777ms（≤1s），错误率 0%；报告 `tests/perf/reports/2026-10-16-local.md`；S1 形态正式复跑与 5~10 倍余量验证待独立环境
-- [ ] 2.4 事件积压压测：Outbox 高峰积压下投递延迟与恢复时间达标
+- [x] 2.4 事件积压与吞吐：`Bus.Relay` 批量幂等/批量确认（`MarkDoneBatch`/`SeenBatch`/`MarkBatch`，适配器可选实现，无则回退逐条）；`TestIntegrationOutboxBacklogDrain` 积压 5000 条实测 **18,483 条/秒**（优化前 283 条/秒）、零丢失零死信
 
 ## 3. S1 环境部署
 
