@@ -3,6 +3,7 @@
 - 来源：`docs/猫平方-产品需求说明书-v2.5（对外交付版）.docx` §11.4「验收标准」（逐条抽取）。
 - 状态：`✅` 已落地并有测试证据；`◐` 部分落地/口径待确认；`❌` 未落地（依赖 p4/p5 或待确认事项）；`—` 属外部动作（非代码）。
 - 证据列给出代码位置或集成测试名（`apps/server/internal/app/integration_test.go` 等）。
+- 阶段性完成度与阻塞汇总见 `docs/prd-trace/stage-delivery-report.md`。
 
 ## 账号与入驻
 
