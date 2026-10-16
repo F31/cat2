@@ -87,6 +87,9 @@ func (m *Module) Register(r *module.Registry) error {
 			return nil
 		}},
 	)
+	r.AuditPoints = append(r.AuditPoints,
+		audit.Point{Action: "trust:review:resolve", Path: "/api/admin/v1/review-tasks/{id}/resolve", Required: true, LogFailed: true, Module: "trust"},
+	)
 	r.CapProviders = append(r.CapProviders, capProvider{m})
 	// 订阅聊天消息（msg R1 事件，topic 字面量，不 import 高阶 contract）：异步机检，命中入审核队列。
 	r.EventSubs = append(r.EventSubs, eventbus.Subscription{

@@ -90,6 +90,11 @@ func (m *Module) Register(r *module.Registry) error {
 		module.JobDef{Name: "trade.recon", Interval: time.Hour, Run: m.svc.RunRecon},
 		module.JobDef{Name: "trade.apportion_expire", Interval: 5 * time.Minute, Run: m.svc.ExpireApportions},
 	)
+	r.AuditPoints = append(r.AuditPoints,
+		audit.Point{Action: "trade:refund:execute", Path: "/api/admin/v1/refunds", Required: true, LogFailed: true, Module: "trade"},
+		audit.Point{Action: "trade:fulfillment:retry", Path: "/api/admin/v1/fulfillments/{orderID}/retry", Required: true, LogFailed: true, Module: "trade"},
+		audit.Point{Action: "trade:pay:notify", Path: "/api/mp/v1/pay/notify", Required: true, LogFailed: true, Module: "trade"},
+	)
 	return nil
 }
 

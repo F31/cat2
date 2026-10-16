@@ -99,6 +99,24 @@ type AdminUser struct {
 	Status *int `json:"status,omitempty"`
 }
 
+// AuditEntry defines model for AuditEntry.
+type AuditEntry struct {
+	Action    string                  `json:"action"`
+	ActorId   *int                    `json:"actor_id,omitempty"`
+	ActorType *int                    `json:"actor_type,omitempty"`
+	Archived  *bool                   `json:"archived,omitempty"`
+	Channel   *string                 `json:"channel,omitempty"`
+	CreatedAt *int                    `json:"created_at,omitempty"`
+	Detail    *map[string]interface{} `json:"detail,omitempty"`
+	Hash      *string                 `json:"hash,omitempty"`
+	Id        int                     `json:"id"`
+	Ip        *string                 `json:"ip,omitempty"`
+	PrevHash  *string                 `json:"prev_hash,omitempty"`
+	RequestId *string                 `json:"request_id,omitempty"`
+	Result    int                     `json:"result"`
+	TargetRef *string                 `json:"target_ref,omitempty"`
+}
+
 // ContentItem defines model for ContentItem.
 type ContentItem struct {
 	CoverFileId *string                 `json:"cover_file_id,omitempty"`
@@ -259,6 +277,17 @@ type NotFound = Error
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Error
 
+// AdminAuditsParams defines parameters for AdminAudits.
+type AdminAuditsParams struct {
+	ActorId   *string `form:"actor_id,omitempty" json:"actor_id,omitempty"`
+	Action    *string `form:"action,omitempty" json:"action,omitempty"`
+	Result    *string `form:"result,omitempty" json:"result,omitempty"`
+	TargetRef *string `form:"target_ref,omitempty" json:"target_ref,omitempty"`
+	From      *string `form:"from,omitempty" json:"from,omitempty"`
+	To        *string `form:"to,omitempty" json:"to,omitempty"`
+	Limit     *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // AdminListContentsParams defines parameters for AdminListContents.
 type AdminListContentsParams struct {
 	Kind   *AdminListContentsParamsKind `form:"kind,omitempty" json:"kind,omitempty"`
@@ -351,6 +380,12 @@ type AdminBanUserJSONRequestBody AdminBanUserJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// AdminAudits 审计查询（who/where/when/what/result 五维筛选）
+	// (GET /audits)
+	AdminAudits(w http.ResponseWriter, r *http.Request, params AdminAuditsParams)
+	// AdminAuditDetail 审计详情（含哈希链字段与快照）
+	// (GET /audits/{id})
+	AdminAuditDetail(w http.ResponseWriter, r *http.Request, id string)
 	// AdminListContents 内容列表（按类型/状态）
 	// (GET /contents)
 	AdminListContents(w http.ResponseWriter, r *http.Request, params AdminListContentsParams)
@@ -424,6 +459,143 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// AdminAudits operation middleware
+func (siw *ServerInterfaceWrapper) AdminAudits(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AdminAuditsParams
+
+	// ------------- Optional query parameter "actor_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor_id", r.URL.Query(), &params.ActorId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "action" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "action", r.URL.Query(), &params.Action, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "action"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "action", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "result" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "result", r.URL.Query(), &params.Result, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "result"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "result", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "target_ref" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "target_ref", r.URL.Query(), &params.TargetRef, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "target_ref"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "target_ref", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminAudits(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminAuditDetail operation middleware
+func (siw *ServerInterfaceWrapper) AdminAuditDetail(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminAuditDetail(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // AdminListContents operation middleware
 func (siw *ServerInterfaceWrapper) AdminListContents(w http.ResponseWriter, r *http.Request) {
@@ -1134,6 +1306,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/menus", wrapper.AdminMenus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/audits", wrapper.AdminAudits)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/audits/{id}", wrapper.AdminAuditDetail)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/review-tasks/{id}/suggestion", wrapper.AdminReviewSuggestion)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/settings", wrapper.AdminSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/settings/{key}", wrapper.AdminSetSetting)

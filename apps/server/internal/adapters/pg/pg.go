@@ -387,6 +387,17 @@ CREATE TABLE IF NOT EXISTS sys_audit (
 	hash char(64) NOT NULL,
 	created_at timestamptz NOT NULL DEFAULT now()
 );
+-- 留存归档（p4 §5.7）：标记已归档行并记录边界哈希（链可离线续验）
+ALTER TABLE sys_audit ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+CREATE INDEX IF NOT EXISTS idx_sys_audit_retention ON sys_audit(created_at) WHERE archived_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS sys_audit_archive (
+	id bigint PRIMARY KEY,
+	boundary_hash varchar(64) NOT NULL,
+	last_audit_id bigint NOT NULL,
+	rows_archived bigint NOT NULL,
+	archived_at timestamptz NOT NULL DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS sys_idempotency (
 	key text PRIMARY KEY,

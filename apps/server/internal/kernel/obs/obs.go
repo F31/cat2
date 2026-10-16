@@ -30,6 +30,14 @@ func WithTrace(ctx context.Context, traceID, spanID string) context.Context {
 	return context.WithValue(context.WithValue(ctx, CtxTraceID, traceID), CtxSpanID, spanID)
 }
 
+// RequestID 取当前 request_id（无则空）。
+func RequestID(ctx context.Context) string {
+	if v, ok := ctx.Value(CtxRequestID).(string); ok {
+		return v
+	}
+	return ""
+}
+
 // TraceID 取当前 trace id（无则空）。
 func TraceID(ctx context.Context) string {
 	if v, ok := ctx.Value(CtxTraceID).(string); ok {

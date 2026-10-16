@@ -21,6 +21,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/audits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 审计查询（who/where/when/what/result 五维筛选） */
+        get: operations["adminAudits"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audits/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 审计详情（含哈希链字段与快照） */
+        get: operations["adminAuditDetail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/review-tasks/{id}/suggestion": {
         parameters: {
             query?: never;
@@ -378,6 +412,24 @@ export interface components {
         StatusData: {
             status?: number;
         };
+        AuditEntry: {
+            id: number;
+            actor_id?: number;
+            actor_type?: number;
+            channel?: string;
+            action: string;
+            target_ref?: string;
+            detail?: {
+                [key: string]: unknown;
+            };
+            result: number;
+            ip?: string;
+            request_id?: string;
+            hash?: string;
+            prev_hash?: string;
+            created_at?: number;
+            archived?: boolean;
+        };
         ReviewSuggestion: {
             available: boolean;
             category?: string;
@@ -590,6 +642,63 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    adminAudits: {
+        parameters: {
+            query?: {
+                actor_id?: string;
+                action?: string;
+                result?: string;
+                target_ref?: string;
+                from?: string;
+                to?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 审计列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["AuditEntry"][];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    adminAuditDetail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["AuditEntry"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     adminReviewSuggestion: {

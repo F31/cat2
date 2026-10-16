@@ -43,6 +43,51 @@ paths:
                             type: array
                             items: { $ref: '#/components/schemas/AdminSection' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /audits:
+    get:
+      tags: [admin-governance]
+      summary: 审计查询（who/where/when/what/result 五维筛选）
+      operationId: adminAudits
+      parameters:
+        - { name: actor_id, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: result, in: query, schema: { type: string } }
+        - { name: target_ref, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: 审计列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { $ref: '#/components/schemas/AuditEntry' } }
+  /audits/{id}:
+    get:
+      tags: [admin-governance]
+      summary: 审计详情（含哈希链字段与快照）
+      operationId: adminAuditDetail
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { $ref: '#/components/schemas/AuditEntry' } }
+        '404': { $ref: '#/components/responses/NotFound' }
   /review-tasks/{id}/suggestion:
     get:
       tags: [admin-governance]
@@ -593,6 +638,24 @@ components:
       type: object
       properties:
         status: { type: integer }
+    AuditEntry:
+      type: object
+      required: [id, action, result]
+      properties:
+        id: { type: integer }
+        actor_id: { type: integer }
+        actor_type: { type: integer }
+        channel: { type: string }
+        action: { type: string }
+        target_ref: { type: string }
+        detail: { type: object, additionalProperties: true }
+        result: { type: integer }
+        ip: { type: string }
+        request_id: { type: string }
+        hash: { type: string }
+        prev_hash: { type: string }
+        created_at: { type: integer }
+        archived: { type: boolean }
     ReviewSuggestion:
       type: object
       required: [available]

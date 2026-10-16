@@ -135,6 +135,10 @@ func (m *Module) Register(r *module.Registry) error {
 			return m.svc.HandleApportionFormed(ctx, e.Payload)
 		},
 	})
+	r.AuditPoints = append(r.AuditPoints,
+		audit.Point{Action: "cube:dissolve", Path: "/api/mp/v1/cubes/{id}/dissolve", Required: true, LogFailed: true, Module: "cube"},
+		audit.Point{Action: "cube:transfer", Path: "/api/mp/v1/cubes/{id}/transfer", Required: true, LogFailed: true, Module: "cube"},
+	)
 	r.CapProviders = append(r.CapProviders, capProvider{m})
 	r.Jobs = append(r.Jobs, module.JobDef{Name: "cube.plan_expire", Interval: 30 * time.Minute, Run: m.svc.ExpireDue})
 	if m.deps.Entities != nil {

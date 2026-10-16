@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
@@ -98,6 +99,9 @@ func (m *Module) Register(r *module.Registry) error {
 			return m.svc.HandleCubeProjectCreated(ctx, e.Payload)
 		},
 	})
+	r.AuditPoints = append(r.AuditPoints,
+		audit.Point{Action: "circle:dissolve", Path: "/api/mp/v1/circles/{id}/dissolve", Required: true, LogFailed: true, Module: "circle"},
+	)
 	r.StateMachines = append(r.StateMachines, domain.MachineCircle, domain.MachineDemand)
 	r.Jobs = append(r.Jobs,
 		module.JobDef{Name: "circle.end_due", Interval: time.Hour, Run: m.svc.EndDue},

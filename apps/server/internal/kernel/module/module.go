@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/policy"
 	"catcube/internal/kernel/quota"
@@ -72,6 +73,7 @@ type Registry struct {
 	Settings      []settings.Schema
 	Quotas        []quota.Def
 	PolicyRules   []policy.Rule
+	AuditPoints   []audit.Point
 	CapProviders  []policy.CapabilityProvider
 	// Registries 扩展点注册表开口（低阶开口，高阶注册实现）
 	Extensions map[string]any

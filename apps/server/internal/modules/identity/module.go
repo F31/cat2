@@ -82,6 +82,10 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/users/{id}/unban", Handler: m.auth(m.handleAdminUnban), Admin: true},
 	)
 	// CapabilityProvider：账号状态（实名能力在 verify 注册，此处恒 false）
+	r.AuditPoints = append(r.AuditPoints,
+		audit.Point{Action: "identity:user:ban", Path: "/api/admin/v1/users/{id}/ban", Required: true, LogFailed: true, Module: "identity"},
+		audit.Point{Action: "identity:user:unban", Path: "/api/admin/v1/users/{id}/unban", Required: true, LogFailed: true, Module: "identity"},
+	)
 	r.CapProviders = append(r.CapProviders, capProvider{m})
 	// 会员权益变化 → 递增授权版本，消除令牌陈旧窗口（topic 按契约；R0 不 import membership R3）
 	r.EventSubs = append(r.EventSubs,

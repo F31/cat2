@@ -52,9 +52,20 @@ type Entry struct {
 // Point 审计点声明（表驱动 + CI 校验）。
 type Point struct {
 	Action    string
-	Required  bool // 必记 / 按需
-	LogFailed bool // 记失败/拒绝
+	Required  bool   // 必记 / 按需
+	LogFailed bool   // 记失败/拒绝
+	Path      string // 关联路由（敏感动词路由必须声明；CI 校验）
+	Module    string // 归属模块
 }
+
+// Registry 审计点注册表（模块声明；CI 校验敏感动词路由已声明）。
+type Registry struct{ points []Point }
+
+// Register 注册审计点。
+func (r *Registry) Register(ps ...Point) { r.points = append(r.points, ps...) }
+
+// Points 全部声明。
+func (r *Registry) Points() []Point { return r.points }
 
 // Store 审计存储。
 type Store interface {
@@ -106,6 +117,26 @@ func sortedDetail(v any) any {
 	return v
 }
 
+// 指标钩子（避免 kernel 依赖 obs 造成环：由装配根注入）。
+var (
+	deniedCounter   counter = noopCounter{}
+	appendedCounter counter = noopCounter{}
+)
+
+type counter interface{ Inc(string) }
+type noopCounter struct{}
+
+func (noopCounter) Inc(string) {}
+
+// SetMetrics 注入指标计数器（装配根调用；nil 恢复空实现）。
+func SetMetrics(c counter) {
+	if c == nil {
+		deniedCounter, appendedCounter = noopCounter{}, noopCounter{}
+		return
+	}
+	deniedCounter, appendedCounter = c, c
+}
+
 // Recorder 审计写入器。
 type Recorder struct {
 	store Store
@@ -124,5 +155,9 @@ func (r *Recorder) Record(ctx context.Context, tx any, e Entry) error {
 	}
 	e.PrevHash = prev
 	e.Hash = Hash(prev, e)
+	if e.Result == ResultDenied {
+		deniedCounter.Inc("catcube_audit_denied_total")
+	}
+	appendedCounter.Inc("catcube_audit_total")
 	return r.store.Append(ctx, tx, e)
 }

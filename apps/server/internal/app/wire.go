@@ -88,7 +88,11 @@ type App struct {
 	AlertTh eventbus.AlertThresholds // Outbox 告警阈值（测试/看板）
 	// StateMachines 全模块注册的状态机（表驱动自检，p1 §13.2）
 	StateMachines []statemachine.Def
-	ready         atomic.Bool // 就绪（停机时置 false，负载探针据此摘流量）
+	// AuditPoints 全模块声明的审计点（敏感动词路由覆盖校验，p4 §5.3）
+	AuditPoints []audit.Point
+	// Audit 审计写入器（测试/治理工具复用）
+	Audit *audit.Recorder
+	ready atomic.Bool // 就绪（停机时置 false，负载探针据此摘流量）
 }
 
 // Wire 装配。
@@ -124,6 +128,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	bus := eventbus.NewBus(outbox, pg.NewProcessed(pool))
 	policyEngine := policy.NewEngine()
 	auditStore := pg.NewAudit(pool)
+	audit.SetMetrics(obs.Default())
 	auditRec := audit.NewRecorder(auditStore)
 
 	// 微信：配了 appid/secret 走真实接口，否则开发态假实现（登录链路可端到端跑通）
@@ -253,7 +258,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	a := &App{Config: cfg, Pool: pool, Bus: bus, Policy: policyEngine, Modules: ordered, Mux: http.NewServeMux(), Cache: cache, AlertTh: eventbus.AlertThresholds{Backlog: cfg.AlertOutboxBacklog, OldestAge: cfg.AlertOutboxOldestSec, DeadCount: cfg.AlertOutboxDead}}
+	a := &App{Config: cfg, Pool: pool, Bus: bus, Policy: policyEngine, Modules: ordered, Mux: http.NewServeMux(), Cache: cache, Audit: auditRec, AlertTh: eventbus.AlertThresholds{Backlog: cfg.AlertOutboxBacklog, OldestAge: cfg.AlertOutboxOldestSec, DeadCount: cfg.AlertOutboxDead}}
 
 	// 逐模块 Register：收集路由/事件/任务/能力
 	for _, m := range ordered {
@@ -262,6 +267,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 			return nil, fmt.Errorf("wire: 模块 %s 注册失败: %w", m.Name(), err)
 		}
 		a.StateMachines = append(a.StateMachines, reg.StateMachines...)
+		a.AuditPoints = append(a.AuditPoints, reg.AuditPoints...)
 		for _, rt := range reg.Routes {
 			h := rt.Handler
 			if rt.Admin {

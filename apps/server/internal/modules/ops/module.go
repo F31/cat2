@@ -5,15 +5,21 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
+	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/featureflag"
 	"catcube/internal/kernel/module"
+	"catcube/internal/kernel/obs"
 	"catcube/internal/kernel/settings"
 	idcontract "catcube/internal/modules/identity/contract"
+	"catcube/pkg/ids"
 )
 
 // Deps 装配依赖。
@@ -41,6 +47,9 @@ func (m *Module) Register(r *module.Registry) error {
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/dead-letters", Handler: m.auth(m.handleList), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/dead-letters/{eventID}/replay", Handler: m.auth(m.handleReplay), Admin: true},
+		// 审计查询（治理：who/where/when/what/result 五维筛选；p4 §5.5）
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/audits", Handler: m.auth(m.handleAudits), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/audits/{id}", Handler: m.auth(m.handleAuditDetail), Admin: true},
 		// 业务配置（配置三层第三层：后台改，热生效）
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/settings", Handler: m.auth(m.handleSettings), Admin: true},
 		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/settings/{key}", Handler: m.auth(m.handleSetSetting), Admin: true},
@@ -48,6 +57,18 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/feature-flags", Handler: m.auth(m.handleFlags), Admin: true},
 		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/feature-flags/{key}", Handler: m.auth(m.handleSetFlag), Admin: true},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/flags", Handler: m.auth(m.handleMyFlags)},
+	)
+	r.Settings = append(r.Settings, Schemas...)
+	r.Jobs = append(r.Jobs,
+		// 安全监控：denied 突增告警（p4 §5.6）
+		module.JobDef{Name: "ops.security_monitor", Interval: time.Minute, Run: m.securityMonitor},
+		// 审计留存归档（p4 §5.7）：超期行标记归档 + 边界哈希
+		module.JobDef{Name: "ops.audit_archive", Interval: 6 * time.Hour, Run: m.archiveAudits},
+	)
+	r.AuditPoints = append(r.AuditPoints,
+		audit.Point{Action: "ops:dead_letter:replay", Path: "/api/admin/v1/dead-letters/{eventID}/replay", Required: true, LogFailed: true, Module: "ops"},
+		audit.Point{Action: "ops:feature_flag:set", Path: "/api/admin/v1/feature-flags/{key}", Required: true, LogFailed: true, Module: "ops"},
+		audit.Point{Action: "ops:setting:set", Path: "/api/admin/v1/settings/{key}", Required: true, LogFailed: true, Module: "ops"},
 	)
 	return nil
 }
@@ -66,6 +87,176 @@ func (m *Module) handleList(w http.ResponseWriter, req *http.Request) {
 		})
 	}
 	writeData(w, map[string]any{"items": items})
+}
+
+// Schemas 治理配置声明。
+var Schemas = []settings.Schema{
+	{Key: "audit.retention_days", Type: settings.TypeInt, Default: "180", Description: "审计留存天数（资金/合规类建议 ≥1095）"},
+	{Key: "audit.denied_surge_threshold", Type: settings.TypeInt, Default: "50", Description: "5 分钟内 denied 审计告警阈值"},
+}
+
+// handleAudits 审计查询（五维筛选）。
+func (m *Module) handleAudits(w http.ResponseWriter, req *http.Request) {
+	q := req.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	args := []any{}
+	where := []string{"1=1"}
+	add := func(cond string, v any) {
+		args = append(args, v)
+		where = append(where, fmt.Sprintf(cond, len(args)))
+	}
+	if v := q.Get("actor_id"); v != "" {
+		add("actor_id=$%d", v)
+	}
+	if v := q.Get("action"); v != "" {
+		add("action=$%d", v)
+	}
+	if v := q.Get("result"); v != "" {
+		add("result=$%d", v)
+	}
+	if v := q.Get("target_ref"); v != "" {
+		add("target_ref::text LIKE '%%'||$%d||'%%'", v)
+	}
+	if v := q.Get("from"); v != "" {
+		add("created_at >= to_timestamp($%d::bigint)", v)
+	}
+	if v := q.Get("to"); v != "" {
+		add("created_at < to_timestamp($%d::bigint)", v)
+	}
+	args = append(args, limit)
+	sql := fmt.Sprintf(`
+		SELECT id, actor_id, actor_type, channel, action, COALESCE(target_ref::text,''), detail, result,
+		       COALESCE(host(ip),''), COALESCE(user_agent,''), COALESCE(request_id,''), btrim(hash),
+		       EXTRACT(EPOCH FROM created_at)::bigint, archived_at IS NOT NULL
+		FROM sys_audit WHERE %s ORDER BY created_at DESC, id DESC LIMIT $%d`, strings.Join(where, " AND "), len(args))
+	rows, err := m.deps.Pool.Query(req.Context(), sql, args...)
+	if err != nil {
+		writeErr(w, 9, "服务错误")
+		return
+	}
+	defer rows.Close()
+	items := make([]map[string]any, 0)
+	for rows.Next() {
+		var id, actorID, createdAt int64
+		var actorType, result int16
+		var channel, action, target, ua, rid, hash string
+		var detail []byte
+		var archived bool
+		var ip string
+		if err := rows.Scan(&id, &actorID, &actorType, &channel, &action, &target, &detail, &result,
+			&ip, &ua, &rid, &hash, &createdAt, &archived); err != nil {
+			writeErr(w, 9, "服务错误")
+			return
+		}
+		items = append(items, auditRow(id, actorID, actorType, channel, action, target, detail, result, ip, rid, hash, createdAt, archived))
+	}
+	writeData(w, map[string]any{"items": items})
+}
+
+// handleAuditDetail 单条审计详情（含前后值快照字段与哈希）。
+func (m *Module) handleAuditDetail(w http.ResponseWriter, req *http.Request) {
+	id, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	if id == 0 {
+		writeErr(w, 1, "参数错误")
+		return
+	}
+	var actorID, createdAt int64
+	var actorType, result int16
+	var channel, action, target, ua, rid, hash, prevHash, ip string
+	var detail []byte
+	var archived bool
+	err := m.deps.Pool.QueryRow(req.Context(), `
+		SELECT id, actor_id, actor_type, channel, action, COALESCE(target_ref::text,''), detail, result,
+		       COALESCE(host(ip),''), COALESCE(user_agent,''), COALESCE(request_id,''), btrim(hash), btrim(prev_hash),
+		       EXTRACT(EPOCH FROM created_at)::bigint, archived_at IS NOT NULL
+		FROM sys_audit WHERE id=$1`, id).
+		Scan(&id, &actorID, &actorType, &channel, &action, &target, &detail, &result, &ip, &ua, &rid, &hash, &prevHash, &createdAt, &archived)
+	if err != nil {
+		writeErr(w, 4, "审计记录不存在")
+		return
+	}
+	row := auditRow(id, actorID, actorType, channel, action, target, detail, result, ip, rid, hash, createdAt, archived)
+	row["prev_hash"] = prevHash
+	writeData(w, row)
+}
+
+func auditRow(id, actorID int64, actorType int16, channel, action, target string, detail []byte, result int16,
+	ip, rid, hash string, createdAt int64, archived bool) map[string]any {
+	var dv any
+	if len(detail) > 0 {
+		var v any
+		if json.Unmarshal(detail, &v) == nil {
+			dv = audit.SanitizeDetail(v) // 二次脱敏（存量数据兜底）
+		}
+	}
+	return map[string]any{
+		"id": id, "actor_id": actorID, "actor_type": actorType, "channel": channel, "action": action,
+		"target_ref": target, "detail": dv, "result": result, "ip": ip, "request_id": rid,
+		"hash": hash, "created_at": createdAt, "archived": archived,
+	}
+}
+
+// securityMonitor denied 突增告警（p4 §5.6）。
+func (m *Module) securityMonitor(ctx context.Context) error {
+	threshold := int64(50)
+	if m.deps.Settings != nil {
+		if v, err := m.deps.Settings.Int(ctx, 1, "audit.denied_surge_threshold"); err == nil {
+			threshold = v
+		}
+	}
+	var denied int64
+	if err := m.deps.Pool.QueryRow(ctx, `
+		SELECT count(1) FROM sys_audit WHERE result=1 AND created_at > now() - interval '5 minutes'`).Scan(&denied); err != nil {
+		return err
+	}
+	obs.Default().SetGauge("catcube_audit_denied_5m", float64(denied))
+	if threshold > 0 && denied > threshold {
+		obs.Default().Alert("audit_denied_surge", fmt.Sprintf("5 分钟内 denied %d 超过阈值 %d", denied, threshold))
+	}
+	return nil
+}
+
+// archiveAudits 审计留存归档：超期行标记 archived_at 并记录边界哈希（不物理删除，链可续验）。
+func (m *Module) archiveAudits(ctx context.Context) error {
+	days := int64(180)
+	if m.deps.Settings != nil {
+		if v, err := m.deps.Settings.Int(ctx, 1, "audit.retention_days"); err == nil && v >= 0 {
+			days = v // 0 = 立即归档（演练用）
+		}
+	}
+	var lastID int64
+	var boundary string
+	var n int64
+	err := m.deps.Pool.QueryRow(ctx, `
+		SELECT COALESCE(max(id),0) FROM sys_audit WHERE created_at < now() - ($1 || ' days')::interval AND archived_at IS NULL`,
+		strconv.FormatInt(days, 10)).Scan(&lastID)
+	if err != nil || lastID == 0 {
+		return err
+	}
+	if err := m.deps.Pool.QueryRow(ctx, `SELECT btrim(hash) FROM sys_audit WHERE id=$1`, lastID).Scan(&boundary); err != nil {
+		return err
+	}
+	tag, err := m.deps.Pool.Exec(ctx, `
+		UPDATE sys_audit SET archived_at=now()
+		WHERE id <= $1 AND created_at < now() - ($2 || ' days')::interval AND archived_at IS NULL`,
+		lastID, strconv.FormatInt(days, 10))
+	if err != nil {
+		return err
+	}
+	n = tag.RowsAffected()
+	if n == 0 {
+		return nil
+	}
+	if _, err := m.deps.Pool.Exec(ctx, `
+		INSERT INTO sys_audit_archive (id, boundary_hash, last_audit_id, rows_archived, archived_at)
+		VALUES ($1,$2,$3,$4,now())`, int64(ids.New()), boundary, lastID, n); err != nil {
+		return err
+	}
+	obs.Default().Add("catcube_audit_archived_total", float64(n))
+	return nil
 }
 
 // handleSettings 后台：业务配置列表（含声明与当前值）。

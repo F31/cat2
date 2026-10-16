@@ -81,6 +81,9 @@ func (m *Module) Register(r *module.Registry) error {
 	r.EventSubs = append(r.EventSubs, eventbus.Subscription{
 		Topic: trustcontract.EventReportConfirmed, Handler: m.svc.HandleReportConfirmed,
 	})
+	r.AuditPoints = append(r.AuditPoints,
+		audit.Point{Action: "content:takedown", Path: "/api/admin/v1/contents/{id}/takedown", Required: true, LogFailed: true, Module: "content"},
+	)
 	return nil
 }
 

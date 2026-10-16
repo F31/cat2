@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	neturl "net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,9 +24,11 @@ import (
 	"time"
 
 	"catcube/internal/bff"
+	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/config"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/expiry"
+	"catcube/internal/kernel/module"
 	"catcube/internal/kernel/obs"
 	"catcube/internal/kernel/statemachine"
 	aiContract "catcube/internal/modules/ai/contract"
@@ -4638,4 +4641,161 @@ func TestIntegrationAIReviewSuggestion(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = targetTok
+}
+
+// 审计点覆盖（p4 §5.3）：敏感动词路由必须声明审计点（表驱动，CI 必过）。
+func TestSensitiveRoutesHaveAuditPoints(t *testing.T) {
+	h := newTestApp(t)
+	// 敏感动词：资金/封禁/下架/解散/转移/导出/重放/审批/配置
+	pattern := regexp.MustCompile(`(?i)/(refund|ban|unban|takedown|dissolve|transfer|export|replay|resolve|settings|feature-flags)`)
+	declared := map[string]bool{}
+	for _, p := range h.app.AuditPoints {
+		if p.Path == "" {
+			t.Fatalf("审计点 %s 未关联路由", p.Action)
+		}
+		declared[p.Path] = true
+	}
+	missing := []string{}
+	for _, m := range h.app.Modules {
+		reg := module.NewRegistry(m.Name())
+		if err := m.Register(reg); err != nil {
+			t.Fatalf("%s Register: %v", m.Name(), err)
+		}
+		for _, rt := range reg.Routes {
+			// 仅写操作需要审计（读接口不要求）
+			if rt.Method == http.MethodGet || rt.Method == http.MethodHead {
+				continue
+			}
+			if !pattern.MatchString(rt.Path) {
+				continue
+			}
+			if !declared[rt.Path] {
+				missing = append(missing, m.Name()+" "+rt.Path)
+			}
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("敏感动词路由缺少审计点声明：%v", missing)
+	}
+	if len(h.app.AuditPoints) < 8 {
+		t.Fatalf("审计点声明过少：%d", len(h.app.AuditPoints))
+	}
+}
+
+// 审计治理（p4 §5.5/§5.6/§5.7）：查询五维筛选、脱敏兜底、denied 告警、留存归档。
+func TestIntegrationAuditGovernance(t *testing.T) {
+	h := newTestAppCfg(t, func(c *config.Config) {})
+	uid, tok := loginUser(t, h)
+	_, admTok := loginAdmin(t, h)
+	ctx := context.Background()
+	_ = uid
+
+	// 造一条资金类审计（退款接口会写审计；这里直接用举报+复核路径产生 denied/ok 混合）
+	victim, _ := loginUser(t, h)
+	// 1) 后台封禁（审计 result=ok）
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/users/%d/ban", victim), admTok, map[string]any{"reason": "违规"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("封禁失败: %d %+v", s, e)
+	}
+	// 2) 审计查询：按 action 过滤
+	_, env := h.do(http.MethodGet, "/api/admin/v1/audits?action=identity:user:ban&limit=5", admTok, nil)
+	var list struct {
+		Items []struct {
+			ID       int64          `json:"id"`
+			Action   string         `json:"action"`
+			Result   int16          `json:"result"`
+			Detail   map[string]any `json:"detail"`
+			Hash     string         `json:"hash"`
+			Archived bool           `json:"archived"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(env.Data, &list); err != nil {
+		t.Fatalf("审计查询失败: %v", err)
+	}
+	if len(list.Items) == 0 {
+		t.Fatal("应能查到封禁审计")
+	}
+	// 3) 明细查询：含哈希与前后值（detail 已脱敏）
+	id := list.Items[0].ID
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/admin/v1/audits/%d", id), admTok, nil)
+	var one struct {
+		Action   string         `json:"action"`
+		Hash     string         `json:"hash"`
+		PrevHash string         `json:"prev_hash"`
+		Detail   map[string]any `json:"detail"`
+	}
+	_ = json.Unmarshal(env.Data, &one)
+	if one.Hash == "" {
+		t.Fatalf("应返回哈希链字段: %+v", one) // prev_hash 可为空（链首）
+	}
+	if one.Detail["reason"] == nil {
+		t.Fatalf("应返回快照 detail: %+v", one.Detail)
+	}
+	// 脱敏兜底：写入含手机号的审计（经 Recorder，保持哈希链有效），查询应已脱敏
+	if err := h.app.Audit.Record(ctx, nil, audit.Entry{
+		ActorID: 1, ActorType: audit.ActorAdmin, Channel: "admin", Action: "governance:probe",
+		Detail: map[string]any{"contact_phone": "13812345678", "note": "联系13900000000"},
+		Result: audit.ResultDenied,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, env = h.do(http.MethodGet, "/api/admin/v1/audits?action=governance:probe&limit=1", admTok, nil)
+	_ = json.Unmarshal(env.Data, &list)
+	if len(list.Items) == 0 {
+		t.Fatal("应查到探针审计")
+	}
+	phone, _ := list.Items[0].Detail["contact_phone"].(string)
+	if phone == "13812345678" {
+		t.Fatalf("审计 detail 应脱敏: %v", list.Items[0].Detail)
+	}
+
+	// 4) denied 突增告警：写若干 denied 审计（经 Recorder，链有效）后跑监控
+	for i := 0; i < 5; i++ {
+		if err := h.app.Audit.Record(ctx, nil, audit.Entry{
+			ActorID: 1, ActorType: audit.ActorAdmin, Channel: "admin", Action: "governance:denied",
+			Result: audit.ResultDenied,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 阈值调小以触发
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/settings/audit.denied_surge_threshold", admTok, map[string]any{"value": "1"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("设置阈值失败: %d %+v", s, e)
+	}
+	before := obs.Default().AlertCount("audit_denied_surge")
+	if _, err := h.app.Sched.RunOnce(ctx, "ops.security_monitor"); err != nil {
+		t.Fatal(err)
+	}
+	if obs.Default().AlertCount("audit_denied_surge") <= before {
+		t.Fatal("denied 突增应触发告警")
+	}
+	if obs.Default().Gauge("catcube_audit_denied_5m") <= 0 {
+		t.Fatal("denied 指标应上报")
+	}
+
+	// 5) 留存归档：保留期设为 0 天（当前所有行即超期）→ 跑归档 → 行标记 archived + 边界元数据
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/settings/audit.retention_days", admTok, map[string]any{"value": "0"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("设置保留期失败: %d %+v", s, e)
+	}
+	var beforeArchived int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM sys_audit WHERE archived_at IS NOT NULL`).Scan(&beforeArchived)
+	if _, err := h.app.Sched.RunOnce(ctx, "ops.audit_archive"); err != nil {
+		t.Fatal(err)
+	}
+	var afterArchived int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM sys_audit WHERE archived_at IS NOT NULL`).Scan(&afterArchived)
+	if afterArchived <= beforeArchived {
+		t.Fatalf("超期审计应被标记归档：before=%d after=%d", beforeArchived, afterArchived)
+	}
+	var meta int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM sys_audit_archive`).Scan(&meta)
+	if meta == 0 {
+		t.Fatal("应记录归档边界元数据")
+	}
+	// 链完整性不受归档影响（仅标记，不删行）
+	if err := h.app.Audit.Record(ctx, nil, audit.Entry{
+		ActorID: 1, ActorType: audit.ActorAdmin, Channel: "admin", Action: "governance:after_archive", Result: audit.ResultOK,
+	}); err != nil {
+		t.Fatalf("归档后应可继续追加审计（链可续）: %v", err)
+	}
+	_ = tok
 }

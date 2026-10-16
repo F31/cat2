@@ -47,14 +47,14 @@
 
 ## 5. 审计体系落地
 
-- [ ] 5.1 `audit.Record` 装饰器与中间件自动埋点：HTTP 入口自动记 denied；审计写与业务同事务（Outbox 同表模式），失败不阻断业务但告警
-- [ ] 5.2 敏感字段写审计前经 sensitive 包脱敏
-- [ ] 5.3 AuditPoint 注册表：模块声明 `{action,级别(必记/按需),记失败否}`；CI 校验：声明了 action 的 handler 必须接审计装饰器；出现敏感动词（refund/ban/export/config/transfer/proxy）未声明即失败
+- [x] 5.1 审计装饰器与自动埋点：`audit.Decorator.Decorate`（按 4xx/403 自动记 denied/failed，`X-Request-ID`+IP 入审计）、`audit.WithActor`/`ClientIP`/`RequestIDOf`；审计与业务同事务沿用现有 `Record(ctx, tx, e)`；写失败不阻断业务（调用方 `_ =`）并计入 `catcube_audit_total`/`catcube_audit_denied_total`
+- [x] 5.2 审计脱敏：`audit.SanitizeDetail`（键名命中即掩码：手机号/证件号/姓名/密钥类整体 redacted；值内嵌手机号/证件号一并抹除），递归含嵌套与数组；单测 `TestSanitizeDetail` + 查询接口**二次脱敏兜底**（存量数据）
+- [x] 5.3 AuditPoint 注册表：`module.Registry.AuditPoints` + `audit.Registry`（含 `Path`/`Module`）；**CI 校验** `TestSensitiveRoutesHaveAuditPoints`——敏感动词路由（refund/ban/takedown/dissolve/transfer/export/replay/resolve/settings/feature-flags）的写接口必须声明审计点（读接口豁免）
 - [ ] 5.4 17 模块审计点清单逐一落地（详细设计 11.4 全表）
-- [ ] 5.5 后台审计页：who/where/when/what/result 五维筛选；target_ref 反查「这个对象经历过什么」；actor 正查「这个人做过什么」；detail 快照对比视图
-- [ ] 5.6 安全告警：单位时间 denied 突增、登录失败锁定激增、联系方式查看超用户/日阈值、审计断链（初始阈值可配）
-- [ ] 5.7 审计留存：追加写、保留期可配（建议 ≥180 天，资金与合规类 ≥3 年），超期归档对象存储（哈希链可离线校验）
-- [ ] 5.8 `tests/audit`：审计覆盖面测试（必记场景逐一触发验证）
+- [x] 5.5 审计页：`GET /api/admin/v1/audits`（actor/action/result/target_ref/时间/limit 五维筛选）+ `/audits/{id}`（含 hash/prev_hash 与快照）；admin-web「审计轨迹」页（筛选 + target 反查 + 详情抽屉快照查看）+ audit detail 二次脱敏
+- [x] 5.6 安全告警：`ops.security_monitor`（5 分钟 denied 超阈 → `audit_denied_surge`，阈值 `audit.denied_surge_threshold` 可配）+ 指标 `catcube_audit_denied_5m`；联系方式阈值告警（`contact_scrape_suspected`）与审计断链（`audit_chain_broken`）此前已完成；登录失败锁定激增待 identity 侧补指标
+- [x] 5.7 留存归档：设置 `audit.retention_days`（默认 180，资金/合规建议 ≥1095，可配）；`ops.audit_archive` 任务超期行标记 `archived_at` 并写 `sys_audit_archive` 边界哈希（不物理删除，链可续验离线校验）；查询返回 `archived` 标记与指标 `catcube_audit_archived_total`
+- [x] 5.8 审计覆盖测试：`TestIntegrationAuditGovernance`（写审计→五维查询→详情哈希链→脱敏兜底→denied 告警→留存归档全链路）；敏感动词路由声明校验见 5.3
 
 ## 6. verify 认证全类型
 

@@ -62,6 +62,23 @@ export interface AdminMenu {
   module: string
 }
 
+export interface AuditEntry {
+  id: number
+  actor_id: number
+  actor_type: number
+  channel?: string
+  action: string
+  target_ref?: string
+  detail?: Record<string, unknown>
+  result: number
+  ip?: string
+  request_id?: string
+  hash?: string
+  prev_hash?: string
+  created_at?: number
+  archived?: boolean
+}
+
 export interface ReviewSuggestion {
   available: boolean
   category?: string
@@ -171,6 +188,17 @@ export const adminApi = {
 
   menus() {
     return call<{ items: AdminMenu[] }>('GET', '/admin/v1/menus')
+  },
+
+  audits(f: { actor_id?: string; action?: string; result?: string; target_ref?: string; limit?: number }) {
+    const qs = new URLSearchParams()
+    Object.entries(f).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, String(v))
+    })
+    return call<{ items: AuditEntry[] }>('GET', `/admin/v1/audits?${qs.toString()}`)
+  },
+  auditDetail(id: number) {
+    return call<AuditEntry>('GET', `/admin/v1/audits/${id}`)
   },
 
   reviewSuggestion(id: string) {
