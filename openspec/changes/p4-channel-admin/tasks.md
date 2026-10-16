@@ -1,10 +1,10 @@
 # p4-channel-admin · 任务清单
 
-> 前置阻塞：p0 待确认 #13（后台五角色划分）已书面确认，否则本变更不开工。
+> 前置：p0 待确认 #13（后台五角色划分）已于 **2026-10-17 书面确认**（含 RBAC 可配置修正，见 `docs/adr/ADR-002-admin-rbac.md`），本变更开工前置已解除。
 >
 > **预研已就绪（不触发门禁）**：数据模型/契约/状态机/复用点与待决策清单见 `docs/modules/channel-预研.md`，
-> 技术决策见 `docs/adr/ADR-001-channel-data-model.md`（提议）。结论：**无新增内核能力需求**，
-> 唯一硬前置为 #13（权限点与后台账号模型）；确认当日起可并行开发 §1/§2。
+> 技术决策见 `docs/adr/ADR-001-channel-data-model.md`（**采纳**）与 `docs/adr/ADR-002-admin-rbac.md`（**采纳**）。结论：**无新增内核能力需求**，
+> 可按 §1 → §2 → §3 顺序开工（§1/§2 与 §3 可并行）。
 
 ## 1. channel：运营商移动端身份（小程序）
 
@@ -17,10 +17,10 @@
 
 ## 2. channel：佣金与结算（后台）
 
-- [ ] 2.1 开户审核：区域查重一地一家；代理费首年 3 万/次年 2 万收款登记（入 settings 可配）；保证金 1 万可退台账（`chn_guarantee` 预收款，不与收入混记）
-- [ ] 2.2 佣金规则配置（首单 30%/续费 10% 初始值，SettingsSchema 全后台可配；计佣范围按 #16 结论）
-- [ ] 2.3 订阅 `OrderPaid`、`MemberActivated`：按配置比例生成 `chn_commission` 流水并写入 ratio_snapshot（配置变更不影响历史流水）
-- [ ] 2.4 月结结算单状态机 #17（待结算→已结算→已打款，打款不可撤销）：生成→财务复核→对公打款→留凭证；**复核与执行不得同一人**（内核策略强制互斥，违反 denied 记审计）
+- [ ] 2.1 开户审核：区域查重一地一家；代理费首年 3 万/次年 2 万收款登记（SettingsSchema **动态可配**，权限点 `channel:operator_fee:set`）；保证金 1 万可退台账（`chn_guarantee` 预收款，不与收入混记，退款走台账）
+- [ ] 2.2 佣金**规则配置（范围+比例）**：SettingsSchema `channel.commission.*` 初始值（首单 30%/续费 10%；含会员订阅、不含立方分摊与保证金），**运行期动态可配（热生效）**；权限点 `channel:commission_rule:set` 默认可授予运营管理员（`decision-checklist-13.md` D2）
+- [ ] 2.3 订阅 `OrderPaid`、`MemberActivated`：按**计佣时配置**生成 `chn_commission` 流水并写 `ratio_snapshot`（含范围与比例的配置版本，后续变更不影响历史流水）
+- [ ] 2.4 月结结算单状态机 #17（待结算→已结算→已打款，打款不可撤销）：生成→财务复核→对公打款→留凭证（`voucher_ref`→media）；**复核与执行不得同一人**（内核策略强制互斥，违反 denied 记审计）
 - [ ] 2.5 保底任务跟踪：12 个月 ≥50 付费会员或 ≥3 落地项目；进度与预警（`chn_annual_target`）
 - [ ] 2.6 归属纠错审批留痕（`chn_attribution.correct_approval`）
 - [ ] 2.7 对账导出（按运营商/区域/时间）走导出中心
@@ -29,13 +29,16 @@
 
 ## 3. 后台 RBAC 与权限点
 
-- [ ] 3.1 `sys_admin_user/sys_admin_role` 迁移；五内置角色（超管/运营/审核员/财务/渠道经理）种子；角色带 space_id
-- [ ] 3.2 AdminSection 增强：菜单级（路由可见性）+ 操作级（action 级按钮可用性）两级；权限点命名 `<module>:<resource>:<action>`，统一登记在 contracts
+- [ ] 3.1 迁移 `sys_admin_user` / `sys_admin_role` / `sys_admin_user_role` / `sys_admin_role_permission`（N:M，内核表放 `adapters/pg` KernelTables）；五内置角色（超管/运营/审核员/财务/渠道经理）+ `decision-checklist-13.md §2.2` 矩阵作**默认种子**；角色带 `space_id/region_code`、`protected`、`builtin`
+- [ ] 3.2 AdminSection 增强：菜单级（路由可见性）+ 操作级（action 级按钮可用性）两级；权限点命名 `<module>:<resource>:<action>`，统一登记在 contracts（只增不改名，废弃标 deprecated）
 - [ ] 3.3 服务端强制校验为唯一权威（前端隐藏仅体验）；后台登录 denied 记审计（防爆破）
 - [ ] 3.4 后台账号强制二次验证；敏感操作（退款/封禁/改价格比例/导出/结算）二次确认 + 审计
 - [ ] 3.5 内核 policy「复核≠执行」互斥规则（同一结算单/退款单操作人≠复核人）
-- [ ] 3.6 五角色-权限点矩阵表驱动用例（含「明确禁止」列的负向用例：运营不得碰资金、审核员不得处置内容以外的资源等，详细设计 10.3）
-- [ ] 3.7 admin-web shell 按 RBAC 过滤菜单
+- [ ] 3.6 五角色-权限点**默认矩阵**表驱动用例（含「明确禁止」列的负向用例：运营不得碰资金、审核员不得处置内容以外的资源等，详细设计 10.3）
+- [ ] 3.7 admin-web shell 按 RBAC 过滤菜单；渠道经理数据范围默认仅本人区域，**区域（`space_id`/`region_code`）由运营管理员动态配置**（随角色数据范围，D5）
+- [ ] 3.8 **角色权限可配置**（ADR-002）：后台「角色与权限」页 + 接口 `GET/PUT /api/admin/v1/roles/{code}/permissions`、`POST/DELETE /api/admin/v1/roles`（自定义角色，`builtin` 不可删）、账号角色分配 `PUT /api/admin/v1/admin-users/{id}/roles`；改动即时生效（权限缓存版本号）并审计 `ops:rbac:*`
+- [ ] 3.9 RBAC 红线策略：超管 `protected` 不可编辑/降级/删除；**反提权**（只能授予自身权限子集，不得改 protected 角色）；**防自锁**（禁止移除最后一个 `ops:rbac:manage`）；违反一律 denied 记审计
+- [ ] 3.10 RBAC 测试：默认矩阵生效、改权限即时生效、超管不可改、反提权 denied、防自锁、自定义角色创建/删除、数据范围（space_id/region_code）过滤
 
 ## 4. 治理分区 governance/
 

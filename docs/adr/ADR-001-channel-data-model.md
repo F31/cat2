@@ -1,7 +1,7 @@
 # ADR-001 · channel 模块数据模型与开工前置（提议）
 
-- 状态：**提议**（待 p0 #13 与产品/财务书面确认后转「采纳」）
-- 日期：2026-10-16
+- 状态：**采纳**（2026-10-17：D1–D6 已确认——RBAC 见 ADR-002、佣金/代理费/保证金/结算/数据范围口径见本文；仅 D7–D9 外部合规待办）
+- 日期：2026-10-16（2026-10-17 更新状态）
 - 决策范围：运营商/渠道（`channel`，R4）、佣金与结算、归属关系
 - 预研文档：`docs/modules/channel-预研.md`
 
@@ -15,13 +15,17 @@
 1. **模块与边界**：`channel` 归 **R4**（可依赖 R0–R3），表前缀 `chn_`，错误码段 **15**，事件前缀 `channel.*`。
 2. **归属单层红线**：`chn_operator.referrer_operator_id` 仅作单层展示，**无上级/下级集合**；
    contract 与 SQL 均不提供多级查询；不得自建下级。归属唯一有效（同一用户同时仅一条）。
-3. **佣金以快照计**：计佣时写 `ratio_snapshot`，后续配置变更不影响历史流水；比例走 `SettingsSchema`（全后台可配）。
-4. **结算「复核≠执行」**：`chn_settlement.reviewed_by != paid_by`，由内核 policy 强制，违反记 `denied` 审计。
-5. **保证金独立台账**：`chn_guarantee` 作预收款可退，不与收入混记；代理费入收入。
+3. **佣金以快照计（已确认 #16）**：首单 30%、续费 10%；计佣范围含会员订阅、**不含**立方分摊与保证金；
+   计佣时写 `ratio_snapshot`，后续配置变更不影响历史流水；**范围与比例均走 `SettingsSchema`（运行期动态可配、热生效）**，
+   变更权限点 `channel:commission_rule:set` 默认可授予「运营管理员」。
+4. **结算「复核≠执行」（已确认 #17/D4）**：`chn_settlement.reviewed_by != paid_by`，由内核 policy 强制，违反记 `denied` 审计；
+   打款方式为对公打款，凭证留存 `voucher_ref`（指向 media）。
+5. **保证金独立台账（已确认 D3）**：`chn_guarantee` 作预收款可退，不与收入混记；代理费入收入（首年 3 万/次年 2 万）；
+   金额走 `SettingsSchema` **运行期动态可配**，权限点 `channel:operator_fee:set` 默认可授予「运营管理员」。
 6. **复用内核**：迁移（幂等）、settings、featureflag、audit、statemachine（#16/#17）、eventbus（至少一次+幂等+trace）、
    导出中心、AdminSection；**不新增内核能力**。
-7. **RBAC 归属 p4 §3**：五角色与权限点 `<module>:<resource>:<action>` 依赖 #13 确认；本 ADR 不预设角色集合，
-   仅在确认后按 `p4-channel-admin/tasks.md` §3 落地（当前过渡实现为 `idn_user.admin_role` 单级管理员）。
+7. **RBAC 归属 p4 §3（已确认）**：五角色与权限点 `<module>:<resource>:<action>` 的模型见 `docs/adr/ADR-002-admin-rbac.md`
+   （矩阵为默认种子、除超管外可配）；本 ADR 不重复，按 `p4-channel-admin/tasks.md` §3 落地（过渡实现 `idn_user.admin_role`）。
 
 ## 备选方案与否决理由
 
