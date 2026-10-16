@@ -11,6 +11,7 @@ import (
 	"hash/crc32"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -34,6 +35,7 @@ import (
 	"catcube/internal/kernel/module"
 	"catcube/internal/kernel/obs"
 	"catcube/internal/kernel/policy"
+	"catcube/internal/kernel/rbac"
 	"catcube/internal/kernel/scheduler"
 	"catcube/internal/kernel/sensitive"
 	"catcube/internal/kernel/settings"
@@ -92,6 +94,8 @@ type App struct {
 	AuditPoints []audit.Point
 	// Audit 审计写入器（测试/治理工具复用）
 	Audit *audit.Recorder
+	// RBAC 后台角色权限（p4 §3，ADR-002）
+	RBAC  *rbac.Store
 	ready atomic.Bool // 就绪（停机时置 false，负载探针据此摘流量）
 }
 
@@ -260,7 +264,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	a := &App{Config: cfg, Pool: pool, Bus: bus, Policy: policyEngine, Modules: ordered, Mux: http.NewServeMux(), Sched: schedRunner, Cache: cache, Audit: auditRec, AlertTh: eventbus.AlertThresholds{Backlog: cfg.AlertOutboxBacklog, OldestAge: cfg.AlertOutboxOldestSec, DeadCount: cfg.AlertOutboxDead}}
+	a := &App{Config: cfg, Pool: pool, Bus: bus, Policy: policyEngine, Modules: ordered, Mux: http.NewServeMux(), Sched: schedRunner, Cache: cache, Audit: auditRec, RBAC: rbac.New(pool), AlertTh: eventbus.AlertThresholds{Backlog: cfg.AlertOutboxBacklog, OldestAge: cfg.AlertOutboxOldestSec, DeadCount: cfg.AlertOutboxDead}}
 
 	// 逐模块 Register：收集路由/事件/任务/能力
 	for _, m := range ordered {
@@ -273,7 +277,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		for _, rt := range reg.Routes {
 			h := rt.Handler
 			if rt.Admin {
-				h = requireAdmin(identityMod.Facade(), rt.Handler) // 后台路由硬门槛（非管理员拒绝）
+				h = requireAdmin(identityMod.Facade(), a.RBAC, a.Audit, rt.Handler) // 后台路由硬门槛（超管或任一角色）
 			}
 			a.Mux.HandleFunc(rt.Method+" "+rt.Path, h)
 		}
@@ -370,25 +374,159 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		trustMod.RegisterSubjectProvider(contentMod.ProviderFor(k))
 	}
 
-	// 后台菜单声明（p1 §9.9/§11.7）：模块 → AdminSection 声明式；p4 扩为菜单级/操作级权限点
+	// 后台菜单声明（p1 §9.9/§11.7）：模块 → AdminSection 声明式；p4 按 RBAC 菜单级过滤
 	adminMenus := adminSectionsFor(ordered)
 	menusHandler := func(w http.ResponseWriter, req *http.Request) {
-		token := ""
-		if h := req.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-			token = strings.TrimPrefix(h, "Bearer ")
-		}
-		if token == "" {
-			http.Error(w, `{"code":2,"message":"未登录"}`, http.StatusUnauthorized)
-			return
-		}
-		if _, _, err := identityMod.Facade().Authenticate(req.Context(), token); err != nil {
-			http.Error(w, `{"code":2,"message":"登录已失效"}`, http.StatusUnauthorized)
-			return
+		uid, _ := adminUID(req)
+		isSuper, _ := a.RBAC.IsSuper(req.Context(), uid)
+		items := adminMenus
+		if !isSuper {
+			perms, _ := a.RBAC.Perms(req.Context(), uid)
+			mods := rbac.VisibleModules(perms)
+			canRBAC := false
+			for _, p := range perms {
+				if p == rbac.PermRBACManage {
+					canRBAC = true
+				}
+			}
+			filtered := make([]module.AdminSection, 0, len(adminMenus))
+			for _, s := range adminMenus {
+				if s.Key == "ops.rbac" && !canRBAC {
+					continue
+				}
+				if mods[s.Module] {
+					filtered = append(filtered, s)
+				}
+			}
+			items = filtered
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "ok", "data": map[string]any{"items": adminMenus}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "ok", "data": map[string]any{"items": items}})
 	}
-	a.Mux.HandleFunc("GET /api/admin/v1/menus", requireAdmin(identityMod.Facade(), menusHandler))
+	a.Mux.HandleFunc("GET /api/admin/v1/menus", requireAdmin(identityMod.Facade(), a.RBAC, a.Audit, menusHandler))
+
+	// ---- 后台 RBAC 配置（p4 §3，ADR-002）----
+	adminJSON := func(w http.ResponseWriter, code int, msg string, data any) {
+		w.Header().Set("Content-Type", "application/json")
+		if code != 0 {
+			w.WriteHeader(http.StatusBadRequest)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": code, "message": msg, "data": data})
+	}
+	auditRBAC := func(req *http.Request, uid int64, action string, detail map[string]any, result audit.Result) {
+		if a.Audit == nil {
+			return
+		}
+		_ = a.Audit.Record(req.Context(), nil, audit.Entry{
+			ActorID: uid, ActorType: audit.ActorAdmin, Channel: "admin", Action: action,
+			Detail: detail, Result: result, IP: clientIP(req), RequestID: obs.RequestID(req.Context()),
+		})
+	}
+	editorOf := func(req *http.Request) (int64, bool, []string) {
+		uid, _ := adminUID(req)
+		super, _ := a.RBAC.IsSuper(req.Context(), uid)
+		perms, _ := a.RBAC.Perms(req.Context(), uid)
+		return uid, super, perms
+	}
+	rbacAdmin := func(next http.HandlerFunc) http.HandlerFunc {
+		return requireAdmin(identityMod.Facade(), a.RBAC, a.Audit, next)
+	}
+	rbacWrite := func(next http.HandlerFunc) http.HandlerFunc {
+		return rbacAdmin(requirePerm(a.RBAC, a.Audit, rbac.PermRBACManage, next))
+	}
+	a.Mux.HandleFunc("GET /api/admin/v1/permissions", rbacAdmin(func(w http.ResponseWriter, req *http.Request) {
+		adminJSON(w, 0, "ok", map[string]any{"items": rbac.Registry()})
+	}))
+	a.Mux.HandleFunc("GET /api/admin/v1/roles", rbacAdmin(func(w http.ResponseWriter, req *http.Request) {
+		roles, err := a.RBAC.Roles(req.Context())
+		if err != nil {
+			adminJSON(w, 9, err.Error(), nil)
+			return
+		}
+		adminJSON(w, 0, "ok", map[string]any{"items": roles})
+	}))
+	a.Mux.HandleFunc("GET /api/admin/v1/roles/{code}/permissions", rbacAdmin(func(w http.ResponseWriter, req *http.Request) {
+		perms, err := a.RBAC.RolePerms(req.Context(), req.PathValue("code"))
+		if err != nil {
+			adminJSON(w, 9, err.Error(), nil)
+			return
+		}
+		adminJSON(w, 0, "ok", map[string]any{"perms": perms})
+	}))
+	a.Mux.HandleFunc("PUT /api/admin/v1/roles/{code}/permissions", rbacWrite(func(w http.ResponseWriter, req *http.Request) {
+		var body struct {
+			Perms []string `json:"perms"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			adminJSON(w, 1, "参数错误", nil)
+			return
+		}
+		uid, super, perms := editorOf(req)
+		code := req.PathValue("code")
+		if err := a.RBAC.SetRolePerms(req.Context(), code, body.Perms, super, perms); err != nil {
+			auditRBAC(req, uid, "ops:rbac:role:set", map[string]any{"code": code, "perms": body.Perms, "err": err.Error()}, audit.ResultDenied)
+			adminJSON(w, 1, err.Error(), nil)
+			return
+		}
+		auditRBAC(req, uid, "ops:rbac:role:set", map[string]any{"code": code, "perms": body.Perms}, audit.ResultOK)
+		adminJSON(w, 0, "ok", map[string]any{"ok": true})
+	}))
+	a.Mux.HandleFunc("POST /api/admin/v1/roles", rbacWrite(func(w http.ResponseWriter, req *http.Request) {
+		var body struct {
+			Code string `json:"code"`
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			adminJSON(w, 1, "参数错误", nil)
+			return
+		}
+		uid, _, _ := editorOf(req)
+		if err := a.RBAC.CreateRole(req.Context(), body.Code, body.Name); err != nil {
+			auditRBAC(req, uid, "ops:rbac:role:create", map[string]any{"code": body.Code, "err": err.Error()}, audit.ResultFailed)
+			adminJSON(w, 1, err.Error(), nil)
+			return
+		}
+		auditRBAC(req, uid, "ops:rbac:role:create", map[string]any{"code": body.Code, "name": body.Name}, audit.ResultOK)
+		adminJSON(w, 0, "ok", map[string]any{"ok": true})
+	}))
+	a.Mux.HandleFunc("DELETE /api/admin/v1/roles/{code}", rbacWrite(func(w http.ResponseWriter, req *http.Request) {
+		uid, _, _ := editorOf(req)
+		code := req.PathValue("code")
+		if err := a.RBAC.DeleteRole(req.Context(), code); err != nil {
+			auditRBAC(req, uid, "ops:rbac:role:delete", map[string]any{"code": code, "err": err.Error()}, audit.ResultFailed)
+			adminJSON(w, 1, err.Error(), nil)
+			return
+		}
+		auditRBAC(req, uid, "ops:rbac:role:delete", map[string]any{"code": code}, audit.ResultOK)
+		adminJSON(w, 0, "ok", map[string]any{"ok": true})
+	}))
+	a.Mux.HandleFunc("GET /api/admin/v1/admin-users/{id}/roles", rbacAdmin(func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+		roles, err := a.RBAC.AdminRoles(req.Context(), uid)
+		if err != nil {
+			adminJSON(w, 9, err.Error(), nil)
+			return
+		}
+		adminJSON(w, 0, "ok", map[string]any{"roles": roles})
+	}))
+	a.Mux.HandleFunc("PUT /api/admin/v1/admin-users/{id}/roles", rbacWrite(func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+		var body struct {
+			Roles []string `json:"roles"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			adminJSON(w, 1, "参数错误", nil)
+			return
+		}
+		editor, super, perms := editorOf(req)
+		if err := a.RBAC.AssignRoles(req.Context(), uid, body.Roles, super, perms); err != nil {
+			auditRBAC(req, editor, "ops:rbac:assign", map[string]any{"user_id": uid, "roles": body.Roles, "err": err.Error()}, audit.ResultDenied)
+			adminJSON(w, 1, err.Error(), nil)
+			return
+		}
+		auditRBAC(req, editor, "ops:rbac:assign", map[string]any{"user_id": uid, "roles": body.Roles}, audit.ResultOK)
+		adminJSON(w, 0, "ok", map[string]any{"ok": true})
+	}))
 
 	// 指标导出（Prometheus 文本格式）
 	a.Mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
@@ -428,9 +566,9 @@ func toSchedulerJobs(jobs []module.JobDef) []scheduler.Job {
 	return out
 }
 
-// requireAdmin 后台路由守卫：先认证令牌，再校验平台管理员（p6 §1.1）。
-// 未登录→401；非管理员→403。
-func requireAdmin(id idcontract.Facade, next http.HandlerFunc) http.HandlerFunc {
+// requireAdmin 后台路由守卫：先认证令牌，再校验后台准入（超管或任一 RBAC 角色）。
+// 未登录→401；非管理员→403 并记 denied 审计（防爆破，p4 §3.3）。
+func requireAdmin(id idcontract.Facade, rbacStore *rbac.Store, rec *audit.Recorder, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		token := ""
 		if h := req.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
@@ -445,13 +583,67 @@ func requireAdmin(id idcontract.Facade, next http.HandlerFunc) http.HandlerFunc 
 			http.Error(w, `{"code":2,"message":"登录已失效"}`, http.StatusUnauthorized)
 			return
 		}
-		admin, err := id.IsAdmin(req.Context(), uid)
+		admin, err := rbacStore.IsAdmin(req.Context(), uid)
 		if err != nil || !admin {
+			recordAdminDenied(req, rec, uid, "admin:access:denied")
 			http.Error(w, `{"code":3,"message":"无后台权限"}`, http.StatusForbidden)
+			return
+		}
+		next(w, req.WithContext(context.WithValue(req.Context(), adminCtxKey{}, uid)))
+	}
+}
+
+// adminCtxKey 后台已认证用户（requireAdmin 注入，requirePerm 读取）。
+type adminCtxKey struct{}
+
+func adminUID(req *http.Request) (int64, bool) {
+	v, ok := req.Context().Value(adminCtxKey{}).(int64)
+	return v, ok
+}
+
+func clientIP(req *http.Request) string {
+	if xff := req.Header.Get("X-Forwarded-For"); xff != "" {
+		if i := strings.IndexByte(xff, ','); i > 0 {
+			return strings.TrimSpace(xff[:i])
+		}
+		return strings.TrimSpace(xff)
+	}
+	host := req.RemoteAddr
+	if i := strings.LastIndexByte(host, ':'); i > 0 {
+		host = host[:i]
+	}
+	return host
+}
+
+// requirePerm 在后台准入之上再校验权限点（服务端唯一权威，p4 §3.2/§3.3）。
+// 需先经 requireAdmin（拿到已认证 uid）；非超管且缺权限→403 并记 denied。
+func requirePerm(rbacStore *rbac.Store, rec *audit.Recorder, perm string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		uid, ok := adminUID(req)
+		if !ok {
+			http.Error(w, `{"code":2,"message":"未登录"}`, http.StatusUnauthorized)
+			return
+		}
+		has, err := rbacStore.HasPerm(req.Context(), uid, perm)
+		if err != nil || !has {
+			recordAdminDenied(req, rec, uid, "admin:perm:denied")
+			http.Error(w, `{"code":3,"message":"权限不足"}`, http.StatusForbidden)
 			return
 		}
 		next(w, req)
 	}
+}
+
+// recordAdminDenied 记后台拒绝审计（防爆破/越权尝试）。
+func recordAdminDenied(req *http.Request, rec *audit.Recorder, uid int64, action string) {
+	if rec == nil {
+		return
+	}
+	_ = rec.Record(req.Context(), nil, audit.Entry{
+		ActorID: uid, ActorType: audit.ActorAdmin, Channel: "admin", Action: action,
+		Detail: map[string]any{"path": req.URL.Path, "method": req.Method}, Result: audit.ResultDenied,
+		IP: clientIP(req), RequestID: obs.RequestID(req.Context()),
+	})
 }
 
 // EnsureAdmins 按手机号授予平台管理员（运维引导：首个管理员/自助恢复）。
@@ -506,7 +698,7 @@ func adminSectionsFor(mods []module.Module) []module.AdminSection {
 		"circle":     {{Key: "circle.circles", Label: "圈子管理", Path: "/circles", Module: "circle"}},
 		"profile":    {{Key: "profile.templates", Label: "画像字段模板", Path: "/profile-templates", Module: "profile"}},
 		"notice":     {{Key: "notice.templates", Label: "通知模板", Path: "/templates", Module: "notice"}},
-		"ops":        {{Key: "ops.dead_letters", Label: "死信队列", Path: "/dead-letters", Module: "ops"}},
+		"ops":        {{Key: "ops.dead_letters", Label: "死信队列", Path: "/dead-letters", Module: "ops"}, {Key: "ops.rbac", Label: "角色与权限", Path: "/roles", Module: "ops"}},
 		"dict":       {{Key: "dict.taxonomy", Label: "主体类型与选项", Path: "/dict", Module: "dict"}},
 	}
 	var out []module.AdminSection
@@ -580,7 +772,15 @@ func RunMigrations(ctx context.Context, pool *db.Pool, mods []module.Module) err
 			})
 		}
 	}
-	return migrate.NewRunner(pool).Apply(ctx, sources)
+	if err := migrate.NewRunner(pool).Apply(ctx, sources); err != nil {
+		return err
+	}
+	return seedRBAC(ctx, pool)
+}
+
+// seedRBAC 幂等写入后台五角色与默认权限矩阵（p4 §3，ADR-002）。
+func seedRBAC(ctx context.Context, pool *db.Pool) error {
+	return rbac.New(pool).Seed(ctx)
 }
 
 // Serve 启动 HTTP（api/admin 角色）。

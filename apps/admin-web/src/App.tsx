@@ -17,6 +17,7 @@ import Exports from './pages/Exports'
 import Governance from './pages/Governance'
 import AiPrompts from './pages/AiPrompts'
 import Badges from './pages/Badges'
+import Roles from './pages/Roles'
 import User360 from './pages/User360'
 import Dashboard from './pages/Dashboard'
 
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="governance" element={<Governance />} />
         <Route path="ai-prompts" element={<AiPrompts />} />
         <Route path="badges" element={<Badges />} />
+        <Route path="roles" element={<Roles />} />
         <Route path="users/:id/360" element={<User360 />} />
       </Route>
     </Routes>

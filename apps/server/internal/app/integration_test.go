@@ -5866,6 +5866,151 @@ func TestIntegrationSensitiveWordSeed(t *testing.T) {
 	}
 }
 
+// 后台 RBAC（p4 §3，ADR-002）：默认矩阵、可配置、超管保护、反提权、自定义角色、审计。
+func TestIntegrationAdminRBAC(t *testing.T) {
+	h := newTestApp(t)
+	ctx := context.Background()
+
+	// 1) 非管理员：后台路由 403
+	_, tok := loginUser(t, h)
+	if s, _ := h.do(http.MethodGet, "/api/admin/v1/roles", tok, nil); s != http.StatusForbidden {
+		t.Fatalf("非管理员应 403: %d", s)
+	}
+	// 拒绝应留痕（防爆破审计）
+	var denied int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM sys_audit WHERE action='admin:access:denied'`).Scan(&denied)
+	if denied == 0 {
+		t.Fatal("非管理员访问应记 admin:access:denied 审计")
+	}
+
+	// 2) 超管：权限点注册表 + 五角色默认矩阵
+	_, admTok := loginAdmin(t, h)
+	res, env := h.do(http.MethodGet, "/api/admin/v1/permissions", admTok, nil)
+	if res != http.StatusOK {
+		t.Fatalf("权限点清单失败: %d", res)
+	}
+	var perms struct {
+		Items []struct {
+			Perm  string `json:"perm"`
+			Label string `json:"label"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &perms)
+	if len(perms.Items) < 15 {
+		t.Fatalf("权限点应≥15: %d", len(perms.Items))
+	}
+	_, env = h.do(http.MethodGet, "/api/admin/v1/roles", admTok, nil)
+	var roles struct {
+		Items []struct {
+			Code      string   `json:"code"`
+			Protected bool     `json:"protected"`
+			Builtin   bool     `json:"builtin"`
+			Perms     []string `json:"perms"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &roles)
+	byCode := map[string][]string{}
+	var superProtected bool
+	for _, r := range roles.Items {
+		byCode[r.Code] = r.Perms
+		if r.Code == "super" {
+			superProtected = r.Protected
+		}
+	}
+	if len(roles.Items) < 5 || !superProtected {
+		t.Fatalf("应有五角色且超管受保护: %+v", roles.Items)
+	}
+	if !contains(byCode["ops"], "ops:settings:set") || !contains(byCode["ops"], "ops:rbac:manage") {
+		t.Fatalf("运营默认权限不符: %v", byCode["ops"])
+	}
+	if !contains(byCode["auditor"], "content:moderation:decide") || contains(byCode["auditor"], "trade:refund:approve") {
+		t.Fatalf("审核员默认权限不符: %v", byCode["auditor"])
+	}
+	if !contains(byCode["finance"], "channel:settlement:pay") || contains(byCode["finance"], "governance:user:restrict") {
+		t.Fatalf("财务默认权限不符: %v", byCode["finance"])
+	}
+
+	// 3) 超管角色不可修改
+	if s, _ := h.do(http.MethodPut, "/api/admin/v1/roles/super/permissions", admTok, map[string]any{"perms": []string{}}); s != http.StatusBadRequest {
+		t.Fatalf("超管角色应不可修改: %d", s)
+	}
+
+	// 4) 分配内置角色（auditor）给普通用户 → 可访问后台且菜单按模块过滤
+	auid, atok := loginUser(t, h)
+	if s, e := h.do(http.MethodPut, fmt.Sprintf("/api/admin/v1/admin-users/%d/roles", auid), admTok, map[string]any{"roles": []string{"auditor"}}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("分配角色失败: %d %+v", s, e)
+	}
+	if s, _ := h.do(http.MethodGet, "/api/admin/v1/roles", atok, nil); s != http.StatusOK {
+		t.Fatalf("审核员应可访问后台: %d", s)
+	}
+	_, env = h.do(http.MethodGet, "/api/admin/v1/menus", atok, nil)
+	var menus struct {
+		Items []struct {
+			Module string `json:"Module"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &menus)
+	// 审核员权限不含 channel/trade → 菜单不应含这些模块
+	for _, m := range menus.Items {
+		if m.Module == "channel" || m.Module == "trade" || m.Module == "membership" {
+			t.Fatalf("审核员菜单不应含 %s", m.Module)
+		}
+	}
+
+	// 5) 反提权：非超管（ops，持有 rbac:manage）不得授予自身没有的权限（用自定义角色验证，避免污染内置矩阵）
+	ouid, otok := loginUser(t, h)
+	if s, e := h.do(http.MethodPut, fmt.Sprintf("/api/admin/v1/admin-users/%d/roles", ouid), admTok, map[string]any{"roles": []string{"ops"}}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("分配运营角色失败: %d %+v", s, e)
+	}
+	esc := fmt.Sprintf("esc_%d", time.Now().UnixNano()%100000)
+	if s, e := h.do(http.MethodPost, "/api/admin/v1/roles", admTok, map[string]any{"code": esc, "name": "反提权用例"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("创建用例角色失败: %d %+v", s, e)
+	}
+	if s, _ := h.do(http.MethodPut, "/api/admin/v1/roles/"+esc+"/permissions", otok, map[string]any{"perms": []string{"membership:member:adjust"}}); s != http.StatusBadRequest {
+		t.Fatalf("反提权应拒绝: %d", s)
+	}
+	// 运营可授予自身子集（ops 权限）
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/roles/"+esc+"/permissions", otok, map[string]any{"perms": []string{"ops:dashboard:read"}}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("授予自身子集应成功: %d %+v", s, e)
+	}
+	if s, e := h.do(http.MethodDelete, "/api/admin/v1/roles/"+esc, admTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("清理用例角色失败: %d %+v", s, e)
+	}
+
+	// 6) 自定义角色：创建 → 配置权限 → 使用 → 删除（在用不可删，解绑后可删）
+	code := fmt.Sprintf("regional_%d", time.Now().UnixNano()%100000)
+	if s, e := h.do(http.MethodPost, "/api/admin/v1/roles", admTok, map[string]any{"code": code, "name": "区域运营"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("创建自定义角色失败: %d %+v", s, e)
+	}
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/roles/"+code+"/permissions", admTok, map[string]any{"perms": []string{"ops:dashboard:read"}}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("配置自定义角色权限失败: %d %+v", s, e)
+	}
+	if s, e := h.do(http.MethodPut, fmt.Sprintf("/api/admin/v1/admin-users/%d/roles", auid), admTok, map[string]any{"roles": []string{code}}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("分配自定义角色失败: %d %+v", s, e)
+	}
+	if s, _ := h.do(http.MethodDelete, "/api/admin/v1/roles/"+code, admTok, nil); s != http.StatusBadRequest {
+		t.Fatalf("在用角色应不可删: %d", s)
+	}
+	if s, e := h.do(http.MethodPut, fmt.Sprintf("/api/admin/v1/admin-users/%d/roles", auid), admTok, map[string]any{"roles": []string{}}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("解绑角色失败: %d %+v", s, e)
+	}
+	if s, e := h.do(http.MethodDelete, "/api/admin/v1/roles/"+code, admTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("解绑后应可删: %d %+v", s, e)
+	}
+
+	// 7) 内置角色不可删除
+	if s, _ := h.do(http.MethodDelete, "/api/admin/v1/roles/auditor", admTok, nil); s != http.StatusBadRequest {
+		t.Fatalf("内置角色应不可删: %d", s)
+	}
+
+	// 8) RBAC 变更与拒绝均留审计
+	var rbacAudit int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM sys_audit WHERE action LIKE 'ops:rbac:%'`).Scan(&rbacAudit)
+	if rbacAudit == 0 {
+		t.Fatal("RBAC 变更应留审计")
+	}
+}
+
 // 智能客服（p5 §5）：开关门禁；平台主题作答，越界转人工；上游故障降级。
 func TestIntegrationAICustomerService(t *testing.T) {
 	h := newTestApp(t)

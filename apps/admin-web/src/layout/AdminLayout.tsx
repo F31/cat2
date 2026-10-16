@@ -24,6 +24,7 @@ const FALLBACK: MenuProps['items'] = [
   { key: '/governance', label: '代操作' },
   { key: '/ai-prompts', label: 'AI 提示词与用量' },
   { key: '/badges', label: '认证标识' },
+  { key: '/roles', label: '角色与权限' },
 ]
 
 export default function AdminLayout() {

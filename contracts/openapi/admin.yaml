@@ -205,6 +205,87 @@ paths:
         - { name: days, in: query, schema: { type: integer } }
       responses:
         '200': { description: 统计, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /permissions:
+    get:
+      tags: [admin-rbac]
+      summary: 权限点注册表（后台「角色与权限」页）
+      operationId: adminPermissions
+      responses:
+        '200': { description: 权限点, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /roles:
+    get:
+      tags: [admin-rbac]
+      summary: 角色列表（内置五角色默认矩阵，除超管外可配）
+      operationId: adminRoles
+      responses:
+        '200': { description: 角色, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+    post:
+      tags: [admin-rbac]
+      summary: 创建自定义角色（需 ops:rbac:manage；审计）
+      operationId: adminCreateRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name]
+              properties: { code: { type: string }, name: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /roles/{code}:
+    delete:
+      tags: [admin-rbac]
+      summary: 删除自定义角色（内置/超管不可删；在用不可删；审计）
+      operationId: adminDeleteRole
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /roles/{code}/permissions:
+    get:
+      tags: [admin-rbac]
+      summary: 角色权限
+      operationId: adminRolePerms
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 权限, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+    put:
+      tags: [admin-rbac]
+      summary: 设置角色权限（反提权；超管不可改；即时生效；审计）
+      operationId: adminSetRolePerms
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [perms], properties: { perms: { type: array, items: { type: string } } } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /admin-users/{id}/roles:
+    get:
+      tags: [admin-rbac]
+      summary: 后台账号角色
+      operationId: adminUserRoles
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 角色, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+    put:
+      tags: [admin-rbac]
+      summary: 分配后台账号角色（反提权/防锁死；审计）
+      operationId: adminAssignRoles
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [roles], properties: { roles: { type: array, items: { type: string } } } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
   /exports:
     get:
       tags: [admin-governance]

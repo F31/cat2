@@ -10,6 +10,7 @@ import (
 
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
+	"catcube/internal/kernel/rbac"
 	"catcube/internal/ports"
 )
 
@@ -440,5 +441,5 @@ CREATE TABLE IF NOT EXISTS sys_feature_flag (
 	rules jsonb,
 	updated_at timestamptz NOT NULL DEFAULT now()
 );
-`
+` + rbac.Schema
 }

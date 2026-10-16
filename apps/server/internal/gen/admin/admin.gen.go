@@ -325,6 +325,11 @@ type NotFound = Error
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Error
 
+// AdminAssignRolesJSONBody defines parameters for AdminAssignRoles.
+type AdminAssignRolesJSONBody struct {
+	Roles []string `json:"roles"`
+}
+
 // AdminOverdueAffiliationsParams defines parameters for AdminOverdueAffiliations.
 type AdminOverdueAffiliationsParams struct {
 	Days  *int `form:"days,omitempty" json:"days,omitempty"`
@@ -530,6 +535,17 @@ type AdminResolveReviewJSONBody struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
+// AdminCreateRoleJSONBody defines parameters for AdminCreateRole.
+type AdminCreateRoleJSONBody struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
+
+// AdminSetRolePermsJSONBody defines parameters for AdminSetRolePerms.
+type AdminSetRolePermsJSONBody struct {
+	Perms []string `json:"perms"`
+}
+
 // AdminSetSettingJSONBody defines parameters for AdminSetSetting.
 type AdminSetSettingJSONBody struct {
 	Value string `json:"value"`
@@ -552,6 +568,9 @@ type AdminRestrictUserJSONBody struct {
 	Days   int    `json:"days"`
 	Reason string `json:"reason"`
 }
+
+// AdminAssignRolesJSONRequestBody defines body for AdminAssignRoles for application/json ContentType.
+type AdminAssignRolesJSONRequestBody AdminAssignRolesJSONBody
 
 // AdminResolveAffiliationJSONRequestBody defines body for AdminResolveAffiliation for application/json ContentType.
 type AdminResolveAffiliationJSONRequestBody AdminResolveAffiliationJSONBody
@@ -607,6 +626,12 @@ type AdminRefundJSONRequestBody AdminRefundJSONBody
 // AdminResolveReviewJSONRequestBody defines body for AdminResolveReview for application/json ContentType.
 type AdminResolveReviewJSONRequestBody AdminResolveReviewJSONBody
 
+// AdminCreateRoleJSONRequestBody defines body for AdminCreateRole for application/json ContentType.
+type AdminCreateRoleJSONRequestBody AdminCreateRoleJSONBody
+
+// AdminSetRolePermsJSONRequestBody defines body for AdminSetRolePerms for application/json ContentType.
+type AdminSetRolePermsJSONRequestBody AdminSetRolePermsJSONBody
+
 // AdminSetSettingJSONRequestBody defines body for AdminSetSetting for application/json ContentType.
 type AdminSetSettingJSONRequestBody AdminSetSettingJSONBody
 
@@ -618,6 +643,12 @@ type AdminRestrictUserJSONRequestBody AdminRestrictUserJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// AdminUserRoles 后台账号角色
+	// (GET /admin-users/{id}/roles)
+	AdminUserRoles(w http.ResponseWriter, r *http.Request, id string)
+	// AdminAssignRoles 分配后台账号角色（反提权/防锁死；审计）
+	// (PUT /admin-users/{id}/roles)
+	AdminAssignRoles(w http.ResponseWriter, r *http.Request, id string)
 	// AdminOverdueAffiliations 超期未核验归属（平台代处理队列）
 	// (GET /affiliations/overdue)
 	AdminOverdueAffiliations(w http.ResponseWriter, r *http.Request, params AdminOverdueAffiliationsParams)
@@ -735,6 +766,9 @@ type ServerInterface interface {
 	// AdminResetOrgAdmin 平台重置组织管理员（失联代处理/指派）
 	// (POST /orgs/{id}/admins/reset)
 	AdminResetOrgAdmin(w http.ResponseWriter, r *http.Request, id string)
+	// AdminPermissions 权限点注册表（后台「角色与权限」页）
+	// (GET /permissions)
+	AdminPermissions(w http.ResponseWriter, r *http.Request)
 	// AdminRefund 发起退款
 	// (POST /refunds)
 	AdminRefund(w http.ResponseWriter, r *http.Request)
@@ -750,6 +784,21 @@ type ServerInterface interface {
 	// AdminReviewSuggestion 审核任务的 AI 建议（只读；未启用或上游不可用时 available=false）
 	// (GET /review-tasks/{id}/suggestion)
 	AdminReviewSuggestion(w http.ResponseWriter, r *http.Request, id string)
+	// AdminRoles 角色列表（内置五角色默认矩阵，除超管外可配）
+	// (GET /roles)
+	AdminRoles(w http.ResponseWriter, r *http.Request)
+	// AdminCreateRole 创建自定义角色（需 ops:rbac:manage；审计）
+	// (POST /roles)
+	AdminCreateRole(w http.ResponseWriter, r *http.Request)
+	// AdminDeleteRole 删除自定义角色（内置/超管不可删；在用不可删；审计）
+	// (DELETE /roles/{code})
+	AdminDeleteRole(w http.ResponseWriter, r *http.Request, code string)
+	// AdminRolePerms 角色权限
+	// (GET /roles/{code}/permissions)
+	AdminRolePerms(w http.ResponseWriter, r *http.Request, code string)
+	// AdminSetRolePerms 设置角色权限（反提权；超管不可改；即时生效；审计）
+	// (PUT /roles/{code}/permissions)
+	AdminSetRolePerms(w http.ResponseWriter, r *http.Request, code string)
 	// AdminSettings 业务配置列表（含声明、当前值与默认值）
 	// (GET /settings)
 	AdminSettings(w http.ResponseWriter, r *http.Request)
@@ -781,6 +830,58 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// AdminUserRoles operation middleware
+func (siw *ServerInterfaceWrapper) AdminUserRoles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminUserRoles(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminAssignRoles operation middleware
+func (siw *ServerInterfaceWrapper) AdminAssignRoles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminAssignRoles(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // AdminOverdueAffiliations operation middleware
 func (siw *ServerInterfaceWrapper) AdminOverdueAffiliations(w http.ResponseWriter, r *http.Request) {
@@ -2009,6 +2110,20 @@ func (siw *ServerInterfaceWrapper) AdminResetOrgAdmin(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// AdminPermissions operation middleware
+func (siw *ServerInterfaceWrapper) AdminPermissions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminPermissions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminRefund operation middleware
 func (siw *ServerInterfaceWrapper) AdminRefund(w http.ResponseWriter, r *http.Request) {
 
@@ -2113,6 +2228,112 @@ func (siw *ServerInterfaceWrapper) AdminReviewSuggestion(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminReviewSuggestion(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminRoles operation middleware
+func (siw *ServerInterfaceWrapper) AdminRoles(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminRoles(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminCreateRole operation middleware
+func (siw *ServerInterfaceWrapper) AdminCreateRole(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCreateRole(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminDeleteRole operation middleware
+func (siw *ServerInterfaceWrapper) AdminDeleteRole(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminDeleteRole(w, r, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminRolePerms operation middleware
+func (siw *ServerInterfaceWrapper) AdminRolePerms(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminRolePerms(w, r, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminSetRolePerms operation middleware
+func (siw *ServerInterfaceWrapper) AdminSetRolePerms(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminSetRolePerms(w, r, code)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2459,6 +2680,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/ai/prompts", wrapper.AdminAiPrompts)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/ai/prompts", wrapper.AdminAiSavePrompt)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/ai/usage", wrapper.AdminAiUsage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/permissions", wrapper.AdminPermissions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/roles", wrapper.AdminRoles)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/roles", wrapper.AdminCreateRole)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/roles/{code}", wrapper.AdminDeleteRole)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/roles/{code}/permissions", wrapper.AdminRolePerms)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/roles/{code}/permissions", wrapper.AdminSetRolePerms)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin-users/{id}/roles", wrapper.AdminUserRoles)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/admin-users/{id}/roles", wrapper.AdminAssignRoles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports", wrapper.AdminExports)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/exports", wrapper.AdminCreateExport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports/{id}/download", wrapper.AdminDownloadExport)

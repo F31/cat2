@@ -190,6 +190,35 @@ export const adminApi = {
     return call<{ items: AdminMenu[] }>('GET', '/admin/v1/menus')
   },
 
+  // ---- 后台 RBAC（p4 §3，ADR-002）----
+  rbacPermissions() {
+    return call<{ items: Array<{ perm: string; label: string }> }>('GET', '/admin/v1/permissions')
+  },
+  rbacRoles() {
+    return call<{ items: Array<{ code: string; name: string; protected: boolean; builtin: boolean; perms?: string[] }> }>(
+      'GET',
+      '/admin/v1/roles',
+    )
+  },
+  rbacRolePerms(code: string) {
+    return call<{ perms: string[] }>('GET', `/admin/v1/roles/${code}/permissions`)
+  },
+  rbacSetRolePerms(code: string, perms: string[]) {
+    return call<{ ok: boolean }>('PUT', `/admin/v1/roles/${code}/permissions`, { perms })
+  },
+  rbacCreateRole(code: string, name: string) {
+    return call<{ ok: boolean }>('POST', '/admin/v1/roles', { code, name })
+  },
+  rbacDeleteRole(code: string) {
+    return call<{ ok: boolean }>('DELETE', `/admin/v1/roles/${code}`)
+  },
+  rbacAdminRoles(userId: string) {
+    return call<{ roles: string[] }>('GET', `/admin/v1/admin-users/${userId}/roles`)
+  },
+  rbacAssignRoles(userId: string, roles: string[]) {
+    return call<{ ok: boolean }>('PUT', `/admin/v1/admin-users/${userId}/roles`, { roles })
+  },
+
   exports(all = false) {
     return call<{ items: Array<{ id: string; template: string; status: number; rows: number; error?: string }> }>(
       'GET',
