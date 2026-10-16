@@ -66,6 +66,8 @@ type Options struct {
 	Resolver       *entityref.Registry
 	Storage        Storage
 	MemberResolver contract.SessionMemberResolver
+	// RetentionDays 聊天留存天数（默认 180=6 个月，超管经 SettingsSchema 可配，p0 #2/D8）。
+	RetentionDays func(ctx context.Context) int
 }
 
 // Service msg 应用服务。
@@ -77,11 +79,26 @@ type Service struct {
 	resolver       *entityref.Registry
 	storage        Storage
 	memberResolver contract.SessionMemberResolver
+	retentionDays  func(ctx context.Context) int
 }
 
 func New(o Options) *Service {
 	return &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, policy: o.Policy,
-		memberResolver: o.MemberResolver, storage: o.Storage}
+		memberResolver: o.MemberResolver, storage: o.Storage, retentionDays: o.RetentionDays}
+}
+
+// retentionDaysDefault 聊天留存默认 180 天（6 个月，p0 #2/D8）。
+const retentionDaysDefault = 180
+
+// retentionCutoff 留存截止时间（配置缺省 180 天；超管可经 SettingsSchema 调整）。
+func (s *Service) retentionCutoff(ctx context.Context) time.Time {
+	days := retentionDaysDefault
+	if s.retentionDays != nil {
+		if d := s.retentionDays(ctx); d > 0 {
+			days = d
+		}
+	}
+	return time.Now().UTC().AddDate(0, 0, -days)
 }
 
 // EnsureSession 发起单聊（幂等；发起=会员权益）。
@@ -363,10 +380,11 @@ func (s *Service) EnsurePartitions(ctx context.Context) error {
 	return nil
 }
 
-// Archive 标记超期（>6 个月）分区为待归档并记录可检索元数据（SchedulerJob）。
+// Archive 标记超期分区为待归档并记录可检索元数据（SchedulerJob）。
+// 留存天数默认 180（6 个月，p0 #2/D8），超管经 SettingsSchema `msg.retention.days` 可配。
 // 物理压缩上传对象存储与 detach 在对象存储适配器落地后接通，此处只登记元数据、不丢数据。
 func (s *Service) Archive(ctx context.Context) error {
-	cutoff := time.Now().UTC().AddDate(0, -6, 0)
+	cutoff := s.retentionCutoff(ctx)
 	names, err := s.repo.ListMonthPartitions(ctx)
 	if err != nil {
 		return err

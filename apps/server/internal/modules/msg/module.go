@@ -17,6 +17,7 @@ import (
 	"catcube/internal/kernel/module"
 	"catcube/internal/kernel/obs"
 	"catcube/internal/kernel/policy"
+	"catcube/internal/kernel/settings"
 	idcontract "catcube/internal/modules/identity/contract"
 	"catcube/internal/modules/msg/contract"
 	"catcube/internal/modules/msg/internal/app"
@@ -38,6 +39,13 @@ type Deps struct {
 	Audit          *audit.Recorder
 	Storage        ports.Storage                  // 归档压缩上传（未配置对象存储时开发态本地回退）
 	MemberResolver contract.SessionMemberResolver // 群成员解析（cube 注册）
+	Settings       *settings.Registry             // 留存天数等业务配置（p0 #2/D8）
+}
+
+// msgSchemas 业务配置（超管可配，热生效）。
+var msgSchemas = []settings.Schema{
+	{Key: "msg.retention.days", Type: settings.TypeInt, Default: "180",
+		Description: "聊天留存天数（默认 180=6 个月；p0 #2/D8）"},
 }
 
 // Module msg 模块。
@@ -57,7 +65,17 @@ func (m *Module) Register(r *module.Registry) error {
 		Repo: infra.NewStore(m.deps.Pool), Pool: m.deps.Pool, Bus: m.deps.Bus,
 		Policy: m.deps.Policy, Resolver: m.deps.Resolver, Storage: m.deps.Storage,
 		MemberResolver: m.deps.MemberResolver,
+		RetentionDays: func(ctx context.Context) int {
+			if m.deps.Settings == nil {
+				return 180
+			}
+			if v, err := m.deps.Settings.Int(ctx, 1, "msg.retention.days"); err == nil && v > 0 {
+				return int(v)
+			}
+			return 180
+		},
 	})
+	r.Settings = append(r.Settings, msgSchemas...)
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/sessions", Handler: m.auth(m.handleEnsure)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/sessions", Handler: m.auth(m.handleList)},

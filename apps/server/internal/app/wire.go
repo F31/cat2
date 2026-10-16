@@ -192,11 +192,12 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	socialMod := social.New(social.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Resolver: entityReg,
 	})
+	settingsReg := settings.NewRegistry(pg.NewSettings(pool))
 	msgMod := msg.New(msg.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine,
 		Resolver: entityReg, Realtime: local.RealtimeNoop{}, Audit: auditRec, Storage: storage,
+		Settings: settingsReg,
 	})
-	settingsReg := settings.NewRegistry(pg.NewSettings(pool))
 	discoveryMod := discovery.New(discovery.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Settings: settingsReg, Outbox: outbox,
 	})

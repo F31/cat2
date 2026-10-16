@@ -76,7 +76,7 @@
 - ✅ PRD 11.4 逐项核对（`docs/prd-trace/README.md`，16 组）
 - ✅ 待确认事项复核（`docs/prd-trace/pending-confirmations.md`，22 项状态）
 - ✅ 上线检查单（`docs/ops/launch-checklist.md`）
-- ◐ 签署（安全/压测/备份/告警/回滚/业务验收）待外部；#13（RBAC）与 #3（AI 一期）已确认，生产 LLM 待 #4 法务合规
+- ◐ 签署（安全/压测/备份/告警/回滚/业务验收）待外部；#13/#3/#4/#2/#6 已确认，生产 LLM 经独立网关接入（ADR-003）
 
 ## 剩余阻塞（按性质）
 
