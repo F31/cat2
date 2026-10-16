@@ -25,7 +25,7 @@
 
 ## 4. 降级与可靠性演练（逐项自动化/半自动化）
 
-- [ ] 4.1 AI 不可用 → 入驻/发布/搜索走原表单（关闭开关回归）
+- [x] 4.1 AI 降级：`ai` 模块能力全部受开关门禁（默认关闭）；关闭/上游故障→`030001`/503，原表单路径不受影响；`llm.DevClient` 以 `[FAULT]` 模拟上游超时；集成测试 `TestIntegrationAIFlagGateAndDegrade` 覆盖「关闭→原表单可用→白名单开启→草稿→采纳→故障降级」
 - [x] 4.2 搜索降级：`adapters/pg.Search.Query` 先 pg_trgm，失败（扩展缺失/超时）自动回退 ILIKE 简单检索并告警；`NewSearchSimple` 强制降级态；集成测试 `TestSearchSimpleFallback`
 - [x] 4.3 内容安全超时：`trust.Review` 返回 `OutcomePending`（机检不可用→建机检重试任务，内容保持「审核中」不放行）；content 提交按结论三态处理；`moderation.DevClient`（`[FAULT]` 模拟超时）+ 集成测试 `TestIntegrationModerationTimeoutGate`
 - [x] 4.4 Redis 不可用回退：`adapters/redis`（标准库 RESP 客户端）+ `Fallback` 主备缓存（Redis 失败读写回退进程内 + 降级回调告警），`CATCUBE_REDIS_ADDR` 装配；单测（正常/降级往返）+ 集成测试（cube-home 聚合缓存）

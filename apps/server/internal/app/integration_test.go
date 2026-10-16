@@ -27,6 +27,7 @@ import (
 	"catcube/internal/kernel/expiry"
 	"catcube/internal/kernel/obs"
 	"catcube/internal/kernel/statemachine"
+	aiContract "catcube/internal/modules/ai/contract"
 	"catcube/internal/modules/circle"
 	"catcube/internal/modules/cube"
 	"catcube/internal/modules/discovery"
@@ -4336,4 +4337,89 @@ func TestIntegrationOutboxBacklogDrain(t *testing.T) {
 		t.Fatalf("指标采集失败: %v", err)
 	}
 	t.Logf("Outbox 积压 %d 条投递完成：耗时 %s（%.0f 条/秒）", n, elapsed.Round(time.Millisecond), float64(n)/elapsed.Seconds())
+}
+
+// AI 能力开关与降级（p6 §4.1 / p5 框架）：开关关闭或上游故障 → 030001，主链路（原表单）不受影响。
+func TestIntegrationAIFlagGateAndDegrade(t *testing.T) {
+	h := newTestApp(t)
+	uid, tok := loginUser(t, h)
+	ctx := context.Background()
+
+	// 1) 默认关闭：AI 入口不可用，返回 503/030001
+	s, env := h.do(http.MethodPost, "/api/mp/v1/ai/onboard-draft", tok, map[string]any{"text": "我是华东重工的采购总监"})
+	if s != http.StatusServiceUnavailable || env.Code != 30001 {
+		t.Fatalf("开关关闭应 503/030001: %d %+v", s, env)
+	}
+	// 能力清单：全 false
+	_, env = h.do(http.MethodGet, "/api/mp/v1/ai/features", tok, nil)
+	var feats struct {
+		Features map[string]bool `json:"features"`
+	}
+	_ = json.Unmarshal(env.Data, &feats)
+	if feats.Features["ai.onboard"] {
+		t.Fatalf("默认应关闭: %+v", feats.Features)
+	}
+	// 2) 原表单路径仍可用（实名后发布草稿走 content 原接口）
+	if _, err := h.app.Pool.Exec(ctx, `INSERT INTO vfy_certification (id, user_id, cert_type, status) VALUES ($1::bigint+800000, $1, 1, 1)`, uid); err != nil {
+		t.Fatal(err)
+	}
+	if _, env := h.do(http.MethodPost, "/api/mp/v1/contents", tok, map[string]any{
+		"kind": "project", "title": "原表单发布",
+		"tagset": map[string]any{"region": "310000", "industry": []string{"A01"}},
+		"fields": map[string]any{"amount_wan": 10, "intro": "手填"},
+	}); env.Code != 0 {
+		t.Fatalf("AI 关闭不应影响原表单发布: %+v", env)
+	}
+
+	// 3) 白名单开启 ai.onboard → 生成草稿
+	_, admTok := loginAdmin(t, h)
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/feature-flags/"+aiContract.FlagOnboard, admTok, map[string]any{
+		"enabled": true, "ratio": 0, "users": []int64{uid},
+	}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("开启开关失败: %d %+v", s, e)
+	}
+	_, env = h.do(http.MethodPost, "/api/mp/v1/ai/onboard-draft", tok, map[string]any{"text": "华东重工 采购总监"})
+	var draft struct {
+		CallID int64  `json:"call_id,string"`
+		Title  string `json:"title"`
+		Fields []struct {
+			Field string `json:"field"`
+			Value string `json:"value"`
+		} `json:"fields"`
+		Tokens int `json:"tokens"`
+	}
+	if err := json.Unmarshal(env.Data, &draft); err != nil || draft.CallID == 0 || len(draft.Fields) == 0 {
+		t.Fatalf("开启后应返回草稿: %+v err=%v", env, err)
+	}
+	if draft.Tokens == 0 {
+		t.Fatal("应记录 token（成本观测）")
+	}
+	// 4) 采纳反馈 → 采纳计数
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/ai/feedback", tok, map[string]any{
+		"call_id": fmt.Sprintf("%d", draft.CallID), "adopted": true,
+	}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("采纳反馈失败: %d %+v", s, e)
+	}
+	if obs.Default().Counter("catcube_ai_adopted_total") == 0 {
+		t.Fatal("应记录采纳")
+	}
+	var adopted int16
+	_ = h.app.Pool.QueryRow(ctx, `SELECT adopted FROM ai_call_log WHERE id=$1`, draft.CallID).Scan(&adopted)
+	if adopted != 1 {
+		t.Fatalf("调用留痕应标记采纳: %d", adopted)
+	}
+	// 5) 上游故障（[FAULT]）→ 030001 降级，不放行且不抛 500
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/ai/onboard-draft", tok, map[string]any{"text": "超时 [FAULT]"}); s != http.StatusServiceUnavailable || e.Code != 30001 {
+		t.Fatalf("上游故障应降级 503/030001: %d %+v", s, e)
+	}
+	var degraded int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM ai_call_log WHERE user_id=$1 AND outcome='degraded'`, uid).Scan(&degraded)
+	if degraded == 0 {
+		t.Fatal("降级调用应留痕")
+	}
+	// 6) 非法输入：超长 → 400/030002
+	long := strings.Repeat("长", 501)
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/ai/publish-draft", tok, map[string]any{"kind": "project", "text": long}); s != http.StatusBadRequest || e.Code != 30002 {
+		t.Fatalf("超长输入应 400/030002: %d %+v", s, e)
+	}
 }

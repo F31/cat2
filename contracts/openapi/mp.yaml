@@ -2645,6 +2645,98 @@ paths:
               properties: { template_code: { type: string }, n: { type: integer } }
       responses:
         '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { applied: { type: boolean } } } } } ] } } } }
+  /ai/onboard-draft:
+    post:
+      tags: [ai]
+      summary: 一句话入驻 → 名片草稿（开关 ai.onboard；不可用返回 030001/503 走原表单）
+      operationId: aiOnboardDraft
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [text], properties: { text: { type: string, maxLength: 500 } } }
+      responses:
+        '200':
+          description: 草稿
+          content:
+            application/json:
+              schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { $ref: '#/components/schemas/AiDraft' } } } ] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /ai/publish-draft:
+    post:
+      tags: [ai]
+      summary: 一句话发布 → 内容草稿（开关 ai.publish）
+      operationId: aiPublishDraft
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, text]
+              properties:
+                kind: { type: string, enum: [project, product, meeting, event] }
+                text: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: 草稿
+          content:
+            application/json:
+              schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { $ref: '#/components/schemas/AiDraft' } } } ] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /ai/search:
+    post:
+      tags: [ai]
+      summary: 自然语言搜索 → 结构化检索条件（开关 ai.search）
+      operationId: aiSearch
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [text], properties: { text: { type: string, maxLength: 500 } } }
+      responses:
+        '200':
+          description: 检索条件
+          content:
+            application/json:
+              schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { $ref: '#/components/schemas/AiSearchQuery' } } } ] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /ai/feedback:
+    post:
+      tags: [ai]
+      summary: AI 结果采纳反馈（采纳率观测）
+      operationId: aiFeedback
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [call_id, adopted], properties: { call_id: { type: string }, adopted: { type: boolean } } }
+      responses:
+        '200':
+          description: 结果
+          content:
+            application/json:
+              schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { ok: { type: boolean } } } } } ] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /ai/features:
+    get:
+      tags: [ai]
+      summary: AI 能力开关清单（按当前用户灰度评估）
+      operationId: aiFeatures
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 开关
+          content:
+            application/json:
+              schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { features: { type: object, additionalProperties: { type: boolean } } } } } } ] }
 components:
   securitySchemes:
     bearerAuth:
@@ -2942,6 +3034,32 @@ components:
         pledged_count: { type: integer }
         deadline: { type: string, format: date-time }
         status: { type: integer, description: '0 进行中 / 1 已成团 / 2 未成团 / 3 已终结' }
+    AiField:
+      type: object
+      required: [field, value]
+      properties:
+        field: { type: string }
+        value: { type: string }
+    AiDraft:
+      type: object
+      required: [call_id, fields]
+      properties:
+        call_id: { type: string }
+        title: { type: string }
+        fields: { type: array, items: { $ref: '#/components/schemas/AiField' } }
+        tokens: { type: integer }
+    AiSearchQuery:
+      type: object
+      required: [call_id]
+      properties:
+        call_id: { type: string }
+        keyword: { type: string }
+        type: { type: string }
+        region: { type: string }
+        industry: { type: array, items: { type: string } }
+        need: { type: array, items: { type: string } }
+        offer: { type: array, items: { type: string } }
+        tokens: { type: integer }
     Envelope:
       type: object
       required: [code, message, request_id]
@@ -3309,6 +3427,11 @@ components:
           schema: { $ref: '#/components/schemas/Envelope' }
     NotFound:
       description: 资源不存在
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ServiceUnavailable:
+      description: 上游/能力不可用（如 AI 关闭，前端回退原表单）
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }

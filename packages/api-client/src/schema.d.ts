@@ -1652,6 +1652,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ai/onboard-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 一句话入驻 → 名片草稿（开关 ai.onboard；不可用返回 030001/503 走原表单） */
+        post: operations["aiOnboardDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/publish-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 一句话发布 → 内容草稿（开关 ai.publish） */
+        post: operations["aiPublishDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 自然语言搜索 → 结构化检索条件（开关 ai.search） */
+        post: operations["aiSearch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** AI 结果采纳反馈（采纳率观测） */
+        post: operations["aiFeedback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/features": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** AI 能力开关清单（按当前用户灰度评估） */
+        get: operations["aiFeatures"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1942,6 +2027,26 @@ export interface components {
             deadline?: string;
             /** @description 0 进行中 / 1 已成团 / 2 未成团 / 3 已终结 */
             status: number;
+        };
+        AiField: {
+            field: string;
+            value: string;
+        };
+        AiDraft: {
+            call_id: string;
+            title?: string;
+            fields: components["schemas"]["AiField"][];
+            tokens?: number;
+        };
+        AiSearchQuery: {
+            call_id: string;
+            keyword?: string;
+            type?: string;
+            region?: string;
+            industry?: string[];
+            need?: string[];
+            offer?: string[];
+            tokens?: number;
         };
         Envelope: {
             /** @description 0=成功；否则 MMNNNN 错误码 */
@@ -2308,6 +2413,15 @@ export interface components {
         };
         /** @description 资源不存在 */
         NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description 上游/能力不可用（如 AI 关闭，前端回退原表单） */
+        ServiceUnavailable: {
             headers: {
                 [name: string]: unknown;
             };
@@ -5553,6 +5667,156 @@ export interface operations {
                     "application/json": components["schemas"]["Envelope"] & {
                         data?: {
                             applied?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    aiOnboardDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    text: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 草稿 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["AiDraft"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    aiPublishDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    kind: "project" | "product" | "meeting" | "event";
+                    text: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 草稿 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["AiDraft"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    aiSearch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    text: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 检索条件 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["AiSearchQuery"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    aiFeedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    call_id: string;
+                    adopted: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            ok?: boolean;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    aiFeatures: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 开关 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            features?: {
+                                [key: string]: boolean;
+                            };
                         };
                     };
                 };

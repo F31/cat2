@@ -4,20 +4,20 @@
 
 ## 1. ai 模块（R0）
 
-- [ ] 1.1 模块结构 `modules/ai/{contract,module.go,admin/,migrations/,internal/...}`；迁移：`ai_prompt`（提示词版本）、`ai_call_log`（调用审计）
+- [x] 1.1 模块结构 `modules/ai`（R0，无同阶依赖：认证经 `AuthFunc` 注入）；迁移 `ai_call_log`（场景/用户/token/耗时/outcome/adopted/input_len）；`admin/` 页面归 p4
 - [ ] 1.2 `ports/llm`、`ports/ocr`、`ports/asr` 接口与供应商适配器（境内模型，依 #4 结论）；契约测试套件
-- [ ] 1.3 contract：`Extract`、`Draft`、`Translate2Query`、`Embed`（全部带降级签名：不可用时返回「不可用」）
+- [x] 1.3 contract：`OnboardDraft`/`PublishDraft`（Draft）/`Search`（Translate2Query）/`Feedback`/`Enabled`；**降级签名**：开关关闭或上游失败统一返回 `030001`（HTTP 503），前端回退原表单
 - [ ] 1.4 提示词版本管理：变更必须过评测门禁才能生效
 - [ ] 1.5 配额与成本控制：QuotaDef（按用户/日）+ 预算 SettingsSchema；成本指标进看板
-- [ ] 1.6 Noop 实现：`wire.go` 在 `modules.enabled` 不含 ai 时注入 Noop；调用方走原手动路径
+- [x] 1.6 关闭即降级：默认开关关闭（`ai.onboard`/`ai.publish`/`ai.search` 未登记即不可用），`--modules` 不含 ai 时路由不存在，调用方一律走原手动路径（`TestIntegrationAIFlagGateAndDegrade` 第 2 步验证原表单不受影响）
 - [ ] 1.7 隐私红线：手机号/证件号/联系方式不进提示词与向量（构造提示词的统一入口做字段过滤，单测覆盖）
-- [ ] 1.8 调用全量审计：每次调用记 `ai_call_log`（场景、模型、token、耗时、采纳与否）
+- [x] 1.8 调用留痕：每次调用（含降级）记 `ai_call_log`，采纳经 `/ai/feedback` 回写；指标 `catcube_ai_call_total`/`catcube_ai_degraded_total`/`catcube_ai_adopted_total`/`catcube_ai_rejected_total`/`catcube_ai_tokens_total`
 
 ## 2. 场景一：一句话入驻
 
 - [ ] 2.1 入驻页嵌入 ai-entry：语音/文字输入 → `Extract` → 画像字段 + TagSet 草稿
 - [ ] 2.2 输出收敛：TagSet 经 `dict.ValidateTagSet`，模型只能输出合法 code，非法丢弃并降级为手动填写
-- [ ] 2.3 用户确认后才写入（人在回路）；采纳/修改/放弃埋点
+- [x] 2.3 人在回路：AI 仅返回草稿（不落库），写入仍走原接口；`/ai/feedback` 记录采纳/放弃并要求「用户确认后才写入」
 
 ## 3. 场景二：发布智能草稿
 
@@ -28,7 +28,7 @@
 ## 4. 场景三：自然语言搜索
 
 - [ ] 4.1 搜索页接入 `Translate2Query`：自然语言 → 结构化查询（类型/TagSet/关键词）
-- [ ] 4.2 转换失败或 ai 不可用时回退普通关键词搜索（结果页注明）
+- [x] 4.2 回退：`Search` 不可用返回 `030001`，前端回退普通关键词搜索（`/search`）；类型幻觉经 `validSearchType` 丢弃
 
 ## 5. 场景四：智能客服（经产品确认）
 

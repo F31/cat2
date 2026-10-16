@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"catcube/internal/adapters/llm"
 	"catcube/internal/adapters/local"
 	"catcube/internal/adapters/moderation"
 	"catcube/internal/adapters/oss"
@@ -37,6 +38,7 @@ import (
 	"catcube/internal/kernel/sensitive"
 	"catcube/internal/kernel/settings"
 	"catcube/internal/kernel/statemachine"
+	"catcube/internal/modules/ai"
 	"catcube/internal/modules/circle"
 	"catcube/internal/modules/content"
 	contentcontract "catcube/internal/modules/content/contract"
@@ -211,14 +213,17 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	noticeMod := notice.New(notice.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Circle: circleMod.Facade(),
 	})
+	flagStore := featureflag.NewStore(pool)
 	opsMod := ops.New(ops.Deps{Pool: pool, Identity: identityMod.Facade(), Outbox: outbox, Bus: bus,
-		Flags: featureflag.NewStore(pool)})
+		Flags: flagStore})
+	aiMod := ai.New(ai.Deps{Pool: pool, Flags: flagStore, LLM: llm.NewDevClient(), Auth: authFunc})
 	mods := []module.Module{
 		dictMod,
 		mediaMod,
 		opsMod,
 		identityMod,
 		trustMod,
+		aiMod,
 		profileMod,
 		verifyMod,
 		contentMod,

@@ -212,6 +212,30 @@ func (e ReportInputReasonCode) Valid() bool {
 	}
 }
 
+// Defines values for AiPublishDraftJSONBodyKind.
+const (
+	AiPublishDraftJSONBodyKindEvent   AiPublishDraftJSONBodyKind = "event"
+	AiPublishDraftJSONBodyKindMeeting AiPublishDraftJSONBodyKind = "meeting"
+	AiPublishDraftJSONBodyKindProduct AiPublishDraftJSONBodyKind = "product"
+	AiPublishDraftJSONBodyKindProject AiPublishDraftJSONBodyKind = "project"
+)
+
+// Valid indicates whether the value is a known member of the AiPublishDraftJSONBodyKind enum.
+func (e AiPublishDraftJSONBodyKind) Valid() bool {
+	switch e {
+	case AiPublishDraftJSONBodyKindEvent:
+		return true
+	case AiPublishDraftJSONBodyKindMeeting:
+		return true
+	case AiPublishDraftJSONBodyKindProduct:
+		return true
+	case AiPublishDraftJSONBodyKindProject:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WechatLoginJSONBodyIdentityType.
 const (
 	WechatLoginJSONBodyIdentityTypeN1 WechatLoginJSONBodyIdentityType = 1
@@ -375,6 +399,32 @@ func (e SearchParamsType) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// AiDraft defines model for AiDraft.
+type AiDraft struct {
+	CallId string    `json:"call_id"`
+	Fields []AiField `json:"fields"`
+	Title  *string   `json:"title,omitempty"`
+	Tokens *int      `json:"tokens,omitempty"`
+}
+
+// AiField defines model for AiField.
+type AiField struct {
+	Field string `json:"field"`
+	Value string `json:"value"`
+}
+
+// AiSearchQuery defines model for AiSearchQuery.
+type AiSearchQuery struct {
+	CallId   string    `json:"call_id"`
+	Industry *[]string `json:"industry,omitempty"`
+	Keyword  *string   `json:"keyword,omitempty"`
+	Need     *[]string `json:"need,omitempty"`
+	Offer    *[]string `json:"offer,omitempty"`
+	Region   *string   `json:"region,omitempty"`
+	Tokens   *int      `json:"tokens,omitempty"`
+	Type     *string   `json:"type,omitempty"`
 }
 
 // Badge defines model for Badge.
@@ -1225,6 +1275,9 @@ type NotFound = Error
 // OkEmpty defines model for OkEmpty.
 type OkEmpty = Envelope
 
+// ServiceUnavailable defines model for ServiceUnavailable.
+type ServiceUnavailable = Error
+
 // TooManyRequests defines model for TooManyRequests.
 type TooManyRequests = Error
 
@@ -1247,6 +1300,31 @@ type AggregateContactParams struct {
 // AggregateDetailParams defines parameters for AggregateDetail.
 type AggregateDetailParams struct {
 	Ref string `form:"ref" json:"ref"`
+}
+
+// AiFeedbackJSONBody defines parameters for AiFeedback.
+type AiFeedbackJSONBody struct {
+	Adopted bool   `json:"adopted"`
+	CallId  string `json:"call_id"`
+}
+
+// AiOnboardDraftJSONBody defines parameters for AiOnboardDraft.
+type AiOnboardDraftJSONBody struct {
+	Text string `json:"text"`
+}
+
+// AiPublishDraftJSONBody defines parameters for AiPublishDraft.
+type AiPublishDraftJSONBody struct {
+	Kind AiPublishDraftJSONBodyKind `json:"kind"`
+	Text string                     `json:"text"`
+}
+
+// AiPublishDraftJSONBodyKind defines parameters for AiPublishDraft.
+type AiPublishDraftJSONBodyKind string
+
+// AiSearchJSONBody defines parameters for AiSearch.
+type AiSearchJSONBody struct {
+	Text string `json:"text"`
 }
 
 // PhoneLoginJSONBody defines parameters for PhoneLogin.
@@ -1601,6 +1679,18 @@ type DeactivateAccountParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// AiFeedbackJSONRequestBody defines body for AiFeedback for application/json ContentType.
+type AiFeedbackJSONRequestBody AiFeedbackJSONBody
+
+// AiOnboardDraftJSONRequestBody defines body for AiOnboardDraft for application/json ContentType.
+type AiOnboardDraftJSONRequestBody AiOnboardDraftJSONBody
+
+// AiPublishDraftJSONRequestBody defines body for AiPublishDraft for application/json ContentType.
+type AiPublishDraftJSONRequestBody AiPublishDraftJSONBody
+
+// AiSearchJSONRequestBody defines body for AiSearch for application/json ContentType.
+type AiSearchJSONRequestBody AiSearchJSONBody
+
 // PhoneLoginJSONRequestBody defines body for PhoneLogin for application/json ContentType.
 type PhoneLoginJSONRequestBody PhoneLoginJSONBody
 
@@ -1747,6 +1837,21 @@ type ServerInterface interface {
 	// AggregateDetail 详情页聚合（名片+Badges+会员等级+关注状态；内容类含归属人名片）；游客可看（登录态可选）
 	// (GET /aggregate/detail)
 	AggregateDetail(w http.ResponseWriter, r *http.Request, params AggregateDetailParams)
+	// AiFeatures AI 能力开关清单（按当前用户灰度评估）
+	// (GET /ai/features)
+	AiFeatures(w http.ResponseWriter, r *http.Request)
+	// AiFeedback AI 结果采纳反馈（采纳率观测）
+	// (POST /ai/feedback)
+	AiFeedback(w http.ResponseWriter, r *http.Request)
+	// AiOnboardDraft 一句话入驻 → 名片草稿（开关 ai.onboard；不可用返回 030001/503 走原表单）
+	// (POST /ai/onboard-draft)
+	AiOnboardDraft(w http.ResponseWriter, r *http.Request)
+	// AiPublishDraft 一句话发布 → 内容草稿（开关 ai.publish）
+	// (POST /ai/publish-draft)
+	AiPublishDraft(w http.ResponseWriter, r *http.Request)
+	// AiSearch 自然语言搜索 → 结构化检索条件（开关 ai.search）
+	// (POST /ai/search)
+	AiSearch(w http.ResponseWriter, r *http.Request)
 	// PhoneLogin 手机号 + 短信验证码登录（备选通道，注册/登录一体化）
 	// (POST /auth/phone)
 	PhoneLogin(w http.ResponseWriter, r *http.Request, params PhoneLoginParams)
@@ -2186,6 +2291,76 @@ func (siw *ServerInterfaceWrapper) AggregateDetail(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AggregateDetail(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AiFeatures operation middleware
+func (siw *ServerInterfaceWrapper) AiFeatures(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AiFeatures(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AiFeedback operation middleware
+func (siw *ServerInterfaceWrapper) AiFeedback(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AiFeedback(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AiOnboardDraft operation middleware
+func (siw *ServerInterfaceWrapper) AiOnboardDraft(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AiOnboardDraft(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AiPublishDraft operation middleware
+func (siw *ServerInterfaceWrapper) AiPublishDraft(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AiPublishDraft(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AiSearch operation middleware
+func (siw *ServerInterfaceWrapper) AiSearch(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AiSearch(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5591,6 +5766,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/notice-preferences", wrapper.ListNoticePreferences)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/notice-preferences", wrapper.SetNoticePreference)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/subscribe-quota/apply", wrapper.ApplySubscribeQuota)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/onboard-draft", wrapper.AiOnboardDraft)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/publish-draft", wrapper.AiPublishDraft)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/search", wrapper.AiSearch)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/feedback", wrapper.AiFeedback)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/ai/features", wrapper.AiFeatures)
 
 	return m
 }
