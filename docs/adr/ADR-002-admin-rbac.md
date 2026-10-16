@@ -36,17 +36,30 @@ p4 §3 原表述为「五内置角色种子 + 权限点矩阵」，易被误读�
 6. **审计与生效**：`ops:rbac:*`（角色增删、role_permission set、user_role assign、denied）全量审计；
    变更后使权限缓存/会话失效（角色权限版本号）；后台登录 `denied` 记审计（防爆破）。
 
-7. **数据范围属角色配置**：`space_id`/`region_code` 随角色配置（如渠道经理仅本区域），服务端过滤为唯一权威。
+7. **数据范围属角色配置（2026-10-17 细化）**：非超管角色带 `space_id`；渠道经理默认按区域过滤，且支持
+   **多区域 + 含子区域**（`region_codes text[]` + `include_subtree bool`，而非单值 `region_code`）；服务端过滤为唯一权威。
 
-8. **复用内核，不新增能力**：settings（默认值/灰度）、policy（反提权/防锁死/复核≠执行）、audit、statemachine、导出中心、AdminSection。
+8. **后台登录安全（2026-10-17 细化）**：
+   - **连续 3 次登录失败 → 触发二次验证（短信，复用实名手机号）**；
+   - **IP 白名单由超管在后台配置**（未配置=不限制）；
+   - 后台登录 `denied` 记审计（防爆破）。
+
+9. **双人复核清单可配（2026-10-17 细化）**：强制「复核 ≠ 执行」的操作清单默认按建议（退款/结算打款/会员人工调整/改价格比例/导出等），
+   可由**运营管理员**在后台配置（`ops:policy:dual_control`，热生效）。
+
+10. **账号模型（2026-10-17 建议）**：一期**复用平台账号 + RBAC**（不新建第二套账号体系）；安全靠 RBAC 最小权限、
+    后台独立会话、失败锁定 + 短信二次验证、IP 白名单、双人复核。`sys_admin_user` 预留独立凭证字段，后续可演进为独立后台账号，无需重构。
+
+11. **复用内核，不新增能力**：settings（默认值/灰度）、policy（反提权/防锁死/复核≠执行）、audit、statemachine、导出中心、AdminSection。
 
 ## 数据模型（草案）
 
 ```
-sys_admin_user(id, account, credential_hash, status, created_at)
-sys_admin_role(id, code, name, protected bool, builtin bool, space_id, region_code, created_at)
+sys_admin_user(id, user_id, account, status, created_at)            -- 一期关联平台用户；预留 credential_hash 演进独立账号
+sys_admin_role(id, code, name, protected bool, builtin bool, space_id, region_codes text[], include_subtree bool, created_at)
 sys_admin_user_role(user_id, role_id, PRIMARY KEY(user_id, role_id))
 sys_admin_role_permission(role_id, perm, PRIMARY KEY(role_id, perm))   -- perm = <module>:<resource>:<action>
+sys_admin_login(id, user_id, failed_count, locked_until, last_ip, created_at)  -- 失败锁定 + 二次验证状态
 ```
 
 ## 备选方案与否决理由

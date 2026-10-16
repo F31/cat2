@@ -32,8 +32,10 @@
 - [x] 3.1 迁移四张 `sys_admin_*` 表（`kernel/rbac.Schema` 并入 `pg.KernelTables`）；五内置角色 + §2.2 矩阵**默认种子**（`rbac.Seed`，角色首建时写默认权限，此后可配）；`space_id/region_code`、`protected`、`builtin` 齐备
 - [◐] 3.2 权限点命名 `<module>:<resource>:<action>` 与注册表 `rbac.Registry()`、`requirePerm` 守卫、菜单级过滤（`/menus` 按模块+`ops.rbac` 特判）已落地；**待办**：为各模块 Admin 路由批量标注所需权限点（action 级全覆盖）
 - [x] 3.3 服务端唯一权威（`requireAdmin`/`requirePerm`；403 记 `admin:access:denied`/`admin:perm:denied` 审计，`TestIntegrationAdminRBAC`）
-- [ ] 3.4 后台账号强制二次验证；敏感操作（退款/封禁/改价格比例/导出/结算）二次确认 + 审计
-- [ ] 3.5 内核 policy「复核≠执行」互斥规则（同一结算单/退款单操作人≠复核人）
+- [ ] 3.4 后台登录安全：连续 **3 次失败触发短信二次验证**（复用实名手机号）；**IP 白名单超管后台可配**（未配置=不限制）；敏感操作（退款/封禁/改价格比例/导出/结算）二次确认 + 审计
+- [ ] 3.5 内核 policy「复核≠执行」互斥规则（同一结算单/退款单**执行打款人 ≠ 复核人**，仍为先复核后执行）；强制清单可配（见 3.12）
+- [ ] 3.11 数据范围：角色 `space_id` + `region_codes text[]` + `include_subtree`；渠道经理默认按区域过滤，**支持多区域与子区域**（服务端唯一权威，p4 §3.7）
+- [ ] 3.12 双人复核清单可配：`ops:policy:dual_control`（运营管理员后台配置，热生效），3.5 互斥规则读取该清单
 - [◐] 3.6 默认矩阵与负向用例已覆盖（`TestIntegrationAdminRBAC`：默认矩阵、反提权 denied、超管不可改、内置不可删、自定义角色增删）；**待办**：五角色×全权限点的完整表驱动矩阵用例
 - [◐] 3.7 菜单按 RBAC 过滤已落地（`/menus` 按模块过滤，`ops.rbac` 仅 `ops:rbac:manage` 可见）；**待办**：角色 `space_id/region_code` 数据范围过滤（随 p4 §1/§2 渠道数据接入）
 - [x] 3.8 角色权限可配置：后台「角色与权限」页（`apps/admin-web/src/pages/Roles.tsx`）+ 接口（permissions/roles/roles/{code}/permissions/admin-users/{id}/roles）；自定义角色（内置不可删）；改动即时生效（无缓存直接查库）并审计 `ops:rbac:*`
