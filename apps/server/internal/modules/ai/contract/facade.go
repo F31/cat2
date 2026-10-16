@@ -9,6 +9,7 @@ const (
 	FlagOnboard = "ai.onboard"
 	FlagPublish = "ai.publish"
 	FlagSearch  = "ai.search"
+	FlagReview  = "ai.review" // 审核辅助（预分类/摘要，只读建议）
 )
 
 // Field 结构化字段（字段名与 dict 字段池一致）。
@@ -37,6 +38,15 @@ type SearchQuery struct {
 	Tokens   int      `json:"tokens"`
 }
 
+// Suggestion 审核辅助建议（只读，展示给审核员；不自动裁决）。
+type Suggestion struct {
+	CallID   int64  `json:"call_id,string"`
+	Category string `json:"category"` // 预分类：fraud/ad/abuse/porn/other
+	Risk     int    `json:"risk"`     // 0-3（0 低）
+	Summary  string `json:"summary"`  // 摘要
+	Tokens   int    `json:"tokens"`
+}
+
 // Facade ai 对外接口（供 bff/其他模块复用）。
 type Facade interface {
 	// OnboardDraft 一句话入驻 → 名片草稿（开关 ai.onboard）。
@@ -47,6 +57,8 @@ type Facade interface {
 	Search(ctx context.Context, userID int64, text string) (SearchQuery, error)
 	// Feedback 采纳反馈（采纳率观测）。
 	Feedback(ctx context.Context, userID, callID int64, adopted bool) error
+	// ReviewSuggestion 审核辅助建议（开关 ai.review；不可用返回 030001，调用方按「无建议」处理）。
+	ReviewSuggestion(ctx context.Context, operatorID int64, subjectType string, subjectID int64, text string) (Suggestion, error)
 	// Enabled 能力是否开启（按用户灰度评估）。
 	Enabled(ctx context.Context, userID int64, feature string) bool
 }

@@ -43,6 +43,24 @@ paths:
                             type: array
                             items: { $ref: '#/components/schemas/AdminSection' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /review-tasks/{id}/suggestion:
+    get:
+      tags: [admin-governance]
+      summary: 审核任务的 AI 建议（只读；未启用或上游不可用时 available=false）
+      operationId: adminReviewSuggestion
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 建议
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { $ref: '#/components/schemas/ReviewSuggestion' } }
+        '404': { $ref: '#/components/responses/NotFound' }
   /settings:
     get:
       tags: [admin-governance]
@@ -575,6 +593,14 @@ components:
       type: object
       properties:
         status: { type: integer }
+    ReviewSuggestion:
+      type: object
+      required: [available]
+      properties:
+        available: { type: boolean }
+        category: { type: string }
+        risk: { type: integer }
+        summary: { type: string }
     SettingItem:
       type: object
       required: [key, type, value]

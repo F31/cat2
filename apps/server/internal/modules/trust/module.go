@@ -43,6 +43,7 @@ type Module struct {
 	mu        sync.RWMutex
 	providers map[string]contract.ReviewSubjectProvider
 	words     []string
+	suggester contract.Suggester
 }
 
 func New(deps Deps) *Module {
@@ -64,6 +65,8 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/review-tasks", Handler: m.auth(m.handleQueue), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/review-tasks/{id}/resolve", Handler: m.auth(m.handleResolve), Admin: true},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/review-metrics", Handler: m.auth(m.handleMetrics), Admin: true},
+		// 审核辅助（AI 预分类/摘要，只读建议；未启用或上游不可用时 available=false，不影响审核）
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/review-tasks/{id}/suggestion", Handler: m.auth(m.handleSuggestion), Admin: true},
 	)
 	r.Jobs = append(r.Jobs,
 		// 审核积压与 SLA 监控（看板 + 告警，p6 §5.3/§5.4）
@@ -329,6 +332,39 @@ func (m *Module) ViolationPoints(ctx context.Context, userID int64) (int, error)
 	var n int
 	err := m.deps.Pool.QueryRow(ctx, `SELECT COALESCE(sum(points),0) FROM trs_violation_score WHERE user_id=$1`, userID).Scan(&n)
 	return n, err
+}
+
+// SetSuggester 注入审核辅助提供者（装配根调用；nil=不提供建议）。
+func (m *Module) SetSuggester(s contract.Suggester) { m.suggester = s }
+
+// handleSuggestion 返回某审核任务的 AI 建议（只读；不影响审核流程）。
+func (m *Module) handleSuggestion(w http.ResponseWriter, req *http.Request) {
+	id, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	if id == 0 {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	var subjectType string
+	var subjectID int64
+	var reason string
+	err := m.deps.Pool.QueryRow(req.Context(), `
+		SELECT subject_type, subject_id, COALESCE(reason,'') FROM trs_review_task WHERE id=$1`, id).
+		Scan(&subjectType, &subjectID, &reason)
+	if err != nil {
+		writeErr(w, codeNotFound, "审核任务不存在")
+		return
+	}
+	if m.suggester == nil {
+		writeData(w, contract.Suggestion{Available: false})
+		return
+	}
+	text := reason
+	if p := m.providers[subjectType]; p != nil {
+		if t, _, err := p.Extract(req.Context(), subjectID); err == nil && t != "" {
+			text = t
+		}
+	}
+	writeData(w, m.suggester.Suggest(req.Context(), userIDFrom(req.Context()), subjectType, subjectID, text))
 }
 
 // SLAMetrics 队列指标。

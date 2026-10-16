@@ -223,6 +223,8 @@ func defaultPrompt(feature string) string {
 		return "请把下面文本整理为名片草稿（onboard），输出 JSON：{title, fields:[{field,value}]}"
 	case "search":
 		return "请解析为检索条件（search），输出 JSON：{keyword,type,region,industry,need,offer}"
+	case "review":
+		return "请对下面待审内容做预分类与摘要（review），输出 JSON：{category(fraud/ad/abuse/porn/other),risk(0-3),summary}"
 	default:
 		return "请把下面文本整理为内容草稿（publish），输出 JSON：{title, fields:[{field,value}]}"
 	}
@@ -301,6 +303,64 @@ func (m *Module) Search(ctx context.Context, userID int64, text string) (contrac
 	q.CallID = callID
 	q.Tokens = tokens
 	return q, nil
+}
+
+// ReviewSuggestion 审核辅助：预分类 + 风险 + 摘要（只读建议，不自动裁决）。
+func (m *Module) ReviewSuggestion(ctx context.Context, operatorID int64, subjectType string, subjectID int64, text string) (contract.Suggestion, error) {
+	if !m.Enabled(ctx, operatorID, contract.FlagReview) {
+		return contract.Suggestion{}, errUnavailable
+	}
+	if err := m.checkQuota(ctx, operatorID); err != nil {
+		return contract.Suggestion{}, err
+	}
+	in := text
+	if len([]rune(in)) > maxInputRunes {
+		in = string([]rune(in)[:maxInputRunes])
+	}
+	prompt, version, scrubbed := m.buildFeaturePrompt(ctx, "review", subjectType, in)
+	start := time.Now()
+	raw, tokens, err := m.callLLM(ctx, prompt)
+	latency := int(time.Since(start).Milliseconds())
+	if err != nil {
+		m.logCall(ctx, "review", operatorID, 0, latency, "degraded", len([]rune(in)), version, scrubbed)
+		return contract.Suggestion{}, errUnavailable
+	}
+	var parsed struct {
+		Category string `json:"category"`
+		Risk     int    `json:"risk"`
+		Summary  string `json:"summary"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		m.logCall(ctx, "review", operatorID, 0, latency, "degraded", len([]rune(in)), version, scrubbed)
+		return contract.Suggestion{}, errUnavailable
+	}
+	cat := strings.ToLower(strings.TrimSpace(parsed.Category))
+	if !validReviewCategory(cat) {
+		cat = "other"
+	}
+	risk := parsed.Risk
+	if risk < 0 {
+		risk = 0
+	}
+	if risk > 3 {
+		risk = 3
+	}
+	summary := strings.TrimSpace(parsed.Summary)
+	if len([]rune(summary)) > 200 {
+		summary = string([]rune(summary)[:200])
+	}
+	callID := int64(ids.New())
+	m.logCallWithID(ctx, callID, "review", operatorID, tokens, latency, "ok", len([]rune(in)), version, scrubbed)
+	return contract.Suggestion{CallID: callID, Category: cat, Risk: risk, Summary: summary, Tokens: tokens}, nil
+}
+
+// validReviewCategory 预分类取值范围（模型幻觉收敛）。
+func validReviewCategory(c string) bool {
+	switch c {
+	case "fraud", "ad", "abuse", "porn", "other":
+		return true
+	}
+	return false
 }
 
 // Feedback 采纳反馈：更新调用留痕的采纳标记（采纳率观测）。

@@ -180,6 +180,14 @@ type Refund struct {
 	Status    int        `json:"status"`
 }
 
+// ReviewSuggestion defines model for ReviewSuggestion.
+type ReviewSuggestion struct {
+	Available bool    `json:"available"`
+	Category  *string `json:"category,omitempty"`
+	Risk      *int    `json:"risk,omitempty"`
+	Summary   *string `json:"summary,omitempty"`
+}
+
 // ReviewTask defines model for ReviewTask.
 type ReviewTask struct {
 	Id         string  `json:"id"`
@@ -388,6 +396,9 @@ type ServerInterface interface {
 	// AdminResolveReview 复核结论（通过/驳回，驳回须填原因）
 	// (POST /review-tasks/{id}/resolve)
 	AdminResolveReview(w http.ResponseWriter, r *http.Request, id string)
+	// AdminReviewSuggestion 审核任务的 AI 建议（只读；未启用或上游不可用时 available=false）
+	// (GET /review-tasks/{id}/suggestion)
+	AdminReviewSuggestion(w http.ResponseWriter, r *http.Request, id string)
 	// AdminSettings 业务配置列表（含声明、当前值与默认值）
 	// (GET /settings)
 	AdminSettings(w http.ResponseWriter, r *http.Request)
@@ -825,6 +836,32 @@ func (siw *ServerInterfaceWrapper) AdminResolveReview(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// AdminReviewSuggestion operation middleware
+func (siw *ServerInterfaceWrapper) AdminReviewSuggestion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminReviewSuggestion(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminSettings operation middleware
 func (siw *ServerInterfaceWrapper) AdminSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -1097,6 +1134,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/menus", wrapper.AdminMenus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/review-tasks/{id}/suggestion", wrapper.AdminReviewSuggestion)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/settings", wrapper.AdminSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/settings/{key}", wrapper.AdminSetSetting)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/feature-flags", wrapper.AdminFeatureFlags)

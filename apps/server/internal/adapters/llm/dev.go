@@ -34,6 +34,12 @@ func (DevClient) Complete(_ context.Context, prompt string, _ map[string]any) ([
 				{"field": "intro", "value": text},
 			},
 		})
+	case strings.Contains(prompt, "review"):
+		return json.Marshal(map[string]any{
+			"category": "fraud",
+			"risk":     2,
+			"summary":  "疑似虚假项目：" + text,
+		})
 	case strings.Contains(prompt, "search"):
 		return json.Marshal(map[string]any{
 			"keyword": text,

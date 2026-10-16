@@ -37,7 +37,7 @@
 
 ## 6. 审核辅助
 
-- [ ] 6.1 trust 审核队列接入 AI 预分类与摘要（只读建议展示给审核员）
+- [x] 6.1 审核辅助：`ai.ReviewSuggestion`（预分类 fraud/ad/abuse/porn/other + 风险 0-3 + 摘要，开关 `ai.review`）；trust 经装配根桥接（同阶不互相依赖）暴露 `GET /api/admin/v1/review-tasks/{id}/suggestion`；**只读建议**，未启用/上游故障/配额用尽一律 `available=false`，审核流程不受影响；admin-web 审核页「AI 建议」；集成测试 `TestIntegrationAIReviewSuggestion`
 - [ ] 6.2 处罚结论必须人工确认（AI 输出不产生任何状态机转移）
 
 ## 7. 前端

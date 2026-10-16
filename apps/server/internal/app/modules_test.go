@@ -12,9 +12,9 @@ type fakeModule struct {
 	deps []string
 }
 
-func (f fakeModule) Name() string                 { return f.name }
-func (f fakeModule) Rank() module.Rank            { return f.rank }
-func (f fakeModule) DependsOn() []string          { return f.deps }
+func (f fakeModule) Name() string                    { return f.name }
+func (f fakeModule) Rank() module.Rank               { return f.rank }
+func (f fakeModule) DependsOn() []string             { return f.deps }
 func (f fakeModule) Register(*module.Registry) error { return nil }
 
 func TestSelectModules(t *testing.T) {

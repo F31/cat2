@@ -32,6 +32,7 @@
 | AI 成本 | `catcube_ai_cost_fen_total` / `catcube_ai_tokens_total` | counter | 成本（分，按 `ai.cost.fen_per_1ktoken` 估算）与 token 量 | `ai` 模块 |
 | AI 配额 | `catcube_ai_quota_exceeded_total` | counter | 日额度/预算用尽次数 | `ai.checkQuota` |
 | AI 隐私 | `catcube_ai_privacy_scrub_total` | counter | 提示词中剥离的敏感信息条数（应持续为 0 表示上游无泄漏面） | `ai.sanitizeForPrompt` |
+| 审核辅助 | `ai_call_log.feature='review'` | 记录 | 审核建议调用与耗时（`catcube_ai_*` 同口径） | `ai.ReviewSuggestion` |
 | AI 输出收敛 | `catcube_ai_output_dropped_total` | counter | 模型幻觉字段被丢弃数（异常升高说明提示词需调优） | `ai` 模块 |
 
 `*` 为预留指标（口径已定，随 p5/OTel 或后续增量补齐）；其余均已实现并有测试覆盖（见 `TestIntegrationBusinessMetrics`）。

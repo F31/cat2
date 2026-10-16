@@ -15,6 +15,7 @@ export default function Reviews() {
   const [loading, setLoading] = useState(false)
   const [action, setAction] = useState<{ task: ReviewTask; confirmed: boolean } | null>(null)
   const [reason, setReason] = useState('')
+  const [sug, setSug] = useState<{ id: string; text: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -53,6 +54,21 @@ export default function Reviews() {
     }
   }
 
+  // AI 建议（只读；未启用或上游不可用时提示「无建议」，不影响审核）
+  const askAI = async (task: ReviewTask) => {
+    try {
+      const r = await adminApi.reviewSuggestion(task.id)
+      setSug({
+        id: task.id,
+        text: r.available
+          ? `分类：${r.category ?? '—'}｜风险：${r.risk ?? 0}/3｜摘要：${r.summary ?? ''}`
+          : 'AI 未启用或暂不可用（不影响审核）',
+      })
+    } catch (e) {
+      message.error(errText(e))
+    }
+  }
+
   const columns: ColumnsType<ReviewTask> = [
     { title: 'ID', dataIndex: 'id' },
     { title: '来源', dataIndex: 'source', render: (s: number) => SOURCE[s] ?? s },
@@ -70,6 +86,9 @@ export default function Reviews() {
           <Button size="small" danger onClick={() => open(r, false)}>
             驳回
           </Button>
+          <Button size="small" onClick={() => void askAI(r)}>
+            AI 建议
+          </Button>
         </Space>
       ),
     },
@@ -81,6 +100,11 @@ export default function Reviews() {
         <Button onClick={() => void load()}>刷新队列</Button>
       </Space>
       <Table rowKey="id" loading={loading} columns={columns} dataSource={rows} size="small" />
+      {sug ? (
+        <Modal title={`AI 建议（任务 ${sug.id}）`} open onCancel={() => setSug(null)} footer={null}>
+          {sug.text}
+        </Modal>
+      ) : null}
       <Modal
         title={action?.confirmed ? '通过审核' : '驳回审核'}
         open={!!action}

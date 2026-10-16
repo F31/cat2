@@ -74,6 +74,19 @@ type Facade interface {
 	SLAMetrics(ctx context.Context) (SLAMetric, error)
 }
 
+// Suggestion 审核辅助建议（AI 预分类/摘要；仅只读展示，不自动裁决）。
+type Suggestion struct {
+	Available bool   `json:"available"`
+	Category  string `json:"category,omitempty"`
+	Risk      int    `json:"risk,omitempty"`
+	Summary   string `json:"summary,omitempty"`
+}
+
+// Suggester 审核辅助提供者（由 ai 模块经装配根注入；未启用时返回 Available=false）。
+type Suggester interface {
+	Suggest(ctx context.Context, operatorID int64, subjectType string, subjectID int64, text string) Suggestion
+}
+
 // ReviewSubjectProvider 审核对象提供者开口（扩展点 #1）：
 // 由 content/msg/circle/profile/verify 注册「怎么取文字/图片、归属人是谁、结论怎么落回」。
 type ReviewSubjectProvider interface {

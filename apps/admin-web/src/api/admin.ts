@@ -62,6 +62,13 @@ export interface AdminMenu {
   module: string
 }
 
+export interface ReviewSuggestion {
+  available: boolean
+  category?: string
+  risk?: number
+  summary?: string
+}
+
 export interface SettingItem {
   key: string
   type: string
@@ -164,6 +171,10 @@ export const adminApi = {
 
   menus() {
     return call<{ items: AdminMenu[] }>('GET', '/admin/v1/menus')
+  },
+
+  reviewSuggestion(id: string) {
+    return call<ReviewSuggestion>('GET', `/admin/v1/review-tasks/${id}/suggestion`)
   },
 
   settings() {

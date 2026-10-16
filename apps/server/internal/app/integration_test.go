@@ -4555,3 +4555,87 @@ func TestIntegrationAIQuotaPromptPrivacy(t *testing.T) {
 		t.Fatalf("超配额应 429/030004: %d %+v", status, env2)
 	}
 }
+
+// 审核辅助 AI（p5 §6.1）：开关关闭/上游故障 → available=false（不影响审核）；开启后返回预分类与摘要。
+func TestIntegrationAIReviewSuggestion(t *testing.T) {
+	h := newTestApp(t)
+	uid, tok := loginUser(t, h)
+	adminID, admTok := loginAdmin(t, h)
+	ctx := context.Background()
+	_ = uid
+
+	// 造一条举报任务
+	target, targetTok := loginUser(t, h)
+	if _, env := h.do(http.MethodPost, "/api/mp/v1/reports", tok, map[string]any{
+		"target_ref": fmt.Sprintf("user:%d", target), "reason_code": "fraud", "detail": "疑似诈骗",
+	}); env.Code != 0 {
+		t.Fatalf("举报失败: %+v", env)
+	}
+	var taskID int64
+	if err := h.app.Pool.QueryRow(ctx, `
+		SELECT id FROM trs_review_task WHERE subject_type='user' AND subject_id=$1 ORDER BY created_at DESC LIMIT 1`, target).Scan(&taskID); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1) 默认关闭 → 返回 200 且 available=false（审核页面不报错）
+	_, env := h.do(http.MethodGet, fmt.Sprintf("/api/admin/v1/review-tasks/%d/suggestion", taskID), admTok, nil)
+	var sug struct {
+		Available bool   `json:"available"`
+		Category  string `json:"category"`
+		Risk      int    `json:"risk"`
+		Summary   string `json:"summary"`
+	}
+	_ = json.Unmarshal(env.Data, &sug)
+	if env.Code != 0 || sug.Available {
+		t.Fatalf("关闭时应 available=false 且成功返回: %+v", env)
+	}
+
+	// 2) 开启 ai.review（白名单审核员）→ 返回建议
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/feature-flags/"+aiContract.FlagReview, admTok, map[string]any{
+		"enabled": true, "ratio": 0, "users": []int64{adminID},
+	}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("开启 ai.review 失败: %d %+v", s, e)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/admin/v1/review-tasks/%d/suggestion", taskID), admTok, nil)
+	_ = json.Unmarshal(env.Data, &sug)
+	if !sug.Available || sug.Category == "" || sug.Summary == "" {
+		t.Fatalf("应返回预分类与摘要: %+v", sug)
+	}
+	if sug.Risk < 0 || sug.Risk > 3 {
+		t.Fatalf("风险等级应在 0-3: %d", sug.Risk)
+	}
+	// 调用留痕（feature=review）
+	var n int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM ai_call_log WHERE feature='review' AND outcome='ok'`).Scan(&n)
+	if n == 0 {
+		t.Fatal("审核辅助调用应留痕")
+	}
+	// 3) 审核流程不受影响：可直接复核
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/review-tasks/%d/resolve", taskID), admTok,
+		map[string]any{"confirmed": true, "reason": "举报属实"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("审核不受 AI 影响: %d %+v", s, e)
+	}
+	// 4) 上游故障（生效提示词含 FAULT 标记 → LLM 报错）→ available=false（不影响审核）
+	if _, env := h.do(http.MethodPost, "/api/mp/v1/reports", tok, map[string]any{
+		"target_ref": fmt.Sprintf("user:%d", target), "reason_code": "fraud", "detail": "再报一次",
+	}); env.Code != 0 {
+		t.Fatalf("举报失败: %+v", env)
+	}
+	var task2 int64
+	_ = h.app.Pool.QueryRow(ctx, `
+		SELECT id FROM trs_review_task WHERE subject_type='user' AND subject_id=$1 ORDER BY created_at DESC LIMIT 1`, target).Scan(&task2)
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO ai_prompt (feature, version, body, approved) VALUES ('review','vfault','[FAULT] 提示词',true)
+		ON CONFLICT (feature, version) DO UPDATE SET body='[FAULT] 提示词', approved=true`); err != nil {
+		t.Fatal(err)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/admin/v1/review-tasks/%d/suggestion", task2), admTok, nil)
+	_ = json.Unmarshal(env.Data, &sug)
+	if env.Code != 0 || sug.Available {
+		t.Fatalf("上游故障应 available=false: %+v", env)
+	}
+	if _, err := h.app.Pool.Exec(ctx, `UPDATE ai_prompt SET approved=false WHERE feature='review' AND version='vfault'`); err != nil {
+		t.Fatal(err)
+	}
+	_ = targetTok
+}
