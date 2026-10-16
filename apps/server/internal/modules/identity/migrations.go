@@ -2,9 +2,6 @@ package identity
 
 // migrations idn_ 前缀表（详细设计 4.2.1/4.2.2）。
 const migrations = `
--- 过渡期后台管理员标记（五角色 RBAC 在 p4 细化；此处仅区分平台管理员/普通用户）
-ALTER TABLE idn_user ADD COLUMN IF NOT EXISTS admin_role smallint NOT NULL DEFAULT 0;
-
 CREATE TABLE IF NOT EXISTS idn_user (
 	id bigint PRIMARY KEY,
 	wechat_openid varchar(64), -- 加密存储（一期先明文占位，接入加密后迁移）
@@ -25,6 +22,10 @@ CREATE TABLE IF NOT EXISTS idn_user (
 	updated_at timestamptz NOT NULL DEFAULT now(),
 	version int NOT NULL DEFAULT 1
 );
+
+-- 过渡期后台管理员标记（五角色 RBAC 在 p4 细化；此处仅区分平台管理员/普通用户）
+-- 置后执行：兼容既有库（ALTER）与全新库（CREATE 后 ADD）
+ALTER TABLE idn_user ADD COLUMN IF NOT EXISTS admin_role smallint NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS idn_session (
 	id bigint PRIMARY KEY,

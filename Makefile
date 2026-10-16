@@ -1,4 +1,4 @@
-.PHONY: gen lint test test-integration up down archcheck logscan install build-web typecheck dev-admin dev-miniapp
+.PHONY: gen lint test test-integration up down archcheck logscan install build-web typecheck dev-admin dev-miniapp perf-seed loadtest
 
 SERVER_DIR := apps/server
 
@@ -51,3 +51,16 @@ up: ## S0 一键起（app 全角色 + PostgreSQL）
 
 down:
 	docker compose -f deploy/compose/docker-compose.s0.yml down
+
+BASE ?= http://127.0.0.1:8080
+TOKEN ?=
+REF ?=
+C ?= 50
+D ?= 20s
+SCENARIOS ?= feed,search,detail
+
+perf-seed: ## 压测造数（需 CATCUBE_PERF_DATABASE_URL 指向独立压测库）
+	./tests/perf/seed.sh
+
+loadtest: ## 轻量压测（BASE/TOKEN/REF/C/D/SCENARIOS 可覆盖；门槛不达标退出码非 0）
+	cd tools/loadtest && go run . -base $(BASE) -token "$(TOKEN)" -ref "$(REF)" -c $(C) -d $(D) -scenarios $(SCENARIOS)

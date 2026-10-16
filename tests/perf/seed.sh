@@ -8,6 +8,8 @@ set -euo pipefail
 PSQL=(psql "$CATCUBE_PERF_DATABASE_URL" -v ON_ERROR_STOP=1 -q)
 
 echo "[seed] 用户 10000 / 名片 10000 …"
+"${PSQL[@]}" -c "CREATE EXTENSION IF NOT EXISTS pgcrypto" >/dev/null
+"${PSQL[@]}" -c "CREATE EXTENSION IF NOT EXISTS pg_trgm" >/dev/null
 "${PSQL[@]}" <<'SQL'
 INSERT INTO idn_user (id, phone_hmac, nickname, status, identity_type, created_at, updated_at)
 SELECT 900000000000000000 + g,
@@ -30,9 +32,9 @@ SELECT 910000000000000000 + g, '压测圈' || g, '压测用圈', 2, 30, now() + 
 FROM generate_series(1, 1000) AS g
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO cir_member (id, circle_id, user_id, role, status, joined_at, created_at, updated_at)
+INSERT INTO cir_member (id, circle_id, user_ref, joined_via, joined_at, status)
 SELECT 911000000000000000 + g * 10 + m, 910000000000000000 + g,
-       900000000000000000 + (((g * 7 + m) % 10000) + 1), CASE WHEN m = 1 THEN 1 ELSE 2 END, 1, now(), now(), now()
+       900000000000000000 + (((g * 7 + m) % 10000) + 1), 1, now(), 0
 FROM generate_series(1, 1000) AS g, generate_series(1, 5) AS m
 ON CONFLICT (id) DO NOTHING;
 SQL
@@ -46,9 +48,9 @@ SELECT 920000000000000000 + g, '压测立方' || g,
 FROM generate_series(1, 100) AS g
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO cub_member (id, cube_id, user_id, role, status, joined_at, created_at, updated_at)
+INSERT INTO cub_member (id, cube_id, user_ref, role, joined_at, status)
 SELECT 921000000000000000 + g * 10 + m, 920000000000000000 + g,
-       900000000000000000 + (((g * 3 + m) % 10000) + 1), CASE WHEN m = 1 THEN 1 ELSE 4 END, 1, now(), now(), now()
+       900000000000000000 + (((g * 3 + m) % 10000) + 1), CASE WHEN m = 1 THEN 1 ELSE 4 END, now(), 0
 FROM generate_series(1, 100) AS g, generate_series(1, 3) AS m
 ON CONFLICT (id) DO NOTHING;
 SQL
@@ -66,11 +68,12 @@ SELECT 930000000000000000 + g, 100, '洽谈中', '压测项目简介', '\x00'::b
 FROM generate_series(1, 10000) AS g
 ON CONFLICT (item_id) DO NOTHING;
 
-INSERT INTO sys_search_doc (doc_type, doc_id, title, doc, updated_at)
-SELECT 'content.project', (930000000000000000 + g)::text, '压测项目' || g,
-       jsonb_build_object('title', '压测项目' || g, 'region', '310000'), now()
+-- 检索投影（discovery 模块自有投影表）
+INSERT INTO dsc_search_doc (doc_ref, doc_type, subject_id, title, region_code, industry, need, active, last_active_at, updated_at)
+SELECT 'content.project:' || (930000000000000000 + g), 'content.project', 930000000000000000 + g,
+       '压测项目' || g, '310000', ARRAY['A01'], ARRAY['N1'], true, now(), now()
 FROM generate_series(1, 10000) AS g
-ON CONFLICT (doc_type, doc_id) DO NOTHING;
+ON CONFLICT (doc_ref) DO NOTHING;
 SQL
 
 "${PSQL[@]}" -tAc "SELECT '[seed] 完成：users='||(SELECT count(*) FROM idn_user)||' contents='||(SELECT count(*) FROM cnt_item)||' circles='||(SELECT count(*) FROM cir_circle)||' cubes='||(SELECT count(*) FROM cub_cube)"

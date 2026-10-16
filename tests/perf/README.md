@@ -26,4 +26,17 @@ CATCUBE_PERF_DATABASE_URL=postgres://catcube:catcube@127.0.0.1:15432/catcube_per
 - 事件积压压测（§2.4）：Outbox 高峰积压后投递延迟与恢复时间达标（指标见 `docs/ops/dashboards.md`）。
 - 压测报告产出后归档 `tests/perf/reports/`。
 
-> 说明：k6/压测环境需在具备 S1 形态的独立环境执行；本仓库提供造数脚本与场景/指标口径，执行与报告为上线前置动作（p6 §2.2/2.3）。
+## 执行（内置工具，无外部依赖）
+
+```bash
+# 造数（独立压测库）
+CATCUBE_PERF_DATABASE_URL=postgres://catcube:catcube@127.0.0.1:15432/catcube_perf make perf-seed
+# 压测（对运行中的实例；门槛不达标退出码非 0）
+make loadtest BASE=http://127.0.0.1:8080 TOKEN=$TOKEN REF=user:123 C=100 D=20s SCENARIOS=feed,search,detail
+```
+
+本地实测（并发 100）：feed P95 71ms、search P99 30ms、detail P99 777ms，错误率 0%，全部达标 →
+报告见 `tests/perf/reports/2026-10-16-local.md`。
+
+> 说明：正式验收需在 **S1 形态**（api×2 + PG 主从 + Redis + 容器化构建）按同样场景复跑并归档；
+> 本仓库提供造数与压测工具、场景/指标口径与本地基线。
