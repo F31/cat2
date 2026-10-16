@@ -137,9 +137,9 @@ func (o *Outbox) Insert(ctx context.Context, tx any, e eventbus.Event) error {
 		return err
 	}
 	return exec(
-		`INSERT INTO sys_outbox (event_id, topic, payload, space_id, occurred_at, status, retry_count)
-		 VALUES ($1,$2,$3,$4,$5,0,0)`,
-		e.ID, e.Topic, e.Payload, e.SpaceID, e.OccurredAt)
+		`INSERT INTO sys_outbox (event_id, topic, payload, space_id, occurred_at, trace_id, status, retry_count)
+		 VALUES ($1,$2,$3,$4,$5,$6,0,0)`,
+		e.ID, e.Topic, e.Payload, e.SpaceID, e.OccurredAt, e.TraceID)
 }
 
 func (o *Outbox) Claim(ctx context.Context, limit int) ([]eventbus.Event, error) {
@@ -147,7 +147,7 @@ func (o *Outbox) Claim(ctx context.Context, limit int) ([]eventbus.Event, error)
 		`UPDATE sys_outbox SET status=1
 		 WHERE event_id IN (SELECT event_id FROM sys_outbox WHERE status=0 OR (status=2 AND retry_count<8)
 		   ORDER BY occurred_at LIMIT $1 FOR UPDATE SKIP LOCKED)
-		 RETURNING event_id, topic, payload, space_id, occurred_at`, limit)
+		 RETURNING event_id, topic, payload, space_id, occurred_at, COALESCE(trace_id,'')`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +155,7 @@ func (o *Outbox) Claim(ctx context.Context, limit int) ([]eventbus.Event, error)
 	var out []eventbus.Event
 	for rows.Next() {
 		var e eventbus.Event
-		if err := rows.Scan(&e.ID, &e.Topic, &e.Payload, &e.SpaceID, &e.OccurredAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.Topic, &e.Payload, &e.SpaceID, &e.OccurredAt, &e.TraceID); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -166,7 +166,7 @@ func (o *Outbox) Claim(ctx context.Context, limit int) ([]eventbus.Event, error)
 // List 按发生顺序读取全部事件（只读，供投影回放；不改变投递状态）。
 func (o *Outbox) List(ctx context.Context, limit int) ([]eventbus.Event, error) {
 	rows, err := o.pool.Query(ctx,
-		`SELECT event_id, topic, payload, space_id, occurred_at FROM sys_outbox
+		`SELECT event_id, topic, payload, space_id, occurred_at, COALESCE(trace_id,'') FROM sys_outbox
 		 ORDER BY occurred_at, event_id LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
@@ -175,7 +175,7 @@ func (o *Outbox) List(ctx context.Context, limit int) ([]eventbus.Event, error) 
 	var out []eventbus.Event
 	for rows.Next() {
 		var e eventbus.Event
-		if err := rows.Scan(&e.ID, &e.Topic, &e.Payload, &e.SpaceID, &e.OccurredAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.Topic, &e.Payload, &e.SpaceID, &e.OccurredAt, &e.TraceID); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -229,7 +229,7 @@ func (o *Outbox) MarkDead(ctx context.Context, id string) error {
 
 func (o *Outbox) ListDead(ctx context.Context) ([]eventbus.Event, error) {
 	rows, err := o.pool.Query(ctx,
-		`SELECT event_id, topic, payload, space_id, occurred_at FROM sys_outbox WHERE status=9 ORDER BY occurred_at DESC LIMIT 100`)
+		`SELECT event_id, topic, payload, space_id, occurred_at, COALESCE(trace_id,'') FROM sys_outbox WHERE status=9 ORDER BY occurred_at DESC LIMIT 100`)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +237,7 @@ func (o *Outbox) ListDead(ctx context.Context) ([]eventbus.Event, error) {
 	var out []eventbus.Event
 	for rows.Next() {
 		var e eventbus.Event
-		if err := rows.Scan(&e.ID, &e.Topic, &e.Payload, &e.SpaceID, &e.OccurredAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.Topic, &e.Payload, &e.SpaceID, &e.OccurredAt, &e.TraceID); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -318,8 +318,11 @@ CREATE TABLE IF NOT EXISTS sys_outbox (
 	occurred_at timestamptz NOT NULL,
 	status smallint NOT NULL DEFAULT 0, -- 0待投递 1投递中 2重试 3已投递 9死信
 	retry_count int NOT NULL DEFAULT 0,
-	delivered_at timestamptz
+	delivered_at timestamptz,
+	trace_id varchar(32) -- 触发链路 trace（W3C trace-id）
 );
+-- 兼容既有库：CREATE 之后补列（新库已含）
+ALTER TABLE sys_outbox ADD COLUMN IF NOT EXISTS trace_id varchar(32);
 CREATE INDEX IF NOT EXISTS idx_sys_outbox_status ON sys_outbox(status, occurred_at);
 
 CREATE TABLE IF NOT EXISTS sys_event_processed (

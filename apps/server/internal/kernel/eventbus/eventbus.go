@@ -20,6 +20,8 @@ type Event struct {
 	OccurredAt time.Time       `json:"occurred_at"`
 	SpaceID    int16           `json:"space_id"`
 	Payload    json.RawMessage `json:"payload"`
+	// TraceID 触发链路的 trace（W3C trace-id，32 hex）：跨异步链路可追踪（p1 §5.6 前置）。
+	TraceID string `json:"trace_id,omitempty"`
 }
 
 // Handler 订阅处理器；以事件 ID 幂等去重。
@@ -90,7 +92,11 @@ func (b *Bus) Register(subs []Subscription) {
 }
 
 // Publish 在事务内写入 Outbox（投递由 worker 异步执行，至少一次）。
+// 自动携带当前 trace（异步链路追踪）。
 func (b *Bus) Publish(ctx context.Context, tx any, e Event) error {
+	if e.TraceID == "" {
+		e.TraceID = obs.TraceID(ctx)
+	}
 	if b.store == nil {
 		return b.dispatch(ctx, e) // 无存储（测试）时直接分发
 	}
@@ -165,7 +171,12 @@ func (b *Bus) Relay(ctx context.Context, consumer string, limit int) (int, error
 				continue
 			}
 		}
-		if err := b.dispatch(ctx, e); err != nil {
+		// 还原事件链路 trace，订阅方日志/下游事件可续接（逐事件，避免串链）
+		evCtx := ctx
+		if e.TraceID != "" {
+			evCtx = obs.WithTrace(ctx, e.TraceID, obs.NewSpanID())
+		}
+		if err := b.dispatch(evCtx, e); err != nil {
 			slog.Warn("事件投递失败（订阅处理器错误）", "topic", e.Topic, "event_id", e.ID, "err", err)
 			obs.Default().Inc("catcube_outbox_retry_total")
 			_ = b.store.MarkRetry(ctx, e.ID)

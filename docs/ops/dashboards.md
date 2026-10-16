@@ -50,3 +50,4 @@
 | 可用性 | 负载侧 5xx 比例、`/readyz` 探测 | ≥99.5% |
 | 首屏 | 客户端 `bff /feed`、`/aggregate/*` 时长 | P95 ≤3s（压测场景 p6 §2） |
 | 常规查询 | 服务端 API 时延 | P99 ≤1s（后调为 ≤3s 告警，见 alerts.md） |
+| 链路追踪 | `trace_id`/`span_id`（W3C Trace Context） | 日志与事件统一带 `trace_id`：请求头 `Traceparent` 透传，异步事件经 Outbox 续接，可端到端串联「请求 → 事件 → 订阅处理」 |

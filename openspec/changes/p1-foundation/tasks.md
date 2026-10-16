@@ -46,7 +46,7 @@
 - [x] 5.3 `kernel/config`：启动配置（环境变量 `CATCUBE_*`）三层配置的第一层
 - [x] 5.4 `kernel/settings`：`sys_settings`（scope+key+value+type+version+effective_at+operator）；模块注册 `SettingsSchema` 声明键/类型/范围/默认值/是否敏感；scope 取值顺序 space → platform（一期 space 恒 1）
 - [x] 5.5 `kernel/migrate`：按 DependsOn 拓扑执行、`sys_migration` 记录执行历史（expand → migrate → contract 三步式未实现，当前为普通版本迁移）
-- [ ] 5.6 `kernel/obs`：OpenTelemetry 封装（当前为 slog 结构化日志 + request_id 中间件；trace/metric 未接入）
+- [ ] 5.6 `kernel/obs`：OpenTelemetry 封装。**已完成无依赖前置**：slog 结构化日志 + `request_id`；W3C `traceparent` 透传/生成（日志含 `trace_id`/`span_id`，响应回写 traceparent）；事件与 Outbox 携带 `trace_id`、订阅方 ctx 续接（`TestIntegrationTracePropagation`）；Prometheus `/metrics` + 业务看板口径（`docs/ops/dashboards.md`）。**待办**：OTel SDK（Trace/Metric Exporter）与 Collector 接入（需联网引入依赖）
 - [x] 5.7 `/healthz`（存活）与 `/readyz`（依赖就绪）端点
 
 ## 6. kernel：事件、调度、状态机

@@ -4,6 +4,8 @@ package obs
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -19,7 +21,29 @@ const (
 	CtxRequestID ctxKey = "request_id"
 	CtxModule    ctxKey = "module"
 	CtxUserID    ctxKey = "user_id"
+	CtxTraceID   ctxKey = "trace_id"
+	CtxSpanID    ctxKey = "span_id"
 )
+
+// WithTrace 注入 trace 上下文（W3C Trace Context：trace_id 32 hex / span_id 16 hex）。
+func WithTrace(ctx context.Context, traceID, spanID string) context.Context {
+	return context.WithValue(context.WithValue(ctx, CtxTraceID, traceID), CtxSpanID, spanID)
+}
+
+// TraceID 取当前 trace id（无则空）。
+func TraceID(ctx context.Context) string {
+	if v, ok := ctx.Value(CtxTraceID).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// NewSpanID 生成 16 hex span id。
+func NewSpanID() string {
+	var b [8]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
+}
 
 // WithRequestID 注入请求 ID。
 func WithRequestID(ctx context.Context, id string) context.Context {
@@ -43,13 +67,19 @@ func Log(ctx context.Context) *slog.Logger {
 	if v, ok := ctx.Value(CtxUserID).(int64); ok {
 		l = l.With("user_id", v)
 	}
+	if v, ok := ctx.Value(CtxTraceID).(string); ok && v != "" {
+		l = l.With("trace_id", v)
+	}
+	if v, ok := ctx.Value(CtxSpanID).(string); ok && v != "" {
+		l = l.With("span_id", v)
+	}
 	return l
 }
 
 // MaskPhone 日志脱敏出口（手机号一律经此输出）。
 func MaskPhone(p string) string { return mask.Phone(p) }
 
-// RequestIDMiddleware 为每个请求注入 request_id 并写访问日志。
+// RequestIDMiddleware 为每个请求注入 request_id 与 trace 上下文（W3C traceparent 透传/生成）并写访问日志。
 func RequestIDMiddleware(next http.Handler) http.Handler {
 	var seq int64
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -59,10 +89,42 @@ func RequestIDMiddleware(next http.Handler) http.Handler {
 			id = time.Now().Format("20060102150405") + "-" + itoa(seq)
 		}
 		w.Header().Set("X-Request-ID", id)
+
+		// W3C traceparent: 00-<32hex trace>-<16hex span>-<flags>；缺省则新建
+		traceID, parentSpan := parseTraceparent(r.Header.Get("Traceparent"))
+		if traceID == "" {
+			traceID = randomHex(16) // 32 hex
+		}
+		spanID := NewSpanID()
+		w.Header().Set("Traceparent", "00-"+traceID+"-"+spanID+"-01")
+		_ = parentSpan
+
+		ctx := WithTrace(WithRequestID(r.Context(), id), traceID, spanID)
 		start := time.Now()
-		next.ServeHTTP(w, r.WithContext(WithRequestID(r.Context(), id)))
-		slog.Info("http", "request_id", id, "method", r.Method, "path", r.URL.Path, "dur_ms", time.Since(start).Milliseconds())
+		next.ServeHTTP(w, r.WithContext(ctx))
+		slog.Info("http", "request_id", id, "trace_id", traceID, "span_id", spanID,
+			"method", r.Method, "path", r.URL.Path, "dur_ms", time.Since(start).Milliseconds())
 	})
+}
+
+// parseTraceparent 解析 W3C traceparent，返回 trace_id 与 parent span_id（非法返回空）。
+func parseTraceparent(tp string) (traceID, spanID string) {
+	parts := strings.Split(tp, "-")
+	if len(parts) != 4 || len(parts[1]) != 32 || len(parts[2]) != 16 {
+		return "", ""
+	}
+	for _, ch := range parts[1] + parts[2] {
+		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) {
+			return "", ""
+		}
+	}
+	return parts[1], parts[2]
+}
+
+func randomHex(n int) string {
+	b := make([]byte, n)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 func itoa(n int64) string {

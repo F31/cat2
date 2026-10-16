@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -4421,5 +4422,48 @@ func TestIntegrationAIFlagGateAndDegrade(t *testing.T) {
 	long := strings.Repeat("长", 501)
 	if s, e := h.do(http.MethodPost, "/api/mp/v1/ai/publish-draft", tok, map[string]any{"kind": "project", "text": long}); s != http.StatusBadRequest || e.Code != 30002 {
 		t.Fatalf("超长输入应 400/030002: %d %+v", s, e)
+	}
+}
+
+// trace 贯通（p1 §5.6 前置）：请求 traceparent → 业务事件落 Outbox → 订阅方上下文续接 trace。
+func TestIntegrationTracePropagation(t *testing.T) {
+	h := newTestApp(t)
+	_, tok := loginUser(t, h)
+	ctx := context.Background()
+	tid := "4bf92f3577b34da6a3ce929d0e0e4736"
+
+	// 订阅一个捕获 trace 的处理器
+	var gotTrace atomic.Value
+	h.app.Bus.Register([]eventbus.Subscription{{Topic: "verify.CertificationApproved.v1", Handler: func(c context.Context, e eventbus.Event) error {
+		gotTrace.Store(obs.TraceID(c))
+		return nil
+	}}})
+
+	// 带 traceparent 发起实名认证（产生 verify 事件）
+	req, _ := http.NewRequest(http.MethodPost, h.srv.URL+"/api/mp/v1/certs", strings.NewReader(`{"cert_type":1,"real_name":"张三","id_card_no":"110101199003070019","agreed":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Traceparent", "00-"+tid+"-00f067aa0ba902b7-01")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.Header.Get("Traceparent") == "" {
+		t.Fatal("响应应回写 Traceparent")
+	}
+	// 事件已携带 trace 落库
+	var eventTrace string
+	if err := h.app.Pool.QueryRow(ctx, `
+		SELECT COALESCE(trace_id,'') FROM sys_outbox WHERE topic='verify.CertificationApproved.v1' ORDER BY occurred_at DESC LIMIT 1`).Scan(&eventTrace); err != nil {
+		t.Fatal(err)
+	}
+	if eventTrace != tid {
+		t.Fatalf("事件应携带请求 trace：期望 %s，实际 %q", tid, eventTrace)
+	}
+	// 投递后订阅方 ctx 续接 trace
+	relayAll(t, h)
+	if v, _ := gotTrace.Load().(string); v != tid {
+		t.Fatalf("订阅方 ctx 应续接 trace：期望 %s，实际 %q", tid, v)
 	}
 }
