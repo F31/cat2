@@ -1,0 +1,45 @@
+# OpenTelemetry Collector（S1 可观测；`profiles: ["observability"]` 可选启停）
+# 用法：
+#   CATCUBE_OTEL_ENABLED=true docker compose -f docker-compose.s1.yml --profile observability up -d
+# 说明：
+# - 接收 api/worker 的 OTLP gRPC（4317），批量处理后输出到 stdout（debug，便于本地核对）。
+# - 同时以 Prometheus 格式在 8889 暴露采集指标，供监控栈抓取（p6 §5.1）。
+# - 生产接入托管后端（Tempo/Jaeger/云 APM）时，在 exporters 增加对应 exporter 并加入 pipelines。
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 2s
+    send_batch_size: 512
+  memory_limiter:
+    check_interval: 2s
+    limit_percentage: 75
+    spike_limit_percentage: 20
+
+exporters:
+  debug:
+    verbosity: normal
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug, prometheus]

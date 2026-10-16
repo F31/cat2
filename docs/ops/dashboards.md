@@ -75,3 +75,26 @@
 | 首屏 | 客户端 `bff /feed`、`/aggregate/*` 时长 | P95 ≤3s（压测场景 p6 §2） |
 | 常规查询 | 服务端 API 时延 | P99 ≤1s（后调为 ≤3s 告警，见 alerts.md） |
 | 链路追踪 | `trace_id`/`span_id`（W3C Trace Context） | 日志与事件统一带 `trace_id`：请求头 `Traceparent` 透传，异步事件经 Outbox 续接，可端到端串联「请求 → 事件 → 订阅处理」 |
+
+## OpenTelemetry 接入（p1 §5.6 / p6 §5.1）
+
+服务端已内建 OTel SDK 接入点，**默认关闭**（与业务同口径：确认后再开），关闭时行为与既有轻量 trace/`/metrics` 完全一致。
+
+- 代码：`internal/adapters/otelx`（`Setup`：组装 OTLP gRPC Trace/Metric Exporter + Batch/Periodic 处理器 + W3C 传播器），`kernel/obs`（HTTP 中间件起 server span，续接上游 `traceparent`；`obs.SpanFromContext` 供业务补录属性）。
+- 环境变量：
+  | 变量 | 默认 | 说明 |
+  | --- | --- | --- |
+  | `CATCUBE_OTEL_ENABLED` | `false` | 总开关；关闭时全局保持 no-op |
+  | `CATCUBE_OTEL_ENDPOINT` | `otel-collector:4317` | OTLP gRPC 端点 |
+  | `CATCUBE_OTEL_SERVICE` | `catcube` | `service.name`（S1 中 api/worker 各设） |
+  | `CATCUBE_OTEL_INSECURE` | `true` | 集群内明文 gRPC |
+  | `CATCUBE_OTEL_SAMPLE_RATIO` | `1` | 采样比例（`ParentBased(TraceIDRatioBased)`，越界收敛为 1） |
+- 部署：`deploy/compose/otel-collector.yaml` + S1 编排 `otel-collector` 服务（`profiles: ["observability"]`，可选启停）。启用：
+  ```
+  CATCUBE_OTEL_ENABLED=true docker compose -f deploy/compose/docker-compose.s1.yml --profile observability up -d
+  ```
+  Collector 接收 OTLP（4317/4318），`debug` 输出到 stdout，并在 `:8889` 以 Prometheus 格式暴露指标供监控栈抓取。接入托管后端（Tempo/Jaeger/云 APM）时在 `otel-collector.yaml` 增加对应 exporter 并加入 pipelines。
+- 降级：导出端点不可达时 Exporter 异步失败且被静默（`otel.SetErrorHandler`），业务与日志不受影响；请求级 `trace_id` 仍由中间件生成/透传。
+
+测试：`internal/kernel/obs/obs_trace_test.go`（装配 SDK 时导出 server span 且父 span 续接上游；未装配时回退轻量生成）、`internal/adapters/otelx/otelx_test.go`（关闭 no-op / 启用构建与默认值）。
+

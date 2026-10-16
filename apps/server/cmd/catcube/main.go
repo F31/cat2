@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"catcube/internal/adapters/otelx"
 	"catcube/internal/app"
 	"catcube/internal/kernel/config"
 	"catcube/internal/kernel/obs"
@@ -40,6 +41,21 @@ func main() {
 
 	switch os.Args[1] {
 	case "serve":
+		// OTel SDK（p1 §5.6）：默认关闭；启用后导出 Trace/Metric 到 Collector
+		shutdownOTel, err := otelx.Setup(ctx, otelx.Config{
+			Enabled: cfg.OTelEnabled, ServiceName: cfg.OTelService, Endpoint: cfg.OTelEndpoint,
+			Insecure: cfg.OTelInsecure, SampleRatio: cfg.OTelSampleRatio,
+		})
+		if err != nil {
+			fatal(err)
+		}
+		defer func() {
+			sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := shutdownOTel(sctx); err != nil {
+				slog.Warn("otel 关闭异常", "err", err)
+			}
+		}()
 		a, err := app.Wire(ctx, cfg)
 		if err != nil {
 			fatal(err)

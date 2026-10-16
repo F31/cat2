@@ -12,8 +12,16 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
+
 	"catcube/pkg/mask"
 )
+
+// TracerName 服务端 trace 仪表名（span 名/属性约定见 p6 §5.1）。
+const TracerName = "catcube/http"
 
 type ctxKey string
 
@@ -88,6 +96,7 @@ func Log(ctx context.Context) *slog.Logger {
 func MaskPhone(p string) string { return mask.Phone(p) }
 
 // RequestIDMiddleware 为每个请求注入 request_id 与 trace 上下文（W3C traceparent 透传/生成）并写访问日志。
+// 已装配 OTel SDK 时记录 server span 并导出；未启用时回退轻量生成（日志/响应头仍可关联）。
 func RequestIDMiddleware(next http.Handler) http.Handler {
 	var seq int64
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -98,21 +107,39 @@ func RequestIDMiddleware(next http.Handler) http.Handler {
 		}
 		w.Header().Set("X-Request-ID", id)
 
-		// W3C traceparent: 00-<32hex trace>-<16hex span>-<flags>；缺省则新建
-		traceID, parentSpan := parseTraceparent(r.Header.Get("Traceparent"))
-		if traceID == "" {
-			traceID = randomHex(16) // 32 hex
+		// 提取上游 W3C trace context，起 server span（no-op 时不产生 span）
+		pctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+		pctx, span := otel.Tracer(TracerName).Start(pctx, r.Method+" "+r.URL.Path,
+			trace.WithSpanKind(trace.SpanKindServer),
+			trace.WithAttributes(attribute.String("http.request.method", r.Method), attribute.String("url.path", r.URL.Path)),
+		)
+		var traceID, spanID string
+		if sc := span.SpanContext(); sc.IsValid() {
+			traceID, spanID = sc.TraceID().String(), sc.SpanID().String()
+		} else {
+			// SDK 未启用：沿用上游 trace_id（若有），否则新建；span_id 每次新建
+			traceID, _ = parseTraceparent(r.Header.Get("Traceparent"))
+			if traceID == "" {
+				traceID = randomHex(16) // 32 hex
+			}
+			spanID = NewSpanID()
 		}
-		spanID := NewSpanID()
 		w.Header().Set("Traceparent", "00-"+traceID+"-"+spanID+"-01")
-		_ = parentSpan
 
-		ctx := WithTrace(WithRequestID(r.Context(), id), traceID, spanID)
+		ctx := WithTrace(WithRequestID(pctx, id), traceID, spanID)
 		start := time.Now()
 		next.ServeHTTP(w, r.WithContext(ctx))
+		dur := time.Since(start)
+		span.SetAttributes(attribute.Int64("http.server.duration_ms", dur.Milliseconds()))
+		span.End()
 		slog.Info("http", "request_id", id, "trace_id", traceID, "span_id", spanID,
-			"method", r.Method, "path", r.URL.Path, "dur_ms", time.Since(start).Milliseconds())
+			"method", r.Method, "path", r.URL.Path, "dur_ms", dur.Milliseconds())
 	})
+}
+
+// SpanFromContext 取当前 span（供业务补录属性；未装配 SDK 时返回 no-op span）。
+func SpanFromContext(ctx context.Context) trace.Span {
+	return trace.SpanFromContext(ctx)
 }
 
 // parseTraceparent 解析 W3C traceparent，返回 trace_id 与 parent span_id（非法返回空）。

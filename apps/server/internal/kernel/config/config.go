@@ -50,6 +50,13 @@ type Config struct {
 
 	// DevSMSCode 非空时作为固定短信验证码（开发/联调；生产必须留空）
 	DevSMSCode string
+
+	// OpenTelemetry（p1 §5.6 / p6 §5.1）：默认关闭；启用后经 OTLP gRPC 导出到 Collector
+	OTelEnabled     bool
+	OTelService     string
+	OTelEndpoint    string
+	OTelInsecure    bool
+	OTelSampleRatio float64
 }
 
 // FromEnv 读取环境变量。
@@ -74,7 +81,35 @@ func FromEnv() Config {
 		AlertReviewBacklog:   int(getenvInt("CATCUBE_ALERT_REVIEW_BACKLOG", 200)),
 		RedisAddr:            getenv("CATCUBE_REDIS_ADDR", ""),
 		RedisPassword:        getenv("CATCUBE_REDIS_PASSWORD", ""),
+		OTelEnabled:          getenvBool("CATCUBE_OTEL_ENABLED", false),
+		OTelService:          getenv("CATCUBE_OTEL_SERVICE", "catcube"),
+		OTelEndpoint:         getenv("CATCUBE_OTEL_ENDPOINT", "otel-collector:4317"),
+		OTelInsecure:         getenvBool("CATCUBE_OTEL_INSECURE", true),
+		OTelSampleRatio:      getenvFloat("CATCUBE_OTEL_SAMPLE_RATIO", 1),
 	}
+}
+
+func getenvBool(k string, def bool) bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv(k)))
+	switch v {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	}
+	return def
+}
+
+func getenvFloat(k string, def float64) float64 {
+	v := os.Getenv(k)
+	if v == "" {
+		return def
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return def
+	}
+	return f
 }
 
 func getenv(k, def string) string {
