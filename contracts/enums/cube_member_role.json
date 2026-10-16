@@ -1,0 +1,8 @@
+{ "name": "CubeMemberRole", "module": "cube", "note": "立方成员角色",
+  "values": [
+    { "key": "None", "value": 0, "label": "非成员" },
+    { "key": "Leader", "value": 1, "label": "猫王" },
+    { "key": "Honey", "value": 2, "label": "猫蜜" },
+    { "key": "Member", "value": 3, "label": "普通成员" },
+    { "key": "CoBuild", "value": 4, "label": "共建成员" }
+  ] }

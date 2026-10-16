@@ -16,7 +16,7 @@
 
 - [x] 2.1 `contracts/openapi/mp.yaml` 首版：统一响应信封、错误码、游标分页、`request_id`、`Idempotency-Key` 约定
 - [x] 2.2 契约生成：oapi-codegen → `internal/gen/`（Go types + std-http server），openapi-typescript → `packages/api-client/schema.d.ts`，`make gen` 一键完成
-- [ ] 2.3 `packages/domain-types`：事件类型已由 JSON Schema 生成（json2ts）；状态枚举/Reason 码等仍手写，待枚举入契约后改为生成
+- [x] 2.3 `packages/domain-types`：状态枚举入契约（`contracts/enums/*.json`，10 个：UserStatus/ModerationResult/OrderStatus/ContentStatus/MemberLevel/CubeStatus/CubeMemberRole/PlanLevel/CircleStatus/CircleType）→ `scripts/gen-enums.mjs` 生成 `enums.generated.ts`（含 Label 映射）并接入 `make gen`（事件类型仍 json2ts）；`TestEnumContractsMatchBackend` 保证契约与后端常量逐值一致；`index.ts` 移除手写枚举
 - [x] 2.4 事件契约：`contracts/events/identity.UserRegistered.v1.json`、`UserDeactivated.v1.json`、`AuthzChanged.v1.json` 三个 JSON Schema（含事件 ID、occurred_at、v1、space_id，不含敏感字段）
 - [x] 2.5 CI 校验生成物无漂移（make gen 后 git diff --exit-code）；事件 Schema 生产/订阅一致性校验待首个订阅方落地后细化
 - [x] 2.6 `contracts/errors/`：按模块分配错误码段（`MMNNNN`），18 个前缀全部登记占位

@@ -1,0 +1,6 @@
+{ "name": "CircleStatus", "module": "circle", "note": "圈子状态",
+  "values": [
+    { "key": "Active", "value": 0, "label": "进行中" },
+    { "key": "Ended", "value": 1, "label": "已结束" },
+    { "key": "Dissolved", "value": 2, "label": "已解散" }
+  ] }

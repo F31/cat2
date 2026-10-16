@@ -11,10 +11,10 @@ import (
 	circlecontract "catcube/internal/modules/circle/contract"
 	contentcontract "catcube/internal/modules/content/contract"
 	cubecontract "catcube/internal/modules/cube/contract"
-	"catcube/internal/modules/notice"
 	idcontract "catcube/internal/modules/identity/contract"
 	membershipcontract "catcube/internal/modules/membership/contract"
 	msgcontract "catcube/internal/modules/msg/contract"
+	"catcube/internal/modules/notice"
 	profilecontract "catcube/internal/modules/profile/contract"
 	socialcontract "catcube/internal/modules/social/contract"
 	tradecontract "catcube/internal/modules/trade/contract"
@@ -187,4 +187,67 @@ func contains(a []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// 枚举契约一致性（p1 §2.3）：contracts/enums/*.json 必须与后端常量逐值一致。
+// 防止「契约改了前端、后端没改」或反向漂移；新增枚举在此登记映射。
+func TestEnumContractsMatchBackend(t *testing.T) {
+	dir := contractsDir(t, "enums")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("读取枚举契约目录失败: %v", err)
+	}
+	// 契约枚举名 → 后端常量映射（名/值）
+	backend := map[string]map[string]int64{
+		"UserStatus":       {"Active": 0, "Limited": 1, "Banned": 2, "Deactivated": 3},
+		"ModerationResult": {"Pending": 0, "Passed": 1, "Rejected": 2, "Retry": 3},
+		"OrderStatus":      {"Pending": int64(tradecontract.StatusPending), "Paid": int64(tradecontract.StatusPaid), "Closed": int64(tradecontract.StatusClosed)},
+		"ContentStatus":    {"Reviewing": int64(contentcontract.StatusReviewing), "Published": int64(contentcontract.StatusPublished), "TakenDown": int64(contentcontract.StatusTakenDown)},
+		"MemberLevel":      {"VIP": int64(membershipcontract.LevelVIP), "SVIP": int64(membershipcontract.LevelSVIP), "Enterprise": int64(membershipcontract.LevelEnterprise)},
+		"CubeStatus":       {"Active": int64(cubecontract.CubeActive), "Banned": int64(cubecontract.CubeBanned), "Dissolved": int64(cubecontract.CubeDissolved)},
+		"CubeMemberRole":   {"None": int64(cubecontract.RoleNone), "Leader": int64(cubecontract.RoleLeader), "Honey": int64(cubecontract.RoleHoney), "Member": int64(cubecontract.RoleMember), "CoBuild": int64(cubecontract.RoleCoBuild)},
+		"PlanLevel":        {"Basic": int64(cubecontract.PlanBasic), "Plus": int64(cubecontract.PlanPlus), "Premium": int64(cubecontract.PlanPremium)},
+		"CircleStatus":     {"Active": int64(circlecontract.CircleActive), "Ended": int64(circlecontract.CircleEnded), "Dissolved": int64(circlecontract.CircleDissolved)},
+		"CircleType":       {"Permanent": int64(circlecontract.TypePermanent), "Temporary": int64(circlecontract.TypeTemporary)},
+	}
+	ns := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc struct {
+			Name   string `json:"name"`
+			Values []struct {
+				Key   string `json:"key"`
+				Value int64  `json:"value"`
+			} `json:"values"`
+		}
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			t.Fatalf("%s 解析失败: %v", e.Name(), err)
+		}
+		want, ok := backend[doc.Name]
+		if !ok {
+			t.Fatalf("契约枚举 %s 未在后端映射登记（新增枚举须同步登记）", doc.Name)
+		}
+		if len(want) != len(doc.Values) {
+			t.Fatalf("枚举 %s 值数量不一致：契约 %d / 后端 %d", doc.Name, len(doc.Values), len(want))
+		}
+		for _, v := range doc.Values {
+			bv, ok := want[v.Key]
+			if !ok {
+				t.Fatalf("枚举 %s 契约键 %s 后端缺失", doc.Name, v.Key)
+			}
+			if bv != v.Value {
+				t.Fatalf("枚举 %s.%s 不一致：契约 %d / 后端 %d", doc.Name, v.Key, v.Value, bv)
+			}
+		}
+		ns++
+	}
+	if ns < 8 {
+		t.Fatalf("枚举契约过少：%d", ns)
+	}
 }

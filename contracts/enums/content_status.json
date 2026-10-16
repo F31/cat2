@@ -1,0 +1,6 @@
+{ "name": "ContentStatus", "module": "content", "note": "内容状态",
+  "values": [
+    { "key": "Reviewing", "value": 0, "label": "审核中" },
+    { "key": "Published", "value": 1, "label": "展示中" },
+    { "key": "TakenDown", "value": 2, "label": "已下架" }
+  ] }

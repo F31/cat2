@@ -1,0 +1,5 @@
+{ "name": "CircleType", "module": "circle", "note": "圈子类型",
+  "values": [
+    { "key": "Permanent", "value": 1, "label": "常设" },
+    { "key": "Temporary", "value": 2, "label": "临时" }
+  ] }

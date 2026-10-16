@@ -1,6 +1,9 @@
 // 领域类型首版：与后端 contract 包一一对应。后续由契约生成管线产出，勿手写扩展。
 
 export * from './events'
+export * from './enums.generated'
+
+// 注意：状态枚举由 contracts/enums/*.json 生成（make gen），不得在此手写。
 
 /** EntityRef 实体引用：跨模块一律引用不复制。 */
 export interface EntityRef {
@@ -24,19 +27,3 @@ export interface Badge {
   level: number
 }
 
-/** 账号状态（identity）。 */
-export const UserStatus = {
-  Active: 0,
-  Disabled: 1,
-  Deactivated: 3,
-} as const
-export type UserStatus = (typeof UserStatus)[keyof typeof UserStatus]
-
-/** 审核结论（trust）。 */
-export const ModerationResult = {
-  Pending: 0,
-  Passed: 1,
-  Rejected: 2,
-  Retry: 3,
-} as const
-export type ModerationResult = (typeof ModerationResult)[keyof typeof ModerationResult]

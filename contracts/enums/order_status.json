@@ -1,0 +1,6 @@
+{ "name": "OrderStatus", "module": "trade", "note": "订单状态",
+  "values": [
+    { "key": "Pending", "value": 0, "label": "待支付" },
+    { "key": "Paid", "value": 1, "label": "已支付" },
+    { "key": "Closed", "value": 2, "label": "已关闭" }
+  ] }

@@ -1,0 +1,6 @@
+{ "name": "MemberLevel", "module": "membership", "note": "会员档位",
+  "values": [
+    { "key": "VIP", "value": 1, "label": "VIP" },
+    { "key": "SVIP", "value": 2, "label": "SVIP（预留不上架）" },
+    { "key": "Enterprise", "value": 3, "label": "企业版" }
+  ] }

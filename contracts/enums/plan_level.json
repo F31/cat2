@@ -1,0 +1,6 @@
+{ "name": "PlanLevel", "module": "cube", "note": "订阅档位",
+  "values": [
+    { "key": "Basic", "value": 1, "label": "基础" },
+    { "key": "Plus", "value": 2, "label": "进阶" },
+    { "key": "Premium", "value": 3, "label": "高阶" }
+  ] }

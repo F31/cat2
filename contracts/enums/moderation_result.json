@@ -1,0 +1,7 @@
+{ "name": "ModerationResult", "module": "trust", "note": "内容机检结论",
+  "values": [
+    { "key": "Pending", "value": 0, "label": "审核中" },
+    { "key": "Passed", "value": 1, "label": "通过" },
+    { "key": "Rejected", "value": 2, "label": "驳回" },
+    { "key": "Retry", "value": 3, "label": "机检超时待重试" }
+  ] }

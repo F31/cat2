@@ -1,0 +1,7 @@
+{ "name": "UserStatus", "module": "identity", "note": "账号状态",
+  "values": [
+    { "key": "Active", "value": 0, "label": "正常" },
+    { "key": "Limited", "value": 1, "label": "限制" },
+    { "key": "Banned", "value": 2, "label": "封禁" },
+    { "key": "Deactivated", "value": 3, "label": "已注销" }
+  ] }
