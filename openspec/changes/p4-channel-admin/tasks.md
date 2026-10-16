@@ -33,9 +33,9 @@
 - [◐] 3.2 权限点命名 `<module>:<resource>:<action>` 与注册表 `rbac.Registry()`、`Route.Perm` + `requirePerm` 守卫、菜单级过滤（`/menus` 按模块 + `ops.rbac`/`ops.system_settings` 特判）已落地；settings/feature-flags/finance 路由已标注 `ops:settings:*`/`ops:settings:read`；**待办**：其余模块 Admin 路由批量标注（action 级全覆盖）
 - [x] 3.3 服务端唯一权威（`requireAdmin`/`requirePerm`；403 记 `admin:access:denied`/`admin:perm:denied` 审计，`TestIntegrationAdminRBAC`）
 - [x] 3.4 后台登录安全：连续 **3 次（阈值可配 `admin.security.login_fail_threshold`）失败触发短信二次验证**（`AdminStepUpRequired`/`SendStepUpCode`/`VerifyStepUpCode` + `/api/admin/v1/auth/step-up[/code]`）；**IP 白名单超管可配**（`admin.security.ip_allowlist`，requireAdmin 强制）；admin-web「系统设置」页（登录安全/密码策略/短信网关/AI 网关 Tab）；`TestIntegrationAdminLoginSecurity`。（断网/误配锁定用 DB/CLI 改配置恢复）
-- [ ] 3.5 内核 policy「复核≠执行」互斥规则（同一结算单/退款单**执行打款人 ≠ 复核人**，仍为先复核后执行）；强制清单可配（见 3.12）
+- [◐] 3.5 内核 policy 双人复核（maker-checker）：`Engine.EnforceDualControl`/`CheckMakerChecker`（复核≠执行；复核≠申请；未复核不得执行）；**待办**：结算/退款/会员调整等实体加 `reviewed_by/executed_by` 并在执行环节调用（随 §2）
 - [x] 3.11 数据范围：`sys_admin_role` 增 `region_codes text[]` + `include_subtree`；`rbac.SetRoleScope`/`RegionScope`（多角色并集）/`RegionAllowed`（未限定=不限，含子区域按行政区划前缀匹配）；接口 `PUT /api/admin/v1/roles/{code}/scope` + admin-web「数据范围」；单测 `TestRegionAllowed` + 集成 `TestIntegrationAdminDataScope`。（渠道列表/导出的区域过滤随 §1/§2 数据接入）
-- [ ] 3.12 双人复核清单可配：`ops:policy:dual_control`（运营管理员后台配置，热生效），3.5 互斥规则读取该清单
+- [x] 3.12 双人复核清单可配：`policy.dual_control`（逗号分隔操作键，`off` 关闭；运营管理员在「系统设置·复核策略」维护，热生效）；`Engine.SetDualControlSource` 装配读取；单测 `TestDualControlOps/TestCheckMakerChecker/TestEnforceDualControl` + 集成 `TestIntegrationDualControlConfig`
 - [◐] 3.6 默认矩阵与负向用例已覆盖（`TestIntegrationAdminRBAC`：默认矩阵、反提权 denied、超管不可改、内置不可删、自定义角色增删）；**待办**：五角色×全权限点的完整表驱动矩阵用例
 - [◐] 3.7 菜单按 RBAC 过滤已落地（`/menus` 按模块过滤；`ops.rbac` 仅 `ops:rbac:manage`、`ops.system_settings` 仅 `ops:settings:read` 可见）；**待办**：角色数据范围过滤（随 3.11）
 - [x] 3.8 角色权限可配置：后台「角色与权限」页（`apps/admin-web/src/pages/Roles.tsx`）+ 接口（permissions/roles/roles/{code}/permissions/admin-users/{id}/roles）；自定义角色（内置不可删）；改动即时生效（无缓存直接查库）并审计 `ops:rbac:*`

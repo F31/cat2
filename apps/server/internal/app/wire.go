@@ -137,6 +137,14 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 
 	// 微信：配了 appid/secret 走真实接口，否则开发态假实现（登录链路可端到端跑通）
 	settingsReg := settings.NewRegistry(pg.NewSettings(pool))
+	// 双人复核清单来源（p4 §3.12）：从 settings 读取 `policy.dual_control`
+	policyEngine.SetDualControlSource(func(ctx context.Context) (string, bool) {
+		v, err := settingsReg.Get(ctx, 1, "policy.dual_control")
+		if err != nil {
+			return "", false
+		}
+		return v, true
+	})
 	identityDeps := identity.Deps{
 		Pool: pool, Bus: bus, Encryptor: encryptor, BlindKey: blindKey, DevSMSCode: cfg.DevSMSCode,
 		Audit: auditRec, Settings: settingsReg,

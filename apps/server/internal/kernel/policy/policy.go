@@ -39,8 +39,9 @@ type Rule struct {
 
 // Engine 授权引擎。
 type Engine struct {
-	providers []CapabilityProvider
-	rules     []Rule
+	providers  []CapabilityProvider
+	rules      []Rule
+	dualSource func(ctx context.Context) (string, bool) // 双人复核清单来源（p4 §3.12）
 }
 
 func NewEngine() *Engine { return &Engine{} }

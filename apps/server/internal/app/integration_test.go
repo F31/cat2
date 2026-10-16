@@ -6011,6 +6011,39 @@ func TestIntegrationAdminRBAC(t *testing.T) {
 	}
 }
 
+// 双人复核可配（p4 §3.12）：`policy.dual_control` 生效于策略引擎。
+func TestIntegrationDualControlConfig(t *testing.T) {
+	h := newTestApp(t)
+	ctx := context.Background()
+
+	if !h.app.Policy.DualControlEnabled(ctx, "trade:refund") {
+		t.Fatal("默认应强制退款双人复核")
+	}
+	if err := h.app.Policy.EnforceDualControl(ctx, "trade:refund", 5, 5, 0); err == nil {
+		t.Fatal("复核=执行应被拒绝")
+	}
+	if err := h.app.Policy.EnforceDualControl(ctx, "trade:refund", 6, 5, 4); err != nil {
+		t.Fatalf("复核≠执行且≠申请应放行: %v", err)
+	}
+
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO sys_settings (scope,key,value,type,version,updated_at)
+		VALUES ('platform','policy.dual_control','off','string',1,now())
+		ON CONFLICT (scope,key) DO UPDATE SET value='off', updated_at=now()`); err != nil {
+		t.Fatal(err)
+	}
+	if h.app.Policy.DualControlEnabled(ctx, "trade:refund") {
+		t.Fatal("off 应关闭双人复核")
+	}
+
+	if _, err := h.app.Pool.Exec(ctx, `DELETE FROM sys_settings WHERE scope='platform' AND key='policy.dual_control'`); err != nil {
+		t.Fatal(err)
+	}
+	if !h.app.Policy.DualControlEnabled(ctx, "trade:refund") {
+		t.Fatal("恢复后应回到默认清单")
+	}
+}
+
 // RBAC 数据范围（D5/§3.11）：多区域 + 含子区域；超管不可改。
 func TestIntegrationAdminDataScope(t *testing.T) {
 	h := newTestApp(t)

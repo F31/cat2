@@ -146,6 +146,11 @@ var Schemas = []settings.Schema{
 	{Key: "ai.gateway.enabled", Type: settings.TypeBool, Default: "false", Description: "是否启用独立 AI 网关（安全围栏）"},
 	{Key: "ai.gateway.url", Type: settings.TypeString, Default: "", Description: "AI 网关接入地址"},
 	{Key: "ai.gateway.key", Type: settings.TypeString, Default: "", Description: "AI 网关密钥（敏感；仅超管可见/修改）"},
+
+	// 系统设置 · 复核策略（p4 §3.12）：复核 ≠ 执行
+	{Key: "policy.dual_control", Type: settings.TypeString,
+		Default:     "trade:refund,channel:settlement,membership:adjust,channel:commission_rule,ops:export",
+		Description: "强制双人复核（复核≠执行）的操作清单（逗号分隔）；off=关闭（资金类不建议）"},
 }
 
 // handleAudits 审计查询（五维筛选）。

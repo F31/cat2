@@ -12,6 +12,12 @@ const TABS: Array<{ key: string; label: string; prefixes: string[]; hint: string
   },
   { key: 'sms', label: '短信网关', prefixes: ['sms.gateway.'], hint: '短信通道（验证码/通知）；dev=仅日志模拟。' },
   { key: 'ai', label: 'AI 网关', prefixes: ['ai.gateway.'], hint: '生成式 AI 独立网关（安全围栏，ADR-003）。' },
+  {
+    key: 'policy',
+    label: '复核策略',
+    prefixes: ['policy.'],
+    hint: '强制双人复核（复核≠执行）的操作清单，逗号分隔；off=关闭（资金类不建议关闭）。',
+  },
 ]
 
 function typeOf(key: string) {
