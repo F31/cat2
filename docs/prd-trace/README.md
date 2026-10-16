@@ -65,8 +65,9 @@
 
 | 验收点 | 状态 | 证据 / 说明 |
 | --- | --- | --- |
-| 各类认证必填材料与 8.4 一致、驳回可重提 | ✅ | `modules/verify`（cert_type 1–5）；`TestIntegrationVerifyRealname` |
-| 组织管理员审核成员核验；超 7 天平台代处理 | ◐ | 平台代处理走审核队列（trust SLA）；**组织侧管理员审核面板归 p4** |
+| 各类认证必填材料与 8.4 一致、驳回可重提 | ✅ | `verify` 五类（1 实名实时二要素；2~5 材料 ≤3，平台/企业审）；状态机 #3/#4；`TestIntegrationVerifyRealname`、`TestIntegrationVerifyCertTypesAndOrgAdmin`、`TestIntegrationVerifyStateMachines` |
+| 组织管理员审核成员核验；超 7 天平台代处理 | ✅ | 组织管理员机制（首任=企业认证申请人、邀请需确认、平台重置）+ 一人多单位核验（先到先处理）+ `POST /api/admin/v1/affiliations/{id}/resolve` 平台代处理；小程序「待核验（红点）」；`pages/verify` |
+| 认证标识统一机制（新增类型不改接口） | ✅ | `vfy_badge_def/grant` + 后台 `GET/PUT /api/admin/v1/badges`、`POST /badges/grant`；admin-web「认证标识」 |
 
 ## AI 一期（p5，受开关门禁）
 
@@ -105,9 +106,10 @@
 
 | 验收点 | 状态 | 证据 / 说明 |
 | --- | --- | --- |
-| 渠道管理七模块齐备、佣金比例/结算周期可配 | ❌ | p4 未开工；当前 admin-web 有用户/内容/订单/会员/审核/模板/死信/特性开关页 |
+| 渠道管理七模块齐备、佣金比例/结算周期可配 | ❌ | 依赖 channel 模块与 #13（预研见 `docs/modules/channel-预研.md`） |
+| 认证/归属/标识/导出/审计/看板后台能力 | ✅ | 五类认证审核与组织机制、标识配置、导出中心（对账/订单/用户/审核，水印+审计）、审计轨迹五维查询、看板四分组与漏斗 |
 | 猫立方与圈子的内容处置、封禁、批量操作 | ◐ | 内容下架/用户封禁 ✅；**批量操作归 p4** |
-| 数据概览口径与 6.5 一致 | ◐ | `/metrics` 看板口径见 `docs/ops/dashboards.md`；admin-web Dashboard 待对接 |
+| 数据概览口径与 6.5 一致 | ✅ | `GET /api/admin/v1/dashboard`（四分组）+ `/dashboard/funnel`；admin-web 概览页已对接；口径见 `docs/ops/dashboards.md` |
 
 ## 跨端一致性
 
