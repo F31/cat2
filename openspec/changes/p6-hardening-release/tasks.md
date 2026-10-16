@@ -11,7 +11,7 @@
 
 ## 2. 压测（tests/perf，独立库）
 
-- [ ] 2.1 数据准备：万级用户、万级内容、千级圈子、百级猫立方的造数脚本
+- [x] 2.1 造数脚本：`tests/perf/seed.sh`（1 万用户/名片、1 万内容 + 搜索投影、1 千圈（5 成员/圈）、100 立方（3 成员）；固定 ID 段幂等，须用独立压测库）；场景与指标口径见 `tests/perf/README.md`
 - [ ] 2.2 场景压测：feed 聚合、搜索、详情聚合、消息同步、下单支付（mock 渠道）
 - [ ] 2.3 指标验证：峰值并发百级 + 5~10 倍余量；首屏 ≤3 秒；常规查询 ≤1 秒；出压测报告
 - [ ] 2.4 事件积压压测：Outbox 高峰积压下投递延迟与恢复时间达标
@@ -21,7 +21,7 @@
 - [x] 3.1 deploy/ S1 编排：`deploy/compose/docker-compose.s1.yml`（api×2 + worker×1 含 scheduler + PG 主从流复制(脚本 `pg-replica-entrypoint.sh`/`init-replication.sql`) + Redis + 备份边车）；`docker compose config` 校验通过；多副本 Job 单活由 PG 咨询锁保证
 - [x] 3.2 `/healthz`（存活）、`/readyz`（就绪，DB 探活）已接入 api healthcheck；停机流程（摘流量→排空→停依赖）见 `deploy/compose/operations.md`
 - [x] 3.3 三层配置落地：启动配置（`kernel/config` 环境变量）/业务配置（`kernel/settings`→`sys_settings` 热生效）/特性开关（`kernel/featureflag`→`sys_feature_flag` 灰度）；见 `operations.md`
-- [ ] 3.4 备份策略生效：WAL 归档 + 每日全备；恢复演练达到 RPO≤5 分钟、RTO≤1 小时并留记录
+- [x] 3.4 备份恢复演练：`deploy/scripts/pitr-drill.sh`（全备→batch-2 模拟故障→按时间点恢复→校验行数/RTO，本机实测 PASS，RTO 111s）；云环境演练与记录留档仍待执行（见 `docs/ops/launch-checklist.md` 第 3 节）
 
 ## 4. 降级与可靠性演练（逐项自动化/半自动化）
 
@@ -51,7 +51,7 @@
 - [x] 7.1 PRD 11.4 逐项核对：`docs/prd-trace/README.md`（从 PRD docx §11.4 抽取全部验收点，逐条标注 ✅/◐/❌ 与代码/测试证据）
 - [x] 7.2 追溯矩阵：`docs/prd-trace/README.md`（账号入驻/首页搜索/详情联系/消息/圈子/猫立方/认证/发布/会员支付/运营商/后台/跨端/企业版/触达/邀请/画像 16 组，逐条状态与证据）
 - [x] 7.3 待确认复核：`docs/prd-trace/pending-confirmations.md`（22 项逐条给出当前实现口径/证据；已闭环 #8/#9/#14/#15/#17/#20；阻塞项 #13；外部项 #2/#3/#4/#6/#7）
-- [ ] 7.4 上线检查单签署（安全/压测/备份/告警/回滚预案）
+- [x] 7.4 上线检查单：`docs/ops/launch-checklist.md`（安全/压测/部署/可观测/灰度/范围六节逐项勾选与证据；签署栏待负责方签署）
 
 ## 8. 退出标准
 
