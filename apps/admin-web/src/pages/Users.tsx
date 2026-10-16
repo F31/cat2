@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Input, Modal, Space, Table, Tag, message } from 'antd'
+import { Button, Input, InputNumber, Modal, Select, Space, Table, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import { useNavigate } from 'react-router-dom'
 import { adminApi, type AdminUser } from '../api/admin'
 
 const STATUS: Record<number, { text: string; color: string }> = {
@@ -14,31 +15,43 @@ function errText(e: unknown): string {
   return e instanceof Error ? e.message : '操作失败'
 }
 
-// 用户列表与封禁/解封。
+// 用户检索与代操作（p4 §4.2/§4.3）：多条件筛选 + 封禁/解封/限制 + 用户 360。
 export default function Users() {
-  const [rows, setRows] = useState<AdminUser[]>([])
+  const [rows, setRows] = useState<Array<{
+    id: string
+    nickname: string
+    status: number
+    identity_type: number
+    realname_status: number
+    created_at: number
+    member_level: number
+    member_active: boolean
+  }>>([])
   const [loading, setLoading] = useState(false)
-  const [q, setQ] = useState('')
-  const [banTarget, setBanTarget] = useState<AdminUser | null>(null)
+  const [filters, setFilters] = useState<{ q?: string; phone?: string; status?: string; realname?: string; level?: string }>({})
+  const [banTarget, setBanTarget] = useState<{ id: string; nickname?: string } | null>(null)
+  const [restrictTarget, setRestrictTarget] = useState<{ id: string; nickname?: string } | null>(null)
   const [reason, setReason] = useState('')
+  const [days, setDays] = useState(7)
+  const nav = useNavigate()
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await adminApi.users({ q: q || undefined })
+      const res = await adminApi.governanceUsers({ ...filters, limit: 50 })
       setRows(res.items ?? [])
     } catch (e) {
       message.error(errText(e))
     } finally {
       setLoading(false)
     }
-  }, [q])
+  }, [filters])
 
   useEffect(() => {
     void load()
   }, [load])
 
-  const unban = async (u: AdminUser) => {
+  const unban = async (u: { id: string }) => {
     try {
       await adminApi.unbanUser(u.id)
       message.success('已解封')
@@ -60,7 +73,23 @@ export default function Users() {
     }
   }
 
-  const columns: ColumnsType<AdminUser> = [
+  const confirmRestrict = async () => {
+    if (!restrictTarget) return
+    if (!reason.trim()) {
+      message.warning('限制必须填写原因')
+      return
+    }
+    try {
+      await adminApi.restrictUser(restrictTarget.id, days, reason)
+      message.success(days > 0 ? `已限制 ${days} 天` : '已解除限制')
+      setRestrictTarget(null)
+      void load()
+    } catch (e) {
+      message.error(errText(e))
+    }
+  }
+
+  const columns: ColumnsType<(typeof rows)[number]> = [
     { title: 'ID', dataIndex: 'id' },
     { title: '昵称', dataIndex: 'nickname' },
     {
@@ -68,16 +97,38 @@ export default function Users() {
       dataIndex: 'status',
       render: (s: number) => <Tag color={STATUS[s]?.color}>{STATUS[s]?.text ?? s}</Tag>,
     },
-    { title: '手机', dataIndex: 'phone_masked' },
+    {
+      title: '实名',
+      dataIndex: 'realname_status',
+      render: (v: number) => (v === 1 ? <Tag color="green">已实名</Tag> : <Tag>未实名</Tag>),
+    },
+    {
+      title: '会员',
+      dataIndex: 'member_level',
+      render: (v: number, r) => (r.member_active && v > 0 ? <Tag color="blue">L{v}</Tag> : '—'),
+    },
     {
       title: '注册时间',
       dataIndex: 'created_at',
-      render: (t: string) => (t ? t.slice(0, 19).replace('T', ' ') : ''),
+      render: (t: number) => (t ? new Date(t * 1000).toLocaleString() : ''),
     },
     {
       title: '操作',
       render: (_, r) => (
         <Space>
+          <Button size="small" onClick={() => nav(`/users/${r.id}/360`)}>
+            360
+          </Button>
+          <Button
+            size="small"
+            onClick={() => {
+              setRestrictTarget(r)
+              setReason('')
+              setDays(7)
+            }}
+          >
+            限制
+          </Button>
           {r.status === 2 ? (
             <Button size="small" onClick={() => void unban(r)}>
               解封
@@ -101,17 +152,68 @@ export default function Users() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16 }}>
+      <Space wrap style={{ marginBottom: 16 }}>
         <Input
-          placeholder="按昵称搜索"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
+          placeholder="昵称模糊"
+          style={{ width: 160 }}
+          onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value || undefined }))}
           onPressEnter={() => void load()}
-          style={{ width: 240 }}
         />
-        <Button onClick={() => void load()}>搜索</Button>
+        <Input
+          placeholder="手机号（精确）"
+          style={{ width: 160 }}
+          onChange={(e) => setFilters((f) => ({ ...f, phone: e.target.value || undefined }))}
+        />
+        <Select
+          placeholder="状态"
+          style={{ width: 120 }}
+          allowClear
+          options={[
+            { value: '0', label: '正常' },
+            { value: '1', label: '限制' },
+            { value: '2', label: '停用' },
+            { value: '3', label: '注销' },
+          ]}
+          onChange={(v) => setFilters((f) => ({ ...f, status: v || undefined }))}
+        />
+        <Select
+          placeholder="实名"
+          style={{ width: 120 }}
+          allowClear
+          options={[
+            { value: '1', label: '已实名' },
+            { value: '0', label: '未实名' },
+          ]}
+          onChange={(v) => setFilters((f) => ({ ...f, realname: v || undefined }))}
+        />
+        <Select
+          placeholder="会员等级"
+          style={{ width: 140 }}
+          allowClear
+          options={[
+            { value: '1', label: 'VIP' },
+            { value: '2', label: 'SVIP' },
+            { value: '3', label: '企业版' },
+          ]}
+          onChange={(v) => setFilters((f) => ({ ...f, level: v || undefined }))}
+        />
+        <Button type="primary" onClick={() => void load()}>
+          查询
+        </Button>
       </Space>
       <Table rowKey="id" loading={loading} columns={columns} dataSource={rows} size="small" />
+      <Modal
+        title={`限制发布 ${restrictTarget?.nickname ?? ''}`}
+        open={!!restrictTarget}
+        onOk={() => void confirmRestrict()}
+        onCancel={() => setRestrictTarget(null)}
+        okText="确认（审计留痕）"
+      >
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <InputNumber min={0} max={365} value={days} onChange={(v) => setDays(Number(v) || 0)} addonAfter="天（0=解除）" />
+          <Input.TextArea rows={3} placeholder="限制原因（必填）" value={reason} onChange={(e) => setReason(e.target.value)} />
+        </Space>
+      </Modal>
       <Modal
         title="封禁用户"
         open={!!banTarget}

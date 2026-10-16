@@ -5241,3 +5241,121 @@ func TestIntegrationUser360(t *testing.T) {
 	}
 	_ = ctx
 }
+
+// 用户检索筛选与限制代操作（p4 §4.2/§4.3）：多条件筛选、手机号盲精确、限制/解除 + 审计。
+func TestIntegrationGovernanceUserSearchAndRestrict(t *testing.T) {
+	h := newTestApp(t)
+	_, admTok := loginAdmin(t, h)
+	ctx := context.Background()
+
+	// 目标用户：指定手机号 + 实名 + 会员
+	phone := "1390000" + fmt.Sprintf("%04d", time.Now().UnixNano()%10000)
+	target, targetTok := loginPhone(t, h, phone)
+	setCard(t, h, targetTok, "检索目标", "310000", []string{"A01"}, nil, nil)
+	if _, env := h.do(http.MethodPost, "/api/mp/v1/certs", targetTok, map[string]any{
+		"cert_type": 1, "real_name": "检索目标", "id_card_no": "310101199001010011", "agreed": true,
+	}); env.Code != 0 {
+		t.Fatalf("实名失败: %+v", env)
+	}
+	_, env := h.doH(http.MethodPost, "/api/mp/v1/orders", targetTok, map[string]any{
+		"biz_type": "member", "amount_fen": 9900,
+		"price_snapshot": map[string]any{"price_fen": 9900, "years": 1, "level": 1},
+	}, map[string]string{"Idempotency-Key": fmt.Sprintf("it-gov-%d", time.Now().UnixNano())})
+	var order struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &order)
+	payOrderAndNotify(t, h, targetTok, order.ID)
+	fulfillMemberOrder(t, h, order.ID)
+
+	type row struct {
+		ID             string `json:"id"`
+		Nickname       string `json:"nickname"`
+		RealnameStatus int16  `json:"realname_status"`
+		MemberLevel    int16  `json:"member_level"`
+		MemberActive   bool   `json:"member_active"`
+	}
+	search := func(query string) []row {
+		_, env := h.do(http.MethodGet, "/api/admin/v1/governance/users?"+query, admTok, nil)
+		var res struct {
+			Items []row `json:"items"`
+		}
+		_ = json.Unmarshal(env.Data, &res)
+		return res.Items
+	}
+	contains := func(rs []row, id int64) bool {
+		for _, r := range rs {
+			if r.ID == fmt.Sprintf("%d", id) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// 1) 手机号精确（盲索引）
+	if got := search("phone=" + phone); !contains(got, target) {
+		t.Fatalf("手机号精确检索应命中: %+v", got)
+	}
+	// 2) 手机号不匹配
+	if got := search("phone=13000000000"); contains(got, target) {
+		t.Fatal("无关手机号不应命中")
+	}
+	// 3) 昵称模糊（读库中真实昵称）+ 实名过滤
+	var nickname string
+	_ = h.app.Pool.QueryRow(ctx, `SELECT COALESCE(nickname,'') FROM idn_user WHERE id=$1`, target).Scan(&nickname)
+	if nickname != "" {
+		if got := search("q=" + nickname + "&realname=1"); !contains(got, target) {
+			t.Fatalf("昵称+实名筛选应命中: %+v", got)
+		}
+	}
+	if got := search("realname=1&phone=" + phone); !contains(got, target) {
+		t.Fatalf("实名+手机号筛选应命中: %+v", got)
+	}
+	// 4) 会员等级过滤（VIP=1）
+	got := search("level=1&phone=" + phone)
+	if !contains(got, target) {
+		t.Fatalf("会员等级筛选应命中: %+v", got)
+	}
+	for _, r := range got {
+		if r.ID == fmt.Sprintf("%d", target) && (r.MemberLevel != 1 || !r.MemberActive) {
+			t.Fatalf("应标注会员等级与生效态: %+v", r)
+		}
+	}
+	// 5) 非管理员访问 → 403（后台治理门槛）
+	if s, e := h.do(http.MethodGet, "/api/admin/v1/governance/users", targetTok, nil); s != http.StatusForbidden || e.Code != 3 {
+		t.Fatalf("非管理员应 403/3: %d %+v", s, e)
+	}
+
+	// 6) 限制发布（必须给原因）→ 受限生效 → 解除
+	if s, _ := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/users/%d/restrict", target), admTok, map[string]any{"days": 7, "reason": ""}); s != http.StatusBadRequest {
+		t.Fatalf("无原因应 400: %d", s)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/users/%d/restrict", target), admTok, map[string]any{"days": 7, "reason": "多次违规"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("限制失败: %d %+v", s, e)
+	}
+	// 受限期间发布内容应被拒（trust 限制门禁）
+	if _, env := h.do(http.MethodPost, "/api/mp/v1/contents", targetTok, map[string]any{
+		"kind": "project", "title": "受限发布",
+		"tagset": map[string]any{"region": "310000", "industry": []string{"A01"}},
+		"fields": map[string]any{"amount_wan": 1, "intro": "x"},
+	}); env.Code == 0 {
+		t.Fatal("受限用户发布应被拒")
+	}
+	// 审计：限制动作留痕
+	var auditN int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM sys_audit WHERE action='trust:user:restrict'`).Scan(&auditN)
+	if auditN == 0 {
+		t.Fatal("限制动作应写审计")
+	}
+	// 解除（days=0）
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/users/%d/restrict", target), admTok, map[string]any{"days": 0, "reason": "申诉通过"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("解除失败: %d %+v", s, e)
+	}
+	if _, env := h.do(http.MethodPost, "/api/mp/v1/contents", targetTok, map[string]any{
+		"kind": "project", "title": "解除后发布",
+		"tagset": map[string]any{"region": "310000", "industry": []string{"A01"}},
+		"fields": map[string]any{"amount_wan": 1, "intro": "x"},
+	}); env.Code != 0 {
+		t.Fatalf("解除后应可发布: %+v", env)
+	}
+}

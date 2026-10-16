@@ -170,6 +170,7 @@ const (
 	codeNoPermission   = 110002 // 110002 无权操作
 	codeFieldInvalid   = 110003 // 110003 字段校验失败
 	codeRealnameNeeded = 110004 // 110004 发布需实名
+	codeRestricted     = 110006 // 110006 账号处于限制期，禁止发布
 	codeKindUnknown    = 110005 // 110005 未知内容类型
 )
 
@@ -379,6 +380,8 @@ func httpStatus(code int) int {
 		return http.StatusUnauthorized
 	case codeForbidden, codeRealnameNeeded:
 		return http.StatusForbidden
+	case codeRestricted:
+		return http.StatusTooManyRequests
 	case codeItemNotFound:
 		return http.StatusNotFound
 	case codeParamInvalid, codeFieldInvalid, codeKindUnknown:

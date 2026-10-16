@@ -16,6 +16,7 @@ var (
 	ErrTitleRequired = errors.New("content: 标题必填")
 	ErrTitleTooLong  = errors.New("content: 标题超长（≤50字）")
 	ErrNotRealname   = errors.New("content: 发布需先完成实名认证")
+	ErrRestricted    = errors.New("content: 账号处于限制期，禁止发布")
 	ErrKindUnknown   = errors.New("content: 未知内容类型")
 )
 

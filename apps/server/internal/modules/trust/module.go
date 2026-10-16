@@ -65,6 +65,8 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/review-tasks", Handler: m.auth(m.handleQueue), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/review-tasks/{id}/resolve", Handler: m.auth(m.handleResolve), Admin: true},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/review-metrics", Handler: m.auth(m.handleMetrics), Admin: true},
+		// 限制发布（代操作；二次确认由前端负责，服务端审计）
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/users/{id}/restrict", Handler: m.auth(m.handleAdminRestrict), Admin: true},
 		// 审核辅助（AI 预分类/摘要，只读建议；未启用或上游不可用时 available=false，不影响审核）
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/review-tasks/{id}/suggestion", Handler: m.auth(m.handleSuggestion), Admin: true},
 	)
@@ -89,6 +91,7 @@ func (m *Module) Register(r *module.Registry) error {
 	)
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "trust:review:resolve", Path: "/api/admin/v1/review-tasks/{id}/resolve", Required: true, LogFailed: true, Module: "trust"},
+		audit.Point{Action: "trust:user:restrict", Path: "/api/admin/v1/users/{id}/restrict", Required: true, LogFailed: true, Module: "trust"},
 	)
 	r.CapProviders = append(r.CapProviders, capProvider{m})
 	// 订阅聊天消息（msg R1 事件，topic 字面量，不 import 高阶 contract）：异步机检，命中入审核队列。
@@ -339,6 +342,55 @@ func (m *Module) ViolationPoints(ctx context.Context, userID int64) (int, error)
 
 // SetSuggester 注入审核辅助提供者（装配根调用；nil=不提供建议）。
 func (m *Module) SetSuggester(s contract.Suggester) { m.suggester = s }
+
+// handleAdminRestrict 限制发布（days=限制天数；0 表示解除）。
+func (m *Module) handleAdminRestrict(w http.ResponseWriter, req *http.Request) {
+	id, err := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	var body struct {
+		Days   int    `json:"days"`
+		Reason string `json:"reason"`
+	}
+	if json.NewDecoder(req.Body).Decode(&body) != nil || body.Reason == "" {
+		writeErr(w, codeParamInvalid, "参数错误（必须给原因）")
+		return
+	}
+	days := body.Days
+	if days < 0 {
+		days = 0
+	}
+	if days == 0 {
+		// 解除：撤销生效中的限制记录
+		if _, err := m.deps.Pool.Exec(req.Context(),
+			`UPDATE trs_restriction SET lifted_at=now() WHERE user_id=$1 AND lifted_at IS NULL AND expires_at > now()`, id); err != nil {
+			writeErr(w, codeInternal, "服务错误")
+			return
+		}
+	} else if err := m.Restrict(req.Context(), id, days, body.Reason); err != nil {
+		writeErr(w, codeInternal, "服务错误")
+		return
+	}
+	if m.deps.Audit != nil {
+		_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+			ActorID: auditActor(req.Context()), ActorType: audit.ActorAdmin, Channel: "admin",
+			Action: "trust:user:restrict", Result: audit.ResultOK, IP: audit.ClientIP(req),
+			TargetRef: fmt.Sprintf(`{"id":"%d","type":"user"}`, id),
+			Detail:    map[string]any{"days": days, "reason": body.Reason},
+		})
+	}
+	writeData(w, map[string]any{"restricted": days > 0, "days": days})
+}
+
+// auditActor 取当前操作者（由模块 auth 注入）。
+func auditActor(ctx context.Context) int64 {
+	if v, ok := ctx.Value(ctxUserID{}).(int64); ok {
+		return v
+	}
+	return 0
+}
 
 // handleSuggestion 返回某审核任务的 AI 建议（只读；不影响审核流程）。
 func (m *Module) handleSuggestion(w http.ResponseWriter, req *http.Request) {

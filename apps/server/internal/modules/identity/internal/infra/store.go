@@ -78,13 +78,41 @@ type AdminUser struct {
 
 // AdminListUsers 后台用户列表（status<0 表示全部；q 模糊匹配昵称）。
 func (s *Store) AdminListUsers(ctx context.Context, status int16, q string, limit int) ([]AdminUser, error) {
+	// 仅按状态/昵称检索：其余维度置「不限」（-1），避免默认值变成实际过滤条件
+	return s.AdminSearchUsers(ctx, AdminUserFilter{Status: status, Q: q, Limit: limit, RealnameState: -1, IdentityType: -1})
+}
+
+// AdminUserFilter 后台用户检索条件（p4 §4.2）。
+type AdminUserFilter struct {
+	Status        int16  // -1 全部
+	Q             string // 昵称模糊
+	PhoneHMAC     []byte // 手机号盲索引精确
+	RealnameState int16  // -1 全部
+	IdentityType  int16  // -1 全部
+	FromUnix      int64
+	ToUnix        int64
+	Limit         int
+	Offset        int
+}
+
+// AdminSearchUsers 组合筛选检索。
+func (s *Store) AdminSearchUsers(ctx context.Context, f AdminUserFilter) ([]AdminUser, error) {
+	if f.Limit <= 0 || f.Limit > 200 {
+		f.Limit = 50
+	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, COALESCE(nickname,''), status, identity_type, COALESCE(realname_status,0), phone_enc, created_at
 		  FROM idn_user
 		 WHERE ($1 < 0 OR status=$1)
 		   AND ($2 = '' OR nickname ILIKE '%'||$2||'%')
+		   AND ($3::bytea IS NULL OR phone_hmac=$3)
+		   AND ($4 = -1 OR realname_status=$4)
+		   AND ($5 = -1 OR identity_type=$5)
+		   AND ($6 = 0 OR created_at >= to_timestamp($6))
+		   AND ($7 = 0 OR created_at < to_timestamp($7))
 		 ORDER BY created_at DESC NULLS LAST, id DESC
-		 LIMIT $3`, status, q, limit)
+		 LIMIT $8 OFFSET $9`,
+		f.Status, f.Q, f.PhoneHMAC, f.RealnameState, f.IdentityType, f.FromUnix, f.ToUnix, f.Limit, f.Offset)
 	if err != nil {
 		return nil, err
 	}

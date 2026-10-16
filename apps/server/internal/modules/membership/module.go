@@ -108,6 +108,28 @@ func (m *Module) Me(ctx context.Context, userID int64) (memcontract.Member, bool
 func (m *Module) LevelOf(ctx context.Context, userID int64) (int16, bool, error) {
 	return m.svc.LevelOf(ctx, userID)
 }
+func (m *Module) UserIDsByLevel(ctx context.Context, level int16, limit int) ([]int64, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 500
+	}
+	rows, err := m.deps.Pool.Query(ctx, `
+		SELECT user_id FROM mbr_member WHERE status=1 AND expires_at > now() AND ($1=0 OR level=$1)
+		ORDER BY expires_at DESC LIMIT $2`, level, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 func (m *Module) SubAccounts(ctx context.Context, masterID int64) ([]memcontract.SubAccount, error) {
 	return m.svc.SubAccounts(ctx, masterID)
 }

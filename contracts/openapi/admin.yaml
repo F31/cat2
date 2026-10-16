@@ -81,6 +81,45 @@ paths:
       responses:
         '200': { description: 下载地址, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
+  /governance/users:
+    get:
+      tags: [admin-governance]
+      summary: 用户检索筛选（昵称模糊/手机号盲精确/状态/实名/会员等级/注册时间）
+      operationId: adminGovernanceUsers
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: phone, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: integer } }
+        - { name: realname, in: query, schema: { type: integer } }
+        - { name: identity_type, in: query, schema: { type: integer } }
+        - { name: level, in: query, schema: { type: integer } }
+        - { name: from, in: query, schema: { type: integer } }
+        - { name: to, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+        - { name: offset, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /users/{id}/restrict:
+    post:
+      tags: [admin-governance]
+      summary: 限制发布/解除（days=0 解除；必须给原因；审计）
+      operationId: adminRestrictUser
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [days, reason]
+              properties:
+                days: { type: integer }
+                reason: { type: string }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /users/{id}/360:
     get:
       tags: [admin-governance]

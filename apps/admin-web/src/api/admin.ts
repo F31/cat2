@@ -214,6 +214,38 @@ export const adminApi = {
       steps: Array<{ key: string; label: string; users: number; conversion: number }>
     }>('GET', `/admin/v1/dashboard/funnel?days=${days}`)
   },
+  governanceUsers(f: {
+    q?: string
+    phone?: string
+    status?: string
+    realname?: string
+    level?: string
+    from?: string
+    to?: string
+    limit?: number
+    offset?: number
+  }) {
+    const qs = new URLSearchParams()
+    Object.entries(f).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, String(v))
+    })
+    return call<{
+      items: Array<{
+        id: string
+        nickname: string
+        status: number
+        identity_type: number
+        realname_status: number
+        created_at: number
+        member_level: number
+        member_active: boolean
+      }>
+    }>('GET', `/admin/v1/governance/users?${qs.toString()}`)
+  },
+  restrictUser(id: string, days: number, reason: string) {
+    return call<{ restricted: boolean; days: number }>('POST', `/admin/v1/users/${id}/restrict`, { days, reason })
+  },
+
   user360(id: string) {
     return call<{ user_id: string; sections: Record<string, Record<string, unknown>> }>(
       'GET',

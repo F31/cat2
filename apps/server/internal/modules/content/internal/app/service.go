@@ -77,6 +77,10 @@ func (s *Service) Publish(ctx context.Context, userID int64, in contentcontract.
 	if err := kind.Validate(k, in.Fields); err != nil {
 		return contentcontract.Item{}, err
 	}
+	// 限制期禁止发布（trust 提供 publish.allowed 能力）
+	if ok, err := s.hasCap(ctx, userID, "publish.allowed"); err == nil && !ok {
+		return contentcontract.Item{}, domain.ErrRestricted
+	}
 	if s.dict != nil {
 		if err := s.dict.ValidateTagSet(ctx, in.TagSet); err != nil {
 			return contentcontract.Item{}, fmt.Errorf("content: tagset 非法: %w", err)
@@ -139,11 +143,14 @@ func (s *Service) Submit(ctx context.Context, userID, itemID int64) (contentcont
 	if it.OwnerRef.ID != userID {
 		return contentcontract.Item{}, domain.ErrForbidden
 	}
-	// 发布门槛：已实名
+	// 发布门槛：已实名 + 非限制期（trust 提供 publish.allowed 能力）
 	if ok, err := s.hasCap(ctx, userID, "realname"); err != nil {
 		return contentcontract.Item{}, err
 	} else if !ok {
 		return contentcontract.Item{}, domain.ErrNotRealname
+	}
+	if ok, err := s.hasCap(ctx, userID, "publish.allowed"); err == nil && !ok {
+		return contentcontract.Item{}, domain.ErrRestricted
 	}
 	if it.Status != contentcontract.StatusReviewing {
 		return contentcontract.Item{}, fmt.Errorf("content: 当前状态不可提交")

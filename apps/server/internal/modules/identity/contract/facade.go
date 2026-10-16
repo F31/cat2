@@ -20,6 +20,29 @@ type Tokens struct {
 	ExpiresIn    int    `json:"expires_in"` // Access 有效期秒（2h）
 }
 
+// AdminUserRow 后台用户检索行（仅掩码/盲索引，无明文）。
+type AdminUserRow struct {
+	ID             int64  `json:"id,string"`
+	Nickname       string `json:"nickname"`
+	Status         int16  `json:"status"`
+	IdentityType   int16  `json:"identity_type"`
+	RealnameStatus int16  `json:"realname_status"`
+	CreatedAt      int64  `json:"created_at"`
+}
+
+// AdminUserFilter 后台检索条件（手机号走盲索引精确匹配；-1/0 表示不限）。
+type AdminUserFilter struct {
+	Status         int16  `json:"status"`
+	Q              string `json:"q"`
+	Phone          string `json:"phone"`
+	RealnameStatus int16  `json:"realname_status"`
+	IdentityType   int16  `json:"identity_type"`
+	FromUnix       int64  `json:"from"`
+	ToUnix         int64  `json:"to"`
+	Limit          int    `json:"limit"`
+	Offset         int    `json:"offset"`
+}
+
 // Facade identity 对外接口。
 type Facade interface {
 	// IsAdmin 是否平台管理员（后台路由硬门槛；p4 细化五角色）。
@@ -36,4 +59,6 @@ type Facade interface {
 	AuthzBump(ctx context.Context, userID int64) error
 	// MarkRealname 回写实名核验结果（verify 经此，不读 idn_user）。status 0未实名/1已实名/2核验失败。
 	MarkRealname(ctx context.Context, userID int64, status int16) error
+	// AdminSearchUsers 后台用户检索（昵称模糊/手机号盲精确/状态/实名/注册时间）。
+	AdminSearchUsers(ctx context.Context, f AdminUserFilter) ([]AdminUserRow, error)
 }

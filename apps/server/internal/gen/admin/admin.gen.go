@@ -415,6 +415,20 @@ type AdminSetFeatureFlagJSONBody struct {
 	Users   *[]int `json:"users,omitempty"`
 }
 
+// AdminGovernanceUsersParams defines parameters for AdminGovernanceUsers.
+type AdminGovernanceUsersParams struct {
+	Q            *string `form:"q,omitempty" json:"q,omitempty"`
+	Phone        *string `form:"phone,omitempty" json:"phone,omitempty"`
+	Status       *int    `form:"status,omitempty" json:"status,omitempty"`
+	Realname     *int    `form:"realname,omitempty" json:"realname,omitempty"`
+	IdentityType *int    `form:"identity_type,omitempty" json:"identity_type,omitempty"`
+	Level        *int    `form:"level,omitempty" json:"level,omitempty"`
+	From         *int    `form:"from,omitempty" json:"from,omitempty"`
+	To           *int    `form:"to,omitempty" json:"to,omitempty"`
+	Limit        *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset       *int    `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // AdminListMembersParams defines parameters for AdminListMembers.
 type AdminListMembersParams struct {
 	Level  *int `form:"level,omitempty" json:"level,omitempty"`
@@ -471,6 +485,12 @@ type AdminBanUserJSONBody struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
+// AdminRestrictUserJSONBody defines parameters for AdminRestrictUser.
+type AdminRestrictUserJSONBody struct {
+	Days   int    `json:"days"`
+	Reason string `json:"reason"`
+}
+
 // AdminResolveAffiliationJSONRequestBody defines body for AdminResolveAffiliation for application/json ContentType.
 type AdminResolveAffiliationJSONRequestBody AdminResolveAffiliationJSONBody
 
@@ -506,6 +526,9 @@ type AdminSetSettingJSONRequestBody AdminSetSettingJSONBody
 
 // AdminBanUserJSONRequestBody defines body for AdminBanUser for application/json ContentType.
 type AdminBanUserJSONRequestBody AdminBanUserJSONBody
+
+// AdminRestrictUserJSONRequestBody defines body for AdminRestrictUser for application/json ContentType.
+type AdminRestrictUserJSONRequestBody AdminRestrictUserJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -569,6 +592,9 @@ type ServerInterface interface {
 	// AdminRetryFulfillment 履约补偿重试（死信重置）
 	// (POST /fulfillments/{orderID}/retry)
 	AdminRetryFulfillment(w http.ResponseWriter, r *http.Request, orderID string)
+	// AdminGovernanceUsers 用户检索筛选（昵称模糊/手机号盲精确/状态/实名/会员等级/注册时间）
+	// (GET /governance/users)
+	AdminGovernanceUsers(w http.ResponseWriter, r *http.Request, params AdminGovernanceUsersParams)
 	// AdminListMembers 会员列表（按等级/状态）
 	// (GET /members)
 	AdminListMembers(w http.ResponseWriter, r *http.Request, params AdminListMembersParams)
@@ -614,6 +640,9 @@ type ServerInterface interface {
 	// AdminBanUser 封禁账号（递增 authz_ver，旧令牌立即失效；记录原因审计）
 	// (POST /users/{id}/ban)
 	AdminBanUser(w http.ResponseWriter, r *http.Request, id PathUserID)
+	// AdminRestrictUser 限制发布/解除（days=0 解除；必须给原因；审计）
+	// (POST /users/{id}/restrict)
+	AdminRestrictUser(w http.ResponseWriter, r *http.Request, id string)
 	// AdminUnbanUser 解封账号
 	// (POST /users/{id}/unban)
 	AdminUnbanUser(w http.ResponseWriter, r *http.Request, id PathUserID)
@@ -1241,6 +1270,156 @@ func (siw *ServerInterfaceWrapper) AdminRetryFulfillment(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// AdminGovernanceUsers operation middleware
+func (siw *ServerInterfaceWrapper) AdminGovernanceUsers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AdminGovernanceUsersParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "phone" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "phone", r.URL.Query(), &params.Phone, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "phone"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "phone", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "realname" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "realname", r.URL.Query(), &params.Realname, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "realname"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "realname", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "identity_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "identity_type", r.URL.Query(), &params.IdentityType, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "identity_type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "identity_type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "level" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "level", r.URL.Query(), &params.Level, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "level"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "level", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminGovernanceUsers(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminListMembers operation middleware
 func (siw *ServerInterfaceWrapper) AdminListMembers(w http.ResponseWriter, r *http.Request) {
 
@@ -1664,6 +1843,32 @@ func (siw *ServerInterfaceWrapper) AdminBanUser(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// AdminRestrictUser operation middleware
+func (siw *ServerInterfaceWrapper) AdminRestrictUser(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminRestrictUser(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminUnbanUser operation middleware
 func (siw *ServerInterfaceWrapper) AdminUnbanUser(w http.ResponseWriter, r *http.Request) {
 
@@ -1814,6 +2019,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports", wrapper.AdminExports)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/exports", wrapper.AdminCreateExport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports/{id}/download", wrapper.AdminDownloadExport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/governance/users", wrapper.AdminGovernanceUsers)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/users/{id}/restrict", wrapper.AdminRestrictUser)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/users/{id}/360", wrapper.AdminUser360)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/badges", wrapper.AdminBadgeDefs)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/badges/{code}", wrapper.AdminUpsertBadge)

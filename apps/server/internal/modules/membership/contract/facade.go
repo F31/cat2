@@ -50,6 +50,8 @@ type Facade interface {
 	Me(ctx context.Context, userID int64) (Member, bool, error)
 	// LevelOf 会员等级与是否生效（供 discovery 同分排序/权限）。
 	LevelOf(ctx context.Context, userID int64) (int16, bool, error)
+	// UserIDsByLevel 按等级列出生效中会员（治理检索用；limit 上限 500）。
+	UserIDsByLevel(ctx context.Context, level int16, limit int) ([]int64, error)
 	// SubAccounts 子账号列表（企业版主账号）。
 	SubAccounts(ctx context.Context, masterID int64) ([]SubAccount, error)
 	// InviteSub 邀请子账号（须已注册已实名；企业版子账号上限 3）。

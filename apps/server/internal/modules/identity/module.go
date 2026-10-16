@@ -134,6 +134,31 @@ func (m *Module) GrantAdmin(ctx context.Context, userID int64, admin bool) error
 	return err
 }
 
+// AdminSearchUsers 后台用户检索（手机号经盲索引精确匹配）。
+func (m *Module) AdminSearchUsers(ctx context.Context, f contract.AdminUserFilter) ([]contract.AdminUserRow, error) {
+	var phoneHMAC []byte
+	if f.Phone != "" {
+		phoneHMAC = sensitive.BlindIndex(m.deps.BlindKey, f.Phone)
+	}
+	rows, err := m.store.AdminSearchUsers(ctx, infra.AdminUserFilter{
+		Status: f.Status, Q: f.Q, PhoneHMAC: phoneHMAC, RealnameState: f.RealnameStatus,
+		IdentityType: f.IdentityType, FromUnix: f.FromUnix, ToUnix: f.ToUnix, Limit: f.Limit, Offset: f.Offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contract.AdminUserRow, 0, len(rows))
+	for _, u := range rows {
+		var created int64
+		if !u.CreatedAt.IsZero() {
+			created = u.CreatedAt.Unix()
+		}
+		out = append(out, contract.AdminUserRow{ID: u.ID, Nickname: u.Nickname, Status: u.Status,
+			IdentityType: u.IdentityType, RealnameStatus: u.RealnameStatus, CreatedAt: created})
+	}
+	return out, nil
+}
+
 // Facade 对外契约。
 func (m *Module) Facade() contract.Facade { return m }
 

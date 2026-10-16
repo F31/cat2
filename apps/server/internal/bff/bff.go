@@ -64,6 +64,8 @@ func (a *Aggregator) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/mp/v1/aggregate/circle-detail", a.optionalAuth(a.handleCircleDetail))
 	// 用户 360（后台治理，只读聚合；p4 §4.1）
 	mux.HandleFunc("GET /api/admin/v1/users/{id}/360", a.adminAuth(a.handleUser360))
+	// 用户检索筛选（p4 §4.2：昵称/手机号盲精确/状态/实名/会员等级/注册时间）
+	mux.HandleFunc("GET /api/admin/v1/governance/users", a.adminAuth(a.handleGovernanceUsers))
 }
 
 // CubeHomeData 猫立方首页聚合。
