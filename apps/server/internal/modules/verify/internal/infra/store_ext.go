@@ -291,3 +291,59 @@ func (s *Store) LatestOfType(ctx context.Context, userID int64, certType int16) 
 func (s *Store) GetAffiliationByUserOrg(ctx context.Context, userID, orgID int64) (Affiliation, error) {
 	return scanAff(s.pool.QueryRow(ctx, `SELECT `+affCols+` FROM vfy_affiliation WHERE user_id=$1 AND org_id=$2`, userID, orgID))
 }
+
+// BadgeDef 标识定义。
+type BadgeDef struct {
+	Code  string
+	Label string
+	Level int16
+	Style []byte
+}
+
+// BadgeDefs 全部标识定义。
+func (s *Store) BadgeDefs(ctx context.Context) ([]BadgeDef, error) {
+	rows, err := s.pool.Query(ctx, `SELECT code, label, level, COALESCE(style,'null'::jsonb) FROM vfy_badge_def ORDER BY level, code`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BadgeDef
+	for rows.Next() {
+		var d BadgeDef
+		if err := rows.Scan(&d.Code, &d.Label, &d.Level, &d.Style); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// UpsertBadgeDef 新增/更新标识定义（后台配置；新增类型不改接口）。
+func (s *Store) UpsertBadgeDef(ctx context.Context, tx db.Tx, d BadgeDef) error {
+	style := d.Style
+	if len(style) == 0 {
+		style = []byte("null")
+	}
+	_, err := tx.Exec(ctx, `
+		INSERT INTO vfy_badge_def (code, label, level, style) VALUES ($1,$2,$3,$4::jsonb)
+		ON CONFLICT (code) DO UPDATE SET label=EXCLUDED.label, level=EXCLUDED.level, style=EXCLUDED.style`,
+		d.Code, d.Label, d.Level, style)
+	return err
+}
+
+// SetBadgeGrant 授予/撤销标识（幂等）。
+func (s *Store) SetBadgeGrant(ctx context.Context, tx db.Tx, subjectType string, subjectID int64, code string, grant bool) error {
+	if grant {
+		_, err := tx.Exec(ctx, `
+			INSERT INTO vfy_badge_grant (subject_type, subject_id, badge_code, granted_at, revoked_at)
+			VALUES ($1,$2,$3,now(),NULL)
+			ON CONFLICT (subject_type, subject_id, badge_code) DO UPDATE SET revoked_at=NULL, granted_at=now()`,
+			subjectType, subjectID, code)
+		return err
+	}
+	_, err := tx.Exec(ctx, `
+		UPDATE vfy_badge_grant SET revoked_at=now()
+		WHERE subject_type=$1 AND subject_id=$2 AND badge_code=$3 AND revoked_at IS NULL`,
+		subjectType, subjectID, code)
+	return err
+}

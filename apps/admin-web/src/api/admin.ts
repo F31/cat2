@@ -203,7 +203,30 @@ export const adminApi = {
     return call<{ url: string }>('GET', `/admin/v1/exports/${id}/download`)
   },
   dashboard() {
-    return call<{ metrics: Record<string, number> }>('GET', '/admin/v1/dashboard')
+    return call<{ metrics: Record<string, number>; sections: Record<string, Record<string, number>> }>(
+      'GET',
+      '/admin/v1/dashboard',
+    )
+  },
+  dashboardFunnel(days = 7) {
+    return call<{
+      days: number
+      steps: Array<{ key: string; label: string; users: number; conversion: number }>
+    }>('GET', `/admin/v1/dashboard/funnel?days=${days}`)
+  },
+  badgeDefs() {
+    return call<{ items: Array<{ code: string; label: string; level: number }> }>('GET', '/admin/v1/badges')
+  },
+  upsertBadge(code: string, label: string, level: number) {
+    return call<{ saved: boolean }>('PUT', `/admin/v1/badges/${code}`, { label, level })
+  },
+  grantBadge(subjectType: string, subjectId: string, code: string, grant: boolean) {
+    return call<{ ok: boolean }>('POST', '/admin/v1/badges/grant', {
+      subject_type: subjectType,
+      subject_id: subjectId,
+      code,
+      grant,
+    })
   },
 
   audits(f: { actor_id?: string; action?: string; result?: string; target_ref?: string; limit?: number }) {

@@ -193,3 +193,51 @@ func (m *Module) handleResetOrgAdmin(w http.ResponseWriter, req *http.Request) {
 }
 
 var _ = fmt.Sprintf
+
+// ---- 认证标识配置（p4 §6.7）----
+
+func (m *Module) handleBadgeDefs(w http.ResponseWriter, req *http.Request) {
+	defs, err := m.svc.BadgeDefs(req.Context())
+	if err != nil {
+		writeVerifyErrExt(w, err)
+		return
+	}
+	writeData(w, map[string]any{"items": defs})
+}
+
+func (m *Module) handleUpsertBadge(w http.ResponseWriter, req *http.Request) {
+	code := req.PathValue("code")
+	var body struct {
+		Label string          `json:"label"`
+		Level int16           `json:"level"`
+		Style json.RawMessage `json:"style"`
+	}
+	if code == "" || json.NewDecoder(req.Body).Decode(&body) != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	if err := m.svc.UpsertBadgeDef(req.Context(), code, body.Label, body.Level, body.Style); err != nil {
+		writeVerifyErrExt(w, err)
+		return
+	}
+	writeData(w, map[string]any{"saved": true})
+}
+
+func (m *Module) handleGrantBadge(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		SubjectType string `json:"subject_type"`
+		SubjectID   string `json:"subject_id"`
+		Code        string `json:"code"`
+		Grant       bool   `json:"grant"`
+	}
+	if json.NewDecoder(req.Body).Decode(&body) != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	sid, _ := strconv.ParseInt(body.SubjectID, 10, 64)
+	if err := m.svc.SetBadgeGrant(req.Context(), body.SubjectType, sid, body.Code, body.Grant); err != nil {
+		writeVerifyErrExt(w, err)
+		return
+	}
+	writeData(w, map[string]any{"ok": true})
+}

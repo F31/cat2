@@ -38,6 +38,24 @@ func (e ContentItemKind) Valid() bool {
 	}
 }
 
+// Defines values for AdminGrantBadgeJSONBodySubjectType.
+const (
+	Org  AdminGrantBadgeJSONBodySubjectType = "org"
+	User AdminGrantBadgeJSONBodySubjectType = "user"
+)
+
+// Valid indicates whether the value is a known member of the AdminGrantBadgeJSONBodySubjectType enum.
+func (e AdminGrantBadgeJSONBodySubjectType) Valid() bool {
+	switch e {
+	case Org:
+		return true
+	case User:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AdminListContentsParamsKind.
 const (
 	AdminListContentsParamsKindEvent   AdminListContentsParamsKind = "event"
@@ -321,6 +339,24 @@ type AdminAuditsParams struct {
 	Limit     *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// AdminGrantBadgeJSONBody defines parameters for AdminGrantBadge.
+type AdminGrantBadgeJSONBody struct {
+	Code        string                             `json:"code"`
+	Grant       bool                               `json:"grant"`
+	SubjectId   string                             `json:"subject_id"`
+	SubjectType AdminGrantBadgeJSONBodySubjectType `json:"subject_type"`
+}
+
+// AdminGrantBadgeJSONBodySubjectType defines parameters for AdminGrantBadge.
+type AdminGrantBadgeJSONBodySubjectType string
+
+// AdminUpsertBadgeJSONBody defines parameters for AdminUpsertBadge.
+type AdminUpsertBadgeJSONBody struct {
+	Label string                  `json:"label"`
+	Level *int                    `json:"level,omitempty"`
+	Style *map[string]interface{} `json:"style,omitempty"`
+}
+
 // AdminPendingCertsParams defines parameters for AdminPendingCerts.
 type AdminPendingCertsParams struct {
 	ReviewerType *int `form:"reviewer_type,omitempty" json:"reviewer_type,omitempty"`
@@ -346,6 +382,11 @@ type AdminListContentsParamsKind string
 // AdminTakedownContentJSONBody defines parameters for AdminTakedownContent.
 type AdminTakedownContentJSONBody struct {
 	Reason string `json:"reason"`
+}
+
+// AdminDashboardFunnelParams defines parameters for AdminDashboardFunnel.
+type AdminDashboardFunnelParams struct {
+	Days *int `form:"days,omitempty" json:"days,omitempty"`
 }
 
 // AdminExportsParams defines parameters for AdminExports.
@@ -430,6 +471,12 @@ type AdminBanUserJSONBody struct {
 // AdminResolveAffiliationJSONRequestBody defines body for AdminResolveAffiliation for application/json ContentType.
 type AdminResolveAffiliationJSONRequestBody AdminResolveAffiliationJSONBody
 
+// AdminGrantBadgeJSONRequestBody defines body for AdminGrantBadge for application/json ContentType.
+type AdminGrantBadgeJSONRequestBody AdminGrantBadgeJSONBody
+
+// AdminUpsertBadgeJSONRequestBody defines body for AdminUpsertBadge for application/json ContentType.
+type AdminUpsertBadgeJSONRequestBody AdminUpsertBadgeJSONBody
+
 // AdminReviewCertJSONRequestBody defines body for AdminReviewCert for application/json ContentType.
 type AdminReviewCertJSONRequestBody AdminReviewCertJSONBody
 
@@ -468,6 +515,15 @@ type ServerInterface interface {
 	// AdminAuditDetail 审计详情（含哈希链字段与快照）
 	// (GET /audits/{id})
 	AdminAuditDetail(w http.ResponseWriter, r *http.Request, id string)
+	// AdminBadgeDefs 认证标识定义列表（后台可配，新增类型不改接口）
+	// (GET /badges)
+	AdminBadgeDefs(w http.ResponseWriter, r *http.Request)
+	// AdminGrantBadge 授予/撤销认证标识（代操作，审计）
+	// (POST /badges/grant)
+	AdminGrantBadge(w http.ResponseWriter, r *http.Request)
+	// AdminUpsertBadge 新增/更新认证标识定义
+	// (PUT /badges/{code})
+	AdminUpsertBadge(w http.ResponseWriter, r *http.Request, code string)
 	// AdminPendingCerts 待审认证列表（reviewer_type：1 平台/2 企业）
 	// (GET /certs/pending)
 	AdminPendingCerts(w http.ResponseWriter, r *http.Request, params AdminPendingCertsParams)
@@ -483,6 +539,9 @@ type ServerInterface interface {
 	// AdminDashboard 数据概览（12+ 项核心指标，口径见 docs/ops/dashboards.md）
 	// (GET /dashboard)
 	AdminDashboard(w http.ResponseWriter, r *http.Request)
+	// AdminDashboardFunnel 漏斗看板（注册→画像→匹配点击→联系发起→支付成功）
+	// (GET /dashboard/funnel)
+	AdminDashboardFunnel(w http.ResponseWriter, r *http.Request, params AdminDashboardFunnelParams)
 	// AdminDeadLetters 死信队列（按时间倒序）
 	// (GET /dead-letters)
 	AdminDeadLetters(w http.ResponseWriter, r *http.Request)
@@ -726,6 +785,60 @@ func (siw *ServerInterfaceWrapper) AdminAuditDetail(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// AdminBadgeDefs operation middleware
+func (siw *ServerInterfaceWrapper) AdminBadgeDefs(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminBadgeDefs(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminGrantBadge operation middleware
+func (siw *ServerInterfaceWrapper) AdminGrantBadge(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminGrantBadge(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminUpsertBadge operation middleware
+func (siw *ServerInterfaceWrapper) AdminUpsertBadge(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminUpsertBadge(w, r, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminPendingCerts operation middleware
 func (siw *ServerInterfaceWrapper) AdminPendingCerts(w http.ResponseWriter, r *http.Request) {
 
@@ -888,6 +1001,39 @@ func (siw *ServerInterfaceWrapper) AdminDashboard(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminDashboard(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminDashboardFunnel operation middleware
+func (siw *ServerInterfaceWrapper) AdminDashboardFunnel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AdminDashboardFunnelParams
+
+	// ------------- Optional query parameter "days" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "days", r.URL.Query(), &params.Days, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "days"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "days", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminDashboardFunnel(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1636,6 +1782,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports", wrapper.AdminExports)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/exports", wrapper.AdminCreateExport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports/{id}/download", wrapper.AdminDownloadExport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/badges", wrapper.AdminBadgeDefs)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/badges/{code}", wrapper.AdminUpsertBadge)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/badges/grant", wrapper.AdminGrantBadge)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/dashboard/funnel", wrapper.AdminDashboardFunnel)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/dashboard", wrapper.AdminDashboard)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/audits", wrapper.AdminAudits)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/audits/{id}", wrapper.AdminAuditDetail)

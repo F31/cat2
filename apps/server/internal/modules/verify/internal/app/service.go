@@ -44,6 +44,9 @@ type Repo interface {
 	CertsOf(ctx context.Context, userID int64) ([]infra.Cert, error)
 	GrantBadge(ctx context.Context, tx db.Tx, subjectType string, subjectID int64, code string) error
 	BadgesOf(ctx context.Context, subjectType string, subjectID int64) ([]contract.Badge, error)
+	BadgeDefs(ctx context.Context) ([]infra.BadgeDef, error)
+	UpsertBadgeDef(ctx context.Context, tx db.Tx, d infra.BadgeDef) error
+	SetBadgeGrant(ctx context.Context, tx db.Tx, subjectType string, subjectID int64, code string, grant bool) error
 }
 
 // Options 构造参数。
@@ -184,6 +187,37 @@ func (s *Service) CertsOf(ctx context.Context, userID int64) ([]contract.Cert, e
 // BadgesOf 某实体标识。
 func (s *Service) BadgesOf(ctx context.Context, ref entityref.Ref) ([]contract.Badge, error) {
 	return s.repo.BadgesOf(ctx, ref.Type, ref.ID)
+}
+
+// BadgeDefs 标识定义列表（后台配置）。
+func (s *Service) BadgeDefs(ctx context.Context) ([]infra.BadgeDef, error) {
+	return s.repo.BadgeDefs(ctx)
+}
+
+// UpsertBadgeDef 新增/更新标识定义。
+func (s *Service) UpsertBadgeDef(ctx context.Context, code, label string, level int16, style []byte) error {
+	if code == "" || label == "" {
+		return domain.ErrUnsupportedCertType
+	}
+	if level < 1 {
+		level = 1
+	}
+	if level > 3 {
+		level = 3
+	}
+	return s.pool.InTx(ctx, func(tx db.Tx) error {
+		return s.repo.UpsertBadgeDef(ctx, tx, infra.BadgeDef{Code: code, Label: label, Level: level, Style: style})
+	})
+}
+
+// SetBadgeGrant 授予/撤销标识（后台代操作）。
+func (s *Service) SetBadgeGrant(ctx context.Context, subjectType string, subjectID int64, code string, grant bool) error {
+	if subjectType != "user" && subjectType != "org" {
+		return domain.ErrUnsupportedCertType
+	}
+	return s.pool.InTx(ctx, func(tx db.Tx) error {
+		return s.repo.SetBadgeGrant(ctx, tx, subjectType, subjectID, code, grant)
+	})
 }
 
 // IsRealname 是否已实名。

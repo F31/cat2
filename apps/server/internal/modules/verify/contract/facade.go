@@ -100,11 +100,26 @@ type OrgAdmin struct {
 	Status      int16 `json:"status"`
 	ConfirmedAt int64 `json:"confirmed_at,omitempty"`
 }
+
+// BadgeDef 标识定义（后台可配：新增类型=加配置+前端样式，不改接口）。
+type BadgeDef struct {
+	Code  string `json:"code"`
+	Label string `json:"label"`
+	Level int16  `json:"level"`
+	Style any    `json:"style,omitempty"`
+}
+
 type Facade interface {
 	// Certify 提交认证（一期实名：第三方二要素实时核验；通过即授予 Badge）。
 	Certify(ctx context.Context, userID int64, in CertifyInput) (Cert, error)
 	// CertsOf 某账号的认证记录。
 	CertsOf(ctx context.Context, userID int64) ([]Cert, error)
+	// BadgeDefs 标识定义列表。
+	BadgeDefs(ctx context.Context) ([]BadgeDef, error)
+	// UpsertBadgeDef 新增/更新标识定义。
+	UpsertBadgeDef(ctx context.Context, code, label string, level int16, style []byte) error
+	// SetBadgeGrant 授予/撤销标识（subjectType=user/org）。
+	SetBadgeGrant(ctx context.Context, subjectType string, subjectID int64, code string, grant bool) error
 	// BadgesOf 某实体的标识（user/org）。
 	BadgesOf(ctx context.Context, ref entityref.Ref) ([]Badge, error)
 	// IsRealname 是否已实名（能力查询）。

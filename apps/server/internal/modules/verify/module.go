@@ -67,6 +67,10 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/affiliations/{id}/verify", Handler: m.auth(m.handleVerifyAffiliation)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/affiliations/{id}/primary", Handler: m.auth(m.handleSetPrimary)},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/affiliations/{id}/resolve", Handler: m.auth(m.handleResolveAffiliation), Admin: true},
+		// 认证标识配置（后台：新增类型=加配置，不改接口）
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/badges", Handler: m.auth(m.handleBadgeDefs), Admin: true},
+		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/badges/{code}", Handler: m.auth(m.handleUpsertBadge), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/badges/grant", Handler: m.auth(m.handleGrantBadge), Admin: true},
 		// 组织管理员机制
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/orgs/{id}/admins", Handler: m.auth(m.handleInviteOrgAdmin)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/orgs/{id}/admins", Handler: m.auth(m.handleOrgAdmins)},
@@ -77,6 +81,8 @@ func (m *Module) Register(r *module.Registry) error {
 		audit.Point{Action: "verify:cert:review", Path: "/api/admin/v1/certs/{id}/review", Required: true, LogFailed: true, Module: "verify"},
 		audit.Point{Action: "verify:affiliation:resolve", Path: "/api/admin/v1/affiliations/{id}/resolve", Required: true, LogFailed: true, Module: "verify"},
 		audit.Point{Action: "verify:org_admin:reset", Path: "/api/admin/v1/orgs/{id}/admins/reset", Required: true, LogFailed: true, Module: "verify"},
+		audit.Point{Action: "verify:badge:config", Path: "/api/admin/v1/badges/{code}", Required: true, LogFailed: true, Module: "verify"},
+		audit.Point{Action: "verify:badge:grant", Path: "/api/admin/v1/badges/grant", Required: true, LogFailed: true, Module: "verify"},
 	)
 	r.StateMachines = append(r.StateMachines, domain.RealnameMachine, domain.MachineCert, domain.MachineAffiliation)
 	r.CapProviders = append(r.CapProviders, capProvider{m})
@@ -94,6 +100,30 @@ func (m *Module) Certify(ctx context.Context, userID int64, in contract.CertifyI
 func (m *Module) CertsOf(ctx context.Context, userID int64) ([]contract.Cert, error) {
 	return m.svc.CertsOf(ctx, userID)
 }
+func (m *Module) BadgeDefs(ctx context.Context) ([]contract.BadgeDef, error) {
+	defs, err := m.svc.BadgeDefs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contract.BadgeDef, 0, len(defs))
+	for _, d := range defs {
+		var style any
+		if len(d.Style) > 0 {
+			_ = json.Unmarshal(d.Style, &style)
+		}
+		out = append(out, contract.BadgeDef{Code: d.Code, Label: d.Label, Level: d.Level, Style: style})
+	}
+	return out, nil
+}
+
+func (m *Module) UpsertBadgeDef(ctx context.Context, code, label string, level int16, style []byte) error {
+	return m.svc.UpsertBadgeDef(ctx, code, label, level, style)
+}
+
+func (m *Module) SetBadgeGrant(ctx context.Context, subjectType string, subjectID int64, code string, grant bool) error {
+	return m.svc.SetBadgeGrant(ctx, subjectType, subjectID, code, grant)
+}
+
 func (m *Module) ReviewCert(ctx context.Context, certID, reviewerID int64, reviewerType int16, pass bool, reason string) error {
 	return m.svc.ReviewCert(ctx, certID, reviewerID, reviewerType, pass, reason)
 }

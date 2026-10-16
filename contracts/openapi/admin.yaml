@@ -81,6 +81,61 @@ paths:
       responses:
         '200': { description: 下载地址, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
+  /badges:
+    get:
+      tags: [admin-governance]
+      summary: 认证标识定义列表（后台可配，新增类型不改接口）
+      operationId: adminBadgeDefs
+      responses:
+        '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /badges/{code}:
+    put:
+      tags: [admin-governance]
+      summary: 新增/更新认证标识定义
+      operationId: adminUpsertBadge
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label]
+              properties:
+                label: { type: string }
+                level: { type: integer }
+                style: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /badges/grant:
+    post:
+      tags: [admin-governance]
+      summary: 授予/撤销认证标识（代操作，审计）
+      operationId: adminGrantBadge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject_type, subject_id, code, grant]
+              properties:
+                subject_type: { type: string, enum: [user, org] }
+                subject_id: { type: string }
+                code: { type: string }
+                grant: { type: boolean }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /dashboard/funnel:
+    get:
+      tags: [admin-governance]
+      summary: 漏斗看板（注册→画像→匹配点击→联系发起→支付成功）
+      operationId: adminDashboardFunnel
+      parameters:
+        - { name: days, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: 漏斗, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
   /dashboard:
     get:
       tags: [admin-governance]

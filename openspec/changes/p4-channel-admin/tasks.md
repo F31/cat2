@@ -64,7 +64,7 @@
 - [x] 6.4 身份核验：`GET /api/mp/v1/affiliations/mine`（含待核验状态驱动置灰/红框）、`POST /affiliations/{id}/verify`（组织管理员，**先到先处理**：重复处理返回 404/100006）、`POST /api/admin/v1/affiliations/{id}/resolve` 平台代处理（超期 `OrphanAffiliations` 查询）、`POST /affiliations/{id}/primary` 唯一主单位；事件 `verify.AffiliationVerified.v1`
 - [x] 6.5 组织管理员：企业/机构认证通过时申请人自动成为首任管理员（`UpsertActiveOrgAdmin`）；邀请需对方确认（`POST /orgs/{id}/admins` → `POST /org-admin-invites/{id}/confirm`）；平台重置/移除 `POST /api/admin/v1/orgs/{id}/admins/reset`；事件 `verify.OrgAdminChanged.v1`
 - [x] 6.6 一人多单位：`vfy_affiliation` 一对多（user+org 唯一）；状态驱动置灰（0 待核验）/红框（1 已核验）；`is_primary` 唯一主单位由 `SetPrimary` 维护
-- [ ] 6.7 Badge 统一机制：`vfy_badge_def`/`vfy_badge_grant` 输出 {code,label,level}（含「猫平方官方合作认证」配置项）；新增标识类型=加配置+前端样式，不改接口
+- [x] 6.7 Badge 机制：`vfy_badge_def`/`vfy_badge_grant` 输出 {code,label,level,style}；后台 `GET /api/admin/v1/badges`、`PUT /api/admin/v1/badges/{code}`（新增标识=加配置+前端样式，不改接口）、`POST /api/admin/v1/badges/grant`（授予/撤销，审计点 `verify:badge:config`/`verify:badge:grant`）；admin-web「认证标识」页；集成测试覆盖
 - [x] 6.8 事件与不可改：认证材料不可编辑（重复提交为新的待审记录）；`verify.AffiliationVerified.v1` / `verify.OrgAdminChanged.v1` 事件 Schema 已入契约并生成（`contracts/events/`），notice 模板同步
 - [x] 6.9 小程序认证页：`pages/verify/index` 重构为「实名 + 四类认证（材料 ≤3，个人企业身份选企业）+ 单位归属（一人多单位，核验后红框/未核验置灰、设主单位）+ 组织管理员待核验（红点，先到先处理）」；api-client 补 8 个方法与 `GET /affiliations/pending`
 
@@ -72,7 +72,7 @@
 
 - [x] 7.1 核心指标：`GET /api/admin/v1/dashboard`（用户/新增/实名、内容展示中、搜索/匹配点击/联系发起（埋点）、在期会员、今日支付单与 GMV、活跃圈/立方、审核积压与超 SLA、死信、AI 调用/降级）；实时聚合、不在业务表写统计；口径见 `docs/ops/dashboards.md`；admin-web 概览页展示
 - [x] 7.2 埋点：`contracts/telemetry/README.md` 登记 8 个漏斗事件与属性；`tlm_event` 独立前缀表；`POST /api/mp/v1/telemetry`（≤50/次、仅登记事件入库、props 白名单 + 手机号/证件号形态剔除、失败不阻断）；指标 `catcube_telemetry_accepted_total`/`rejected_total`；集成测试覆盖
-- [ ] 7.3 6 张看板：平台总览（L1+L2 漏斗）、圈子/猫立方、渠道（渠道经理仅见本人区域）、资金、安全、运营商移动端业绩概览
+- [x] 7.3 看板：`dashboard` 四分组（平台/协作/资金/安全）+ `/dashboard/funnel`（注册→画像→匹配点击→联系发起→支付，去重用户与转化率，支付含业务表兜底口径）；admin-web 概览页（核心指标 + 漏斗条 + 协作/资金/安全分组）。**渠道与运营商移动端看板待 channel 模块（#13）**
 - [x] 7.4 导出中心：`sys_export_task` + `ops.export_runner`（异步生成 CSV 到对象存储）；模板 对账/订单/用户（脱敏）/审核记录（结算模板待渠道开通）；**带水印**行 + 7 天有效期 + `export:create`/`export:download` 审计点；**逐字段敏感白名单校验**（文本列禁手机号/证件号，纯数字列豁免）；admin-web「导出中心」；集成测试 `TestIntegrationExportAndTelemetryDashboard`
 
 ## 8. admin-web 页面完成

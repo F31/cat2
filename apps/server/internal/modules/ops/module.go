@@ -60,6 +60,7 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/telemetry", Handler: m.auth(m.handleTelemetry)},
 		// 数据概览（p4 §7.1：12 项核心指标）
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/dashboard", Handler: m.auth(m.handleDashboard), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/dashboard/funnel", Handler: m.auth(m.handleFunnel), Admin: true},
 		// 审计查询（治理：who/where/when/what/result 五维筛选；p4 §5.5）
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/audits", Handler: m.auth(m.handleAudits), Admin: true},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/audits/{id}", Handler: m.auth(m.handleAuditDetail), Admin: true},
