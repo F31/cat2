@@ -640,3 +640,18 @@ page {
   color: #d4411e;
   font-size: 24px;
 }
+
+/* AI 入口（p5 框架）：开关关闭时组件不渲染；样式与表单区块一致 */
+.ai-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  padding: 16rpx;
+  margin: 12rpx 0;
+  border-radius: 12rpx;
+  background: #f5f7fb;
+}
+.ai-entry__hint {
+  font-size: 24rpx;
+  color: #666;
+}

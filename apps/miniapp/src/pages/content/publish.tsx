@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Taro, { useRouter } from '@tarojs/taro'
-import { View, Text, Button } from '@tarojs/components'
+import { View, Text, Button, Input } from '@tarojs/components'
 import { api } from '../../services/request'
+import { aiFeatures, draftPublish, isAiUnavailable, AI_PUBLISH } from '../../services/ai'
 import { ensureLogin } from '../../services/auth'
 import FormField from '../../components/FormField'
 import TagPicker from '../../components/TagPicker'
@@ -74,6 +75,52 @@ export default function Publish() {
   const [offer, setOffer] = useState<string[]>([])
   const [fields, setFields] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
+  const [aiOn, setAiOn] = useState(false)
+  const [aiText, setAiText] = useState('')
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiCallID, setAiCallID] = useState('')
+
+  // AI 入口仅开关开启时展示；关闭即只保留原表单
+  useEffect(() => {
+    void aiFeatures().then((f) => setAiOn(!!f[AI_PUBLISH]))
+  }, [])
+
+  // 生成草稿（仅预填，提交仍走原校验与内容安全流水线）；不可用时提示手动填写
+  const genDraft = async () => {
+    if (!aiText.trim()) {
+      Taro.showToast({ title: '请先输入一句话描述', icon: 'none' })
+      return
+    }
+    setAiBusy(true)
+    try {
+      const d = await draftPublish(kind, aiText)
+      if (d.title) setTitle(d.title)
+      setFields((f) => {
+        const next = { ...f }
+        for (const x of d.fields ?? []) {
+          if (defs.some((dd) => dd.key === x.field)) next[x.field] = x.value
+        }
+        return next
+      })
+      setAiCallID(d.call_id)
+      Taro.showToast({ title: '草稿已生成，请确认后提交', icon: 'none' })
+    } catch (e) {
+      if (isAiUnavailable(e)) {
+        Taro.showToast({ title: 'AI 暂不可用，请手动填写', icon: 'none' })
+      } else {
+        Taro.showToast({ title: '生成失败，请手动填写', icon: 'none' })
+      }
+    } finally {
+      setAiBusy(false)
+    }
+  }
+
+  // 采纳反馈（仅在有草稿且已提交时记录）
+  const markAdopted = (adopted: boolean) => {
+    if (!aiCallID) return
+    void api.aiFeedback(aiCallID, adopted).catch(() => undefined)
+    setAiCallID('')
+  }
 
   const defs = FIELDS[kind] ?? []
   const setField = (k: string, v: string) => setFields((f) => ({ ...f, [k]: v }))
@@ -108,6 +155,7 @@ export default function Publish() {
       })
       const id = String(item.id ?? '')
       if (id) await api.submitContent(id)
+      markAdopted(true) // AI 草稿被采用（人在回路确认后）
       Taro.showToast({ title: '已提交审核', icon: 'success' })
       setTimeout(() => Taro.navigateBack(), 700)
     } catch (e) {
@@ -139,6 +187,21 @@ export default function Publish() {
           </Text>
         ))}
       </View>
+
+      {aiOn ? (
+        <View className="ai-entry">
+          <Text className="ai-entry__hint">一句话生成草稿（生成后请确认，提交仍走原校验）</Text>
+          <Input
+            className="search-row__input"
+            value={aiText}
+            placeholder="例如：华东重工寻钣金供应商，预算 100 万"
+            onInput={(e) => setAiText(e.detail.value)}
+          />
+          <Button className="btn-secondary" size="mini" disabled={aiBusy} onClick={() => void genDraft()}>
+            {aiBusy ? '生成中…' : 'AI 生成草稿'}
+          </Button>
+        </View>
+      ) : null}
 
       <FormField label="标题" required value={title} onChange={setTitle} />
       <Uploader label="封面" max={1} value={cover ? [cover] : []} onChange={(v) => setCover(v[0] ?? '')} />

@@ -15,19 +15,19 @@
 
 ## 2. 场景一：一句话入驻
 
-- [ ] 2.1 入驻页嵌入 ai-entry：语音/文字输入 → `Extract` → 画像字段 + TagSet 草稿
+- [x] 2.1 入驻页 ai-entry：`pages/card/edit` 嵌入「一句话生成名片草稿」（文字输入；语音输入待接入 ASR 端口）→ `OnboardDraft` 预填名称/简介/优势/背景；开关关闭时入口不渲染（纯手工）
 - [ ] 2.2 输出收敛：TagSet 经 `dict.ValidateTagSet`，模型只能输出合法 code，非法丢弃并降级为手动填写
 - [x] 2.3 人在回路：AI 仅返回草稿（不落库），写入仍走原接口；`/ai/feedback` 记录采纳/放弃并要求「用户确认后才写入」
 
 ## 3. 场景二：发布智能草稿
 
-- [ ] 3.1 四类发布页嵌入 ai-entry：一句话 → `Draft` → 对应 ContentKind 字段草稿
+- [x] 3.1 发布页 ai-entry：`pages/content/publish` 按当前 Kind 调 `PublishDraft` → 预填标题与字段；仅预填，提交仍走原校验与内容安全（提交成功后 `aiFeedback(adopted=true)` 记采纳）
 - [ ] 3.2 结构化输出 + JSON Schema 校验（按 Kind 字段 schema）；不合规重试一次，仍不合规降级手动填写
 - [ ] 3.3 草稿仅为预填，提交仍走原有校验与内容安全流水线
 
 ## 4. 场景三：自然语言搜索
 
-- [ ] 4.1 搜索页接入 `Translate2Query`：自然语言 → 结构化查询（类型/TagSet/关键词）
+- [x] 4.1 搜索页接入：`pages/search` 「AI 智能搜索」→ `Search` 解析出类型/区域/行业/需求/供给/关键词并直接检索；解析失败经 `030001` 回退关键词搜索并提示
 - [x] 4.2 回退：`Search` 不可用返回 `030001`，前端回退普通关键词搜索（`/search`）；类型幻觉经 `validSearchType` 丢弃
 
 ## 5. 场景四：智能客服（经产品确认）

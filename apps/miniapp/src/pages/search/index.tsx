@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Taro from '@tarojs/taro'
 import { View, Text, Input, Button } from '@tarojs/components'
 import type { DiscoveryCard } from '@catcube/api-client'
 import { api } from '../../services/request'
+import { aiFeatures, parseSearch, isAiUnavailable, AI_SEARCH } from '../../services/ai'
 import ContentCard from '../../components/ContentCard'
 import StateView from '../../components/StateView'
 
@@ -23,6 +24,48 @@ export default function Search() {
   const [items, setItems] = useState<DiscoveryCard[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
+  const [aiOn, setAiOn] = useState(false)
+
+  // AI 入口仅在开关开启时展示（关闭即回退普通关键词搜索）
+  useEffect(() => {
+    void aiFeatures().then((f) => setAiOn(!!f[AI_SEARCH]))
+  }, [])
+
+  // AI 智能搜索：自然语言 → 结构化条件；失败（030001）回退关键词搜索并提示
+  const runAI = async () => {
+    if (!q.trim()) {
+      Taro.showToast({ title: '请先描述你要找什么', icon: 'none' })
+      return
+    }
+    setLoading(true)
+    try {
+      const parsed = await parseSearch(q)
+      const nextType = parsed.type ?? ''
+      setType(nextType)
+      if (parsed.keyword) setQ(parsed.keyword)
+      const res = await api.search({
+        q: parsed.keyword || q,
+        type: nextType || undefined,
+        region: parsed.region,
+        industry: parsed.industry,
+        need: parsed.need,
+        offer: parsed.offer,
+        limit: 20,
+      })
+      setItems(res.items ?? [])
+      setError(false)
+    } catch (e) {
+      if (isAiUnavailable(e)) {
+        Taro.showToast({ title: 'AI 暂不可用，已按关键词搜索', icon: 'none' })
+        await run(type)
+      } else {
+        setError(true)
+        Taro.showToast({ title: '搜索失败', icon: 'none' })
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const run = async (nextType = type) => {
     setLoading(true)
@@ -53,6 +96,14 @@ export default function Search() {
           搜索
         </Button>
       </View>
+      {aiOn ? (
+        <View className="ai-entry">
+          <Text className="ai-entry__hint">用一句话描述，例如「上海找钣金供应商」</Text>
+          <Button className="btn-secondary" size="mini" onClick={() => void runAI()}>
+            AI 智能搜索
+          </Button>
+        </View>
+      ) : null}
 
       <View className="tabs">
         {TABS.map((t) => (

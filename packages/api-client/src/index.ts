@@ -115,6 +115,37 @@ export interface ContentItem {
   unlock_reason?: string
 }
 
+/** AI 生成草稿字段。 */
+export interface AiField {
+  field: string
+  value: string
+}
+
+/** AI 生成草稿（入驻名片 / 发布内容）。 */
+export interface AiDraft {
+  call_id: string
+  title?: string
+  fields: AiField[]
+  tokens?: number
+}
+
+/** AI 解析出的结构化检索条件。 */
+export interface AiSearchQuery {
+  call_id: string
+  keyword?: string
+  type?: string
+  region?: string
+  industry?: string[]
+  need?: string[]
+  offer?: string[]
+  tokens?: number
+}
+
+/** AI 能力开关（按用户灰度）。 */
+export interface AiFeatures {
+  features: Record<string, boolean>
+}
+
 export interface DetailData {
   ref: string
   type: string
@@ -500,6 +531,23 @@ export function createClient(opts: ClientOptions) {
     contactOf(ref: string) {
       return call<{ ref: string; phone: string }>('GET', `/aggregate/contact${qs({ ref })}`)
     },
+    // ---- AI（p5 框架；不可用时抛 code=30001，前端回退原表单/关键词搜索） ----
+    aiFeatures() {
+      return call<AiFeatures>('GET', '/ai/features')
+    },
+    aiOnboardDraft(text: string) {
+      return call<AiDraft>('POST', '/ai/onboard-draft', { text })
+    },
+    aiPublishDraft(kind: string, text: string) {
+      return call<AiDraft>('POST', '/ai/publish-draft', { kind, text })
+    },
+    aiSearch(text: string) {
+      return call<AiSearchQuery>('POST', '/ai/search', { text })
+    },
+    aiFeedback(callId: string, adopted: boolean) {
+      return call<{ ok: boolean }>('POST', '/ai/feedback', { call_id: callId, adopted })
+    },
+
     explainMatch(ref: string) {
       return call<{ ref: string; score: number; reason: MatchReason[] }>(
         'GET',
