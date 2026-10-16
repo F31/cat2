@@ -283,6 +283,24 @@ paths:
             schema: { type: object, required: [perms], properties: { perms: { type: array, items: { type: string } } } }
       responses:
         '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /roles/{code}/scope:
+    put:
+      tags: [admin-rbac]
+      summary: 设置角色数据范围（多区域 + 含子区域；超管不可改；审计）
+      operationId: adminSetRoleScope
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                region_codes: { type: array, items: { type: string } }
+                include_subtree: { type: boolean }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
   /admin-users/{id}/roles:
     get:
       tags: [admin-rbac]

@@ -551,6 +551,12 @@ type AdminSetRolePermsJSONBody struct {
 	Perms []string `json:"perms"`
 }
 
+// AdminSetRoleScopeJSONBody defines parameters for AdminSetRoleScope.
+type AdminSetRoleScopeJSONBody struct {
+	IncludeSubtree *bool     `json:"include_subtree,omitempty"`
+	RegionCodes    *[]string `json:"region_codes,omitempty"`
+}
+
 // AdminSetSettingJSONBody defines parameters for AdminSetSetting.
 type AdminSetSettingJSONBody struct {
 	Value string `json:"value"`
@@ -639,6 +645,9 @@ type AdminCreateRoleJSONRequestBody AdminCreateRoleJSONBody
 
 // AdminSetRolePermsJSONRequestBody defines body for AdminSetRolePerms for application/json ContentType.
 type AdminSetRolePermsJSONRequestBody AdminSetRolePermsJSONBody
+
+// AdminSetRoleScopeJSONRequestBody defines body for AdminSetRoleScope for application/json ContentType.
+type AdminSetRoleScopeJSONRequestBody AdminSetRoleScopeJSONBody
 
 // AdminSetSettingJSONRequestBody defines body for AdminSetSetting for application/json ContentType.
 type AdminSetSettingJSONRequestBody AdminSetSettingJSONBody
@@ -813,6 +822,9 @@ type ServerInterface interface {
 	// AdminSetRolePerms 设置角色权限（反提权；超管不可改；即时生效；审计）
 	// (PUT /roles/{code}/permissions)
 	AdminSetRolePerms(w http.ResponseWriter, r *http.Request, code string)
+	// AdminSetRoleScope 设置角色数据范围（多区域 + 含子区域；超管不可改；审计）
+	// (PUT /roles/{code}/scope)
+	AdminSetRoleScope(w http.ResponseWriter, r *http.Request, code string)
 	// AdminSettings 业务配置列表（含声明、当前值与默认值）
 	// (GET /settings)
 	AdminSettings(w http.ResponseWriter, r *http.Request)
@@ -2385,6 +2397,32 @@ func (siw *ServerInterfaceWrapper) AdminSetRolePerms(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// AdminSetRoleScope operation middleware
+func (siw *ServerInterfaceWrapper) AdminSetRoleScope(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminSetRoleScope(w, r, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminSettings operation middleware
 func (siw *ServerInterfaceWrapper) AdminSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -2730,6 +2768,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/roles/{code}", wrapper.AdminDeleteRole)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/roles/{code}/permissions", wrapper.AdminRolePerms)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/roles/{code}/permissions", wrapper.AdminSetRolePerms)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/roles/{code}/scope", wrapper.AdminSetRoleScope)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin-users/{id}/roles", wrapper.AdminUserRoles)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/admin-users/{id}/roles", wrapper.AdminAssignRoles)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports", wrapper.AdminExports)

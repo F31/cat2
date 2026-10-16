@@ -6011,7 +6011,46 @@ func TestIntegrationAdminRBAC(t *testing.T) {
 	}
 }
 
-// 后台登录安全（p4 §3.4）：IP 白名单 + 登录失败触发短信二次验证；阈值/开关超管可配。
+// RBAC 数据范围（D5/§3.11）：多区域 + 含子区域；超管不可改。
+func TestIntegrationAdminDataScope(t *testing.T) {
+	h := newTestApp(t)
+	_, admTok := loginAdmin(t, h)
+
+	// 设置渠道经理数据范围：上海+浙江，含子区域
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/roles/channel_manager/scope", admTok, map[string]any{
+		"region_codes": []string{"310000", "330000"}, "include_subtree": true,
+	}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("设置数据范围失败: %d %+v", s, e)
+	}
+	_, env := h.do(http.MethodGet, "/api/admin/v1/roles", admTok, nil)
+	var roles struct {
+		Items []struct {
+			Code           string   `json:"code"`
+			RegionCodes    []string `json:"region_codes"`
+			IncludeSubtree bool     `json:"include_subtree"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &roles)
+	found := false
+	for _, r := range roles.Items {
+		if r.Code == "channel_manager" {
+			found = len(r.RegionCodes) == 2 && r.IncludeSubtree
+		}
+	}
+	if !found {
+		t.Fatalf("渠道经理数据范围未生效: %+v", roles.Items)
+	}
+
+	// 超管范围不可改
+	if s, _ := h.do(http.MethodPut, "/api/admin/v1/roles/super/scope", admTok, map[string]any{"region_codes": []string{"310000"}}); s != http.StatusBadRequest {
+		t.Fatalf("超管数据范围应不可改: %d", s)
+	}
+
+	// 清理（避免污染其它用例）
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/roles/channel_manager/scope", admTok, map[string]any{"region_codes": []string{}, "include_subtree": false}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("清理数据范围失败: %d %+v", s, e)
+	}
+}
 func TestIntegrationAdminLoginSecurity(t *testing.T) {
 	h := newTestApp(t)
 	uid, admTok := loginAdmin(t, h)

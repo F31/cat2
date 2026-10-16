@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Checkbox, Form, Input, Modal, Select, Space, Table, Tag, message } from 'antd'
+import { Button, Checkbox, Form, Input, Modal, Select, Space, Switch, Table, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { adminApi } from '../api/admin'
 
@@ -9,6 +9,8 @@ interface RoleRow {
   protected: boolean
   builtin: boolean
   perms?: string[]
+  region_codes?: string[]
+  include_subtree?: boolean
 }
 
 // 角色与权限（p4 §3，ADR-002）：五内置角色为默认矩阵；超管固定不可改；其余可配置、支持自定义角色。
@@ -22,6 +24,8 @@ export default function Roles() {
   const [createForm] = Form.useForm()
   const [assigning, setAssigning] = useState(false)
   const [assignForm] = Form.useForm()
+  const [scopeEditing, setScopeEditing] = useState<RoleRow | null>(null)
+  const [scopeForm] = Form.useForm()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -97,6 +101,31 @@ export default function Roles() {
     }
   }
 
+  const openScope = (r: RoleRow) => {
+    setScopeEditing(r)
+    scopeForm.setFieldsValue({
+      region_codes: (r.region_codes ?? []).join(','),
+      include_subtree: !!r.include_subtree,
+    })
+  }
+
+  const saveScope = async () => {
+    if (!scopeEditing) return
+    const v = await scopeForm.validateFields()
+    const codes = String(v.region_codes ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    try {
+      await adminApi.rbacSetRoleScope(scopeEditing.code, codes, !!v.include_subtree)
+      message.success('已保存（数据范围）')
+      setScopeEditing(null)
+      void load()
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '保存失败')
+    }
+  }
+
   const columns: ColumnsType<RoleRow> = [
     { title: '角色', dataIndex: 'code' },
     { title: '名称', dataIndex: 'name' },
@@ -119,6 +148,9 @@ export default function Roles() {
         <Space>
           <Button size="small" disabled={r.protected} onClick={() => void openPerms(r)}>
             配置权限
+          </Button>
+          <Button size="small" disabled={r.protected} onClick={() => openScope(r)}>
+            数据范围
           </Button>
           <Button size="small" danger disabled={r.protected || r.builtin} onClick={() => void removeRole(r)}>
             删除
@@ -170,6 +202,27 @@ export default function Roles() {
               placeholder="选择角色"
               options={roles.map((r) => ({ label: `${r.name}（${r.code}）`, value: r.code }))}
             />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`数据范围 · ${scopeEditing?.name ?? ''}`}
+        open={!!scopeEditing}
+        onOk={() => void saveScope()}
+        onCancel={() => setScopeEditing(null)}
+        okText="保存"
+      >
+        <Form form={scopeForm} layout="vertical">
+          <Form.Item
+            name="region_codes"
+            label="区域代码（逗号分隔；留空=不限制）"
+            extra="如 310000,330000；配合「含子区域」用于渠道经理多区域/省市级过滤（D5）"
+          >
+            <Input placeholder="310000,330000" />
+          </Form.Item>
+          <Form.Item name="include_subtree" label="含子区域" valuePropName="checked">
+            <Switch />
           </Form.Item>
         </Form>
       </Modal>

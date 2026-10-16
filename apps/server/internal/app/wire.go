@@ -482,6 +482,25 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		auditRBAC(req, uid, "ops:rbac:role:set", map[string]any{"code": code, "perms": body.Perms}, audit.ResultOK)
 		adminJSON(w, 0, "ok", map[string]any{"ok": true})
 	}))
+	a.Mux.HandleFunc("PUT /api/admin/v1/roles/{code}/scope", rbacWrite(func(w http.ResponseWriter, req *http.Request) {
+		var body struct {
+			RegionCodes    []string `json:"region_codes"`
+			IncludeSubtree bool     `json:"include_subtree"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			adminJSON(w, 1, "参数错误", nil)
+			return
+		}
+		uid, _, _ := editorOf(req)
+		code := req.PathValue("code")
+		if err := a.RBAC.SetRoleScope(req.Context(), code, body.RegionCodes, body.IncludeSubtree); err != nil {
+			auditRBAC(req, uid, "ops:rbac:role:scope", map[string]any{"code": code, "err": err.Error()}, audit.ResultDenied)
+			adminJSON(w, 1, err.Error(), nil)
+			return
+		}
+		auditRBAC(req, uid, "ops:rbac:role:scope", map[string]any{"code": code, "region_codes": body.RegionCodes, "include_subtree": body.IncludeSubtree}, audit.ResultOK)
+		adminJSON(w, 0, "ok", map[string]any{"ok": true})
+	}))
 	a.Mux.HandleFunc("POST /api/admin/v1/roles", rbacWrite(func(w http.ResponseWriter, req *http.Request) {
 		var body struct {
 			Code string `json:"code"`

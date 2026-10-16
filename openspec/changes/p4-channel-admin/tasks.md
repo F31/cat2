@@ -34,7 +34,7 @@
 - [x] 3.3 服务端唯一权威（`requireAdmin`/`requirePerm`；403 记 `admin:access:denied`/`admin:perm:denied` 审计，`TestIntegrationAdminRBAC`）
 - [x] 3.4 后台登录安全：连续 **3 次（阈值可配 `admin.security.login_fail_threshold`）失败触发短信二次验证**（`AdminStepUpRequired`/`SendStepUpCode`/`VerifyStepUpCode` + `/api/admin/v1/auth/step-up[/code]`）；**IP 白名单超管可配**（`admin.security.ip_allowlist`，requireAdmin 强制）；admin-web「系统设置」页（登录安全/密码策略/短信网关/AI 网关 Tab）；`TestIntegrationAdminLoginSecurity`。（断网/误配锁定用 DB/CLI 改配置恢复）
 - [ ] 3.5 内核 policy「复核≠执行」互斥规则（同一结算单/退款单**执行打款人 ≠ 复核人**，仍为先复核后执行）；强制清单可配（见 3.12）
-- [ ] 3.11 数据范围：角色 `space_id` + `region_codes text[]` + `include_subtree`；渠道经理默认按区域过滤，**支持多区域与子区域**（服务端唯一权威，p4 §3.7）
+- [x] 3.11 数据范围：`sys_admin_role` 增 `region_codes text[]` + `include_subtree`；`rbac.SetRoleScope`/`RegionScope`（多角色并集）/`RegionAllowed`（未限定=不限，含子区域按行政区划前缀匹配）；接口 `PUT /api/admin/v1/roles/{code}/scope` + admin-web「数据范围」；单测 `TestRegionAllowed` + 集成 `TestIntegrationAdminDataScope`。（渠道列表/导出的区域过滤随 §1/§2 数据接入）
 - [ ] 3.12 双人复核清单可配：`ops:policy:dual_control`（运营管理员后台配置，热生效），3.5 互斥规则读取该清单
 - [◐] 3.6 默认矩阵与负向用例已覆盖（`TestIntegrationAdminRBAC`：默认矩阵、反提权 denied、超管不可改、内置不可删、自定义角色增删）；**待办**：五角色×全权限点的完整表驱动矩阵用例
 - [◐] 3.7 菜单按 RBAC 过滤已落地（`/menus` 按模块过滤；`ops.rbac` 仅 `ops:rbac:manage`、`ops.system_settings` 仅 `ops:settings:read` 可见）；**待办**：角色数据范围过滤（随 3.11）

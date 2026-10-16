@@ -49,11 +49,13 @@ const (
 
 // Role 角色。
 type Role struct {
-	Code      string   `json:"code"`
-	Name      string   `json:"name"`
-	Protected bool     `json:"protected"` // 超管：不可编辑/删除
-	Builtin   bool     `json:"builtin"`   // 内置角色：不可删除
-	Perms     []string `json:"perms,omitempty"`
+	Code           string   `json:"code"`
+	Name           string   `json:"name"`
+	Protected      bool     `json:"protected"` // 超管：不可编辑/删除
+	Builtin        bool     `json:"builtin"`   // 内置角色：不可删除
+	Perms          []string `json:"perms,omitempty"`
+	RegionCodes    []string `json:"region_codes,omitempty"`    // 数据范围：多区域（空=不限，D5）
+	IncludeSubtree bool     `json:"include_subtree,omitempty"` // 含子区域
 }
 
 // PermDef 权限点定义（后台「角色与权限」页展示）。
@@ -147,6 +149,10 @@ CREATE TABLE IF NOT EXISTS sys_admin_role_permission (
 	perm varchar(64) NOT NULL,
 	PRIMARY KEY (role_id, perm)
 );
+
+-- 数据范围（D5/§3.11）：多区域 + 含子区域
+ALTER TABLE sys_admin_role ADD COLUMN IF NOT EXISTS region_codes text[];
+ALTER TABLE sys_admin_role ADD COLUMN IF NOT EXISTS include_subtree boolean NOT NULL DEFAULT false;
 `
 
 // Store RBAC 存储与解析。
@@ -249,7 +255,7 @@ func (s *Store) HasPerm(ctx context.Context, userID int64, perm string) (bool, e
 
 // Roles 全部角色（含各类权限）。
 func (s *Store) Roles(ctx context.Context) ([]Role, error) {
-	rows, err := s.pool.Query(ctx, `SELECT code, name, protected, builtin FROM sys_admin_role ORDER BY protected DESC, id`)
+	rows, err := s.pool.Query(ctx, `SELECT code, name, protected, builtin, COALESCE(region_codes,'{}'), include_subtree FROM sys_admin_role ORDER BY protected DESC, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +263,7 @@ func (s *Store) Roles(ctx context.Context) ([]Role, error) {
 	var out []Role
 	for rows.Next() {
 		var r Role
-		if err := rows.Scan(&r.Code, &r.Name, &r.Protected, &r.Builtin); err != nil {
+		if err := rows.Scan(&r.Code, &r.Name, &r.Protected, &r.Builtin, &r.RegionCodes, &r.IncludeSubtree); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -525,4 +531,93 @@ func VisibleModules(perms []string) map[string]bool {
 		}
 	}
 	return mods
+}
+
+// SetRoleScope 设置角色数据范围（多区域 + 含子区域；超管不可改，D5/§3.11）。
+func (s *Store) SetRoleScope(ctx context.Context, code string, regionCodes []string, includeSubtree bool) error {
+	r, err := s.roleByCode(ctx, code)
+	if err != nil {
+		return err
+	}
+	if r == nil {
+		return fmt.Errorf("角色不存在")
+	}
+	if r.Protected {
+		return fmt.Errorf("超管角色不可修改")
+	}
+	clean := make([]string, 0, len(regionCodes))
+	for _, c := range regionCodes {
+		if c = strings.TrimSpace(c); c != "" {
+			clean = append(clean, c)
+		}
+	}
+	_, err = s.pool.Exec(ctx,
+		`UPDATE sys_admin_role SET region_codes=$2, include_subtree=$3 WHERE code=$1`,
+		code, clean, includeSubtree)
+	return err
+}
+
+// RegionScope 用户数据范围：超管不限（返回空）；否则为其各角色区域并集 + 是否含子区域。
+func (s *Store) RegionScope(ctx context.Context, userID int64) ([]string, bool, error) {
+	if super, _ := s.IsSuper(ctx, userID); super {
+		return nil, false, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT COALESCE(r.region_codes,'{}'), r.include_subtree FROM sys_admin_user_role ur
+		JOIN sys_admin_user au ON au.id=ur.user_id AND au.status=1
+		JOIN sys_admin_role r ON r.id=ur.role_id
+		WHERE au.user_id=$1`, userID)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	set := map[string]bool{}
+	subtree := false
+	for rows.Next() {
+		var rc []string
+		var sub bool
+		if err := rows.Scan(&rc, &sub); err != nil {
+			return nil, false, err
+		}
+		for _, c := range rc {
+			if c != "" {
+				set[c] = true
+			}
+		}
+		subtree = subtree || sub
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	out := make([]string, 0, len(set))
+	for c := range set {
+		out = append(out, c)
+	}
+	sort.Strings(out)
+	return out, subtree, nil
+}
+
+// RegionAllowed 区域是否在范围内：未限定（regions 为空）= 不限；含子区域时按行政区划前缀匹配。
+func RegionAllowed(regions []string, subtree bool, region string) bool {
+	if len(regions) == 0 {
+		return true
+	}
+	for _, n := range regions {
+		if region == n {
+			return true
+		}
+		if subtree && regionWithin(region, n) {
+			return true
+		}
+	}
+	return false
+}
+
+// regionWithin 行政区划层级判定：去尾零取前缀（省 110000→11，市 110100→1101），子区域以其为前缀。
+func regionWithin(region, node string) bool {
+	base := strings.TrimRight(node, "0")
+	if base == "" {
+		return region == node
+	}
+	return strings.HasPrefix(region, base)
 }

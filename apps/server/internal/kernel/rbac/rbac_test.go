@@ -51,3 +51,28 @@ func TestVisibleModules(t *testing.T) {
 		t.Fatalf("不应可见 trade: %v", mods)
 	}
 }
+
+// 数据范围：多区域 + 含子区域（D5/§3.11）。
+func TestRegionAllowed(t *testing.T) {
+	if !RegionAllowed(nil, false, "110100") {
+		t.Fatal("未限定区域应不限")
+	}
+	if !RegionAllowed([]string{"310000", "330000"}, false, "330000") {
+		t.Fatal("多区域精确应命中")
+	}
+	if RegionAllowed([]string{"310000"}, false, "310100") {
+		t.Fatal("不含子区域时市级不应命中省级限定")
+	}
+	if !RegionAllowed([]string{"310000"}, true, "310100") || !RegionAllowed([]string{"310000"}, true, "310101") {
+		t.Fatal("含子区域应命中省市县")
+	}
+	if RegionAllowed([]string{"310000"}, true, "320000") {
+		t.Fatal("不应越界到其它省")
+	}
+	if !RegionAllowed([]string{"310100"}, true, "310101") {
+		t.Fatal("市级含子区域应命中区县")
+	}
+	if RegionAllowed([]string{"310100"}, true, "310200") {
+		t.Fatal("不应命中非子区域")
+	}
+}

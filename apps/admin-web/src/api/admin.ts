@@ -212,6 +212,12 @@ export const adminApi = {
   rbacDeleteRole(code: string) {
     return call<{ ok: boolean }>('DELETE', `/admin/v1/roles/${code}`)
   },
+  rbacSetRoleScope(code: string, regionCodes: string[], includeSubtree: boolean) {
+    return call<{ ok: boolean }>('PUT', `/admin/v1/roles/${code}/scope`, {
+      region_codes: regionCodes,
+      include_subtree: includeSubtree,
+    })
+  },
   rbacAdminRoles(userId: string) {
     return call<{ roles: string[] }>('GET', `/admin/v1/admin-users/${userId}/roles`)
   },

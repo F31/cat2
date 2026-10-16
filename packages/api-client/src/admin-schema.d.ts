@@ -330,6 +330,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/roles/{code}/scope": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** 设置角色数据范围（多区域 + 含子区域；超管不可改；审计） */
+        put: operations["adminSetRoleScope"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin-users/{id}/roles": {
         parameters: {
             query?: never;
@@ -1717,6 +1734,35 @@ export interface operations {
             content: {
                 "application/json": {
                     perms: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
+    adminSetRoleScope: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    region_codes?: string[];
+                    include_subtree?: boolean;
                 };
             };
         };
