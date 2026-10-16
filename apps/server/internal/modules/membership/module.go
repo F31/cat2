@@ -209,6 +209,18 @@ func (m *Module) handleOpen(w http.ResponseWriter, req *http.Request) {
 	}
 	res, err := m.svc.Open(req.Context(), userIDFrom(req.Context()), body.Level, body.Years)
 	if err != nil {
+		// 企业版门槛拒绝 → 安全审计（p2 §8.6：denied 记审计）
+		if errors.Is(err, domain.ErrEnterpriseCert) && m.deps.Audit != nil {
+			_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+				ActorID: userIDFrom(req.Context()), ActorType: audit.ActorUser, Channel: "mp",
+				Action: "membership:enterprise:denied", Result: audit.ResultDenied,
+				Detail: audit.Change{
+					Before: map[string]any{"level": body.Level},
+					After:  map[string]any{},
+				}.Snapshot("企业版门槛：须 identity_type=2 且通过企业认证"),
+				IP: audit.ClientIP(req),
+			})
+		}
 		writeMemErr(w, err)
 		return
 	}

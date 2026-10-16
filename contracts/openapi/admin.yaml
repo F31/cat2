@@ -171,6 +171,40 @@ paths:
                 reason: { type: string }
       responses:
         '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /ai/prompts:
+    get:
+      tags: [admin-ai]
+      summary: AI 提示词版本列表（仅 approved 生效）
+      operationId: adminAiPrompts
+      responses:
+        '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+    put:
+      tags: [admin-ai]
+      summary: 新增/更新提示词版本（approved 决定是否生效；审计）
+      operationId: adminAiSavePrompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [feature, version, body]
+              properties:
+                feature: { type: string }
+                version: { type: string }
+                body: { type: string }
+                approved: { type: boolean }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /ai/usage:
+    get:
+      tags: [admin-ai]
+      summary: AI 各能力用量/采纳率/成本（近 N 天）
+      operationId: adminAiUsage
+      parameters:
+        - { name: days, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: 统计, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
   /exports:
     get:
       tags: [admin-governance]

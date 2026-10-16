@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/featureflag"
 	"catcube/internal/kernel/module"
@@ -49,6 +50,7 @@ type Deps struct {
 	Auth     AuthFunc
 	Settings *settings.Registry
 	Dict     dictcontract.Facade
+	Audit    *audit.Recorder
 }
 
 // Module ai 模块。
@@ -99,6 +101,9 @@ var Schemas = []settings.Schema{
 	{Key: KeyQuotaPerDay, Type: settings.TypeInt, Default: "50", Description: "单用户每日 AI 调用上限"},
 	{Key: KeyBudgetPerDayFen, Type: settings.TypeFen, Default: "0", Description: "每日 AI 成本预算（分，0=不限）"},
 	{Key: KeyCostPer1kTokens, Type: settings.TypeFen, Default: "0", Description: "每千 token 成本（分，用于预算估算）"},
+	{Key: KeyAlertCostFenDaily, Type: settings.TypeFen, Default: "0", Description: "AI 当日成本告警阈值（分，0=不告警）"},
+	{Key: KeyAlertAdoptRateMin, Type: settings.TypeInt, Default: "30", Description: "AI 采纳率告警下限（%，p5 §8.2）"},
+	{Key: KeyAlertAdoptMinSample, Type: settings.TypeInt, Default: "20", Description: "AI 采纳率告警最小样本量"},
 }
 
 // Facade 对外契约。
@@ -112,10 +117,20 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/ai/feedback", Handler: m.auth(m.handleFeedback)},
 		// 能力开关清单（前端据此决定是否展示 AI 入口）
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/ai/features", Handler: m.auth(m.handleFeatures)},
+		// 后台管理（p5 §7.2）：提示词版本与用量/采纳率/成本
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/ai/prompts", Handler: m.auth(m.handleAdminPrompts), Admin: true},
+		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/ai/prompts", Handler: m.auth(m.handleAdminSavePrompt), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/ai/usage", Handler: m.auth(m.handleAdminUsage), Admin: true},
+	)
+	r.AuditPoints = append(r.AuditPoints,
+		audit.Point{Action: "ai:prompt:save", Path: "/api/admin/v1/ai/prompts", Required: true, LogFailed: true, Module: "ai"},
 	)
 	r.Settings = append(r.Settings, Schemas...)
 	r.AdminSections = append(r.AdminSections,
-		module.AdminSection{Key: "ai.calls", Label: "AI 调用与采纳", Path: "/ai-calls", Module: "ai"})
+		module.AdminSection{Key: "ai.calls", Label: "AI 调用与采纳", Path: "/ai-calls", Module: "ai"},
+		module.AdminSection{Key: "ai.prompts", Label: "AI 提示词与用量", Path: "/ai-prompts", Module: "ai"})
+	r.Jobs = append(r.Jobs,
+		module.JobDef{Name: "ai.cost_guard", Interval: 10 * time.Minute, Run: m.observeGuard})
 	return nil
 }
 

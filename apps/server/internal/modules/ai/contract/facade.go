@@ -47,6 +47,26 @@ type Suggestion struct {
 	Tokens   int    `json:"tokens"`
 }
 
+// Prompt 提示词版本（仅 approved=true 的最高版本生效）。
+type Prompt struct {
+	Feature  string `json:"feature"`
+	Version  string `json:"version"`
+	Body     string `json:"body"`
+	Approved bool   `json:"approved"`
+}
+
+// Usage 能力用量与采纳/成本统计（后台看板，p5 §7.2/§8.2）。
+type Usage struct {
+	Feature   string  `json:"feature"`
+	Calls     int64   `json:"calls"`      // outcome=ok 的调用数
+	Degraded  int64   `json:"degraded"`   // 降级次数
+	Adopted   int64   `json:"adopted"`    // 采纳数
+	Rejected  int64   `json:"rejected"`   // 放弃数
+	AdoptRate float64 `json:"adopt_rate"` // 采纳率（adopted / 有反馈的调用）
+	Tokens    int64   `json:"tokens"`
+	CostFen   int64   `json:"cost_fen"` // 估算成本（分）
+}
+
 // Facade ai 对外接口（供 bff/其他模块复用）。
 type Facade interface {
 	// OnboardDraft 一句话入驻 → 名片草稿（开关 ai.onboard）。
@@ -61,4 +81,11 @@ type Facade interface {
 	ReviewSuggestion(ctx context.Context, operatorID int64, subjectType string, subjectID int64, text string) (Suggestion, error)
 	// Enabled 能力是否开启（按用户灰度评估）。
 	Enabled(ctx context.Context, userID int64, feature string) bool
+
+	// Prompts 提示词版本列表（后台管理，p5 §7.2）。
+	Prompts(ctx context.Context) ([]Prompt, error)
+	// SavePrompt 新增/更新提示词版本（approved 决定是否生效；变更须过评测）。
+	SavePrompt(ctx context.Context, feature, version, body string, approved bool) error
+	// Usage 近 days 天各能力用量/采纳率/成本（后台看板 + 告警，p5 §7.2/§8.2）。
+	Usage(ctx context.Context, days int) ([]Usage, error)
 }

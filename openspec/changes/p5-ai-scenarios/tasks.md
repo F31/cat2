@@ -23,7 +23,7 @@
 
 - [x] 3.1 发布页 ai-entry：`pages/content/publish` 按当前 Kind 调 `PublishDraft` → 预填标题与字段；仅预填，提交仍走原校验与内容安全（提交成功后 `aiFeedback(adopted=true)` 记采纳）
 - [x] 3.2 结构化输出校验：JSON 解析失败即降级（`030001` 走手动填写）；字段收敛按字段池白名单（同 2.2）；提交仍走原校验与内容安全流水线
-- [ ] 3.3 草稿仅为预填，提交仍走原有校验与内容安全流水线
+- [x] 3.3 草稿仅为预填，提交仍走原有校验与内容安全流水线（`TestIntegrationAIPublishDraftPrefillOnly`：草稿不落库、原接口提交成功、缺必填仍 400）
 
 ## 4. 场景三：自然语言搜索
 
@@ -38,20 +38,20 @@
 ## 6. 审核辅助
 
 - [x] 6.1 审核辅助：`ai.ReviewSuggestion`（预分类 fraud/ad/abuse/porn/other + 风险 0-3 + 摘要，开关 `ai.review`）；trust 经装配根桥接（同阶不互相依赖）暴露 `GET /api/admin/v1/review-tasks/{id}/suggestion`；**只读建议**，未启用/上游故障/配额用尽一律 `available=false`，审核流程不受影响；admin-web 审核页「AI 建议」；集成测试 `TestIntegrationAIReviewSuggestion`
-- [ ] 6.2 处罚结论必须人工确认（AI 输出不产生任何状态机转移）
+- [x] 6.2 处罚结论必须人工确认：AI 仅返回只读建议；`TestIntegrationAIReviewSuggestion` 断言取得建议后任务仍「待审」（无状态机转移），复核仅由人工 `/review-tasks/{id}/resolve` 触发
 
 ## 7. 前端
 
-- [ ] 7.1 `apps/miniapp/src/ai-entry/` 组件：嵌入入驻页/发布页/搜索页；`ai` 不可用或未装载时自动隐藏，不影响手动填写
-- [ ] 7.2 admin-web `features/ai/`：提示词与用量管理页（版本、采纳率、成本）
+- [x] 7.1 `apps/miniapp/src/ai-entry/` 通用组件：嵌入入驻页（`pages/card/edit`）/发布页（`pages/content/publish`）/搜索页（`pages/search`）；开关关闭或 `ai` 未装载时自动隐藏（`aiFeatures` 评估），统一空输入校验/加载态/不可用提示，不影响手动填写
+- [x] 7.2 admin-web AI 管理页（`pages/AiPrompts.tsx`）：提示词版本（新增/编辑，approved=生效门禁）+ 近 7 天用量表（调用/降级/采纳/采纳率/tokens/成本）；服务端 `GET/PUT /api/admin/v1/ai/prompts`、`GET /api/admin/v1/ai/usage`（审计 `ai:prompt:save`），见 `TestIntegrationAIAdminPromptsUsage`
 
 ## 8. 评测与观测
 
-- [ ] 8.1 `tests/ai` 固定样本集评测：抽取准确率、TagSet 合法率、降级路径；提示词变更必须过评测（CI 门禁）
-- [ ] 8.2 采纳率与成本指标进看板；告警：采纳率骤降、成本异常（阈值可配）
+- [x] 8.1 固定样本集评测（CI 门禁 `go test ./...`）：`internal/modules/ai/eval_test.go`（`TestAIEvalSuite` 抽取准确率≥0.9 + 降级路径 100%、`TestAIEvalTagSetLegality` 类型/分类合法率≥0.9、`TestAIEvalPrivacy`）；提示词/收敛逻辑变更导致指标下降即失败
+- [x] 8.2 采纳率与成本观测：`GET /api/admin/v1/ai/usage` + admin-web「AI 提示词与用量」页（看板）；定时任务 `ai.cost_guard`（`observeGuard`）按后台阈值 `ai.alert.cost.fen.daily`/`ai.alert.adopt_rate.min`/`ai.alert.adopt.min_sample` 触发 `ai_cost_anomaly`/`ai_adopt_rate_drop` 告警（`docs/ops/alerts.md`），`TestIntegrationAIAdminPromptsUsage` 覆盖
 
 ## 9. 退出标准
 
-- [ ] 9.1 关闭开关（不装载 ai）时全链路回归测试无影响
-- [ ] 9.2 评测指标达标（准确率/合法率阈值在评测集上达标）
-- [ ] 9.3 采纳率与成本可观测（看板与告警上线）
+- [x] 9.1 不装载 ai 全链路无影响：`--modules`/`CATCUBE_MODULES` 排除 ai 时 AI 路由不存在（404），主链路照常（`TestIntegrationAIModuleExcluded`）
+- [x] 9.2 评测指标达标：`TestAIEvalSuite`/`TestAIEvalTagSetLegality` 阈值（≥0.9）在固定样本集上通过
+- [x] 9.3 采纳率与成本可观测：见 7.2/8.2（用量接口 + 管理页 + `ai.cost_guard` 告警）

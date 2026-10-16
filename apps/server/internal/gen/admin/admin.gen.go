@@ -337,6 +337,19 @@ type AdminResolveAffiliationJSONBody struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
+// AdminAiSavePromptJSONBody defines parameters for AdminAiSavePrompt.
+type AdminAiSavePromptJSONBody struct {
+	Approved *bool  `json:"approved,omitempty"`
+	Body     string `json:"body"`
+	Feature  string `json:"feature"`
+	Version  string `json:"version"`
+}
+
+// AdminAiUsageParams defines parameters for AdminAiUsage.
+type AdminAiUsageParams struct {
+	Days *int `form:"days,omitempty" json:"days,omitempty"`
+}
+
 // AdminAuditsParams defines parameters for AdminAudits.
 type AdminAuditsParams struct {
 	ActorId   *string `form:"actor_id,omitempty" json:"actor_id,omitempty"`
@@ -543,6 +556,9 @@ type AdminRestrictUserJSONBody struct {
 // AdminResolveAffiliationJSONRequestBody defines body for AdminResolveAffiliation for application/json ContentType.
 type AdminResolveAffiliationJSONRequestBody AdminResolveAffiliationJSONBody
 
+// AdminAiSavePromptJSONRequestBody defines body for AdminAiSavePrompt for application/json ContentType.
+type AdminAiSavePromptJSONRequestBody AdminAiSavePromptJSONBody
+
 // AdminGrantBadgeJSONRequestBody defines body for AdminGrantBadge for application/json ContentType.
 type AdminGrantBadgeJSONRequestBody AdminGrantBadgeJSONBody
 
@@ -608,6 +624,15 @@ type ServerInterface interface {
 	// AdminResolveAffiliation 平台代处理归属核验（组织管理员超 7 天未处理）
 	// (POST /affiliations/{id}/resolve)
 	AdminResolveAffiliation(w http.ResponseWriter, r *http.Request, id string)
+	// AdminAiPrompts AI 提示词版本列表（仅 approved 生效）
+	// (GET /ai/prompts)
+	AdminAiPrompts(w http.ResponseWriter, r *http.Request)
+	// AdminAiSavePrompt 新增/更新提示词版本（approved 决定是否生效；审计）
+	// (PUT /ai/prompts)
+	AdminAiSavePrompt(w http.ResponseWriter, r *http.Request)
+	// AdminAiUsage AI 各能力用量/采纳率/成本（近 N 天）
+	// (GET /ai/usage)
+	AdminAiUsage(w http.ResponseWriter, r *http.Request, params AdminAiUsageParams)
 	// AdminAudits 审计查询（who/where/when/what/result 五维筛选）
 	// (GET /audits)
 	AdminAudits(w http.ResponseWriter, r *http.Request, params AdminAuditsParams)
@@ -820,6 +845,67 @@ func (siw *ServerInterfaceWrapper) AdminResolveAffiliation(w http.ResponseWriter
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminResolveAffiliation(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminAiPrompts operation middleware
+func (siw *ServerInterfaceWrapper) AdminAiPrompts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminAiPrompts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminAiSavePrompt operation middleware
+func (siw *ServerInterfaceWrapper) AdminAiSavePrompt(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminAiSavePrompt(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminAiUsage operation middleware
+func (siw *ServerInterfaceWrapper) AdminAiUsage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AdminAiUsageParams
+
+	// ------------- Optional query parameter "days" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "days", r.URL.Query(), &params.Days, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "days"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "days", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminAiUsage(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2370,6 +2456,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/dissolve", wrapper.AdminDissolveCube)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/dissolve", wrapper.AdminDissolveCircle)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/notices/broadcast", wrapper.AdminBroadcastNotice)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/ai/prompts", wrapper.AdminAiPrompts)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/ai/prompts", wrapper.AdminAiSavePrompt)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/ai/usage", wrapper.AdminAiUsage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports", wrapper.AdminExports)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/exports", wrapper.AdminCreateExport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports/{id}/download", wrapper.AdminDownloadExport)

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Taro, { useDidShow } from '@tarojs/taro'
-import { View, Text, Button, Input } from '@tarojs/components'
+import { View, Text, Button } from '@tarojs/components'
 import type { Card } from '@catcube/api-client'
 import { api } from '../../services/request'
-import { aiFeatures, draftOnboard, isAiUnavailable, AI_ONBOARD } from '../../services/ai'
+import { draftOnboard, AI_ONBOARD } from '../../services/ai'
 import { ensureLogin } from '../../services/auth'
+import AiEntry from '../../ai-entry'
 import FormField from '../../components/FormField'
 import TagPicker from '../../components/TagPicker'
 import Uploader from '../../components/Uploader'
@@ -51,42 +52,7 @@ export default function CardEdit() {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
-  const [aiOn, setAiOn] = useState(false)
-  const [aiText, setAiText] = useState('')
-  const [aiBusy, setAiBusy] = useState(false)
   const [aiCallID, setAiCallID] = useState('')
-
-  // AI 一句话入驻入口：仅开关开启时展示，关闭即纯手工填写
-  useEffect(() => {
-    void aiFeatures().then((f) => setAiOn(!!f[AI_ONBOARD]))
-  }, [])
-
-  // 生成名片草稿（仅预填，保存仍走原字段校验）；不可用时提示手动填写
-  const genDraft = async () => {
-    if (!aiText.trim()) {
-      Taro.showToast({ title: '请先一句话介绍自己/组织', icon: 'none' })
-      return
-    }
-    setAiBusy(true)
-    try {
-      const d = await draftOnboard(aiText)
-      const patch: Partial<FormState> = {}
-      for (const x of d.fields ?? []) {
-        if (x.field === 'real_name') patch.name = x.value
-        if (x.field === 'intro') patch.intro = x.value
-        if (x.field === 'core_strength') patch.core_strength = x.value
-        if (x.field === 'background') patch.background = x.value
-      }
-      if (d.title && !patch.name) patch.name = d.title
-      setForm((f) => ({ ...f, ...patch }))
-      setAiCallID(d.call_id)
-      Taro.showToast({ title: '草稿已生成，请确认后保存', icon: 'none' })
-    } catch (e) {
-      Taro.showToast({ title: isAiUnavailable(e) ? 'AI 暂不可用，请手动填写' : '生成失败，请手动填写', icon: 'none' })
-    } finally {
-      setAiBusy(false)
-    }
-  }
 
   const set = <K extends keyof FormState>(key: K, v: FormState[K]) => setForm((f) => ({ ...f, [key]: v }))
 
@@ -176,20 +142,27 @@ export default function CardEdit() {
         </Text>
       </View>
 
-      {aiOn ? (
-        <View className="ai-entry">
-          <Text className="ai-entry__hint">一句话介绍，自动生成名片草稿（保存前请确认）</Text>
-          <Input
-            className="search-row__input"
-            value={aiText}
-            placeholder="例如：我是华东重工采购总监，寻找钣金供应商"
-            onInput={(e) => setAiText(e.detail.value)}
-          />
-          <Button className="btn-secondary" size="mini" disabled={aiBusy} onClick={() => void genDraft()}>
-            {aiBusy ? '生成中…' : 'AI 生成名片草稿'}
-          </Button>
-        </View>
-      ) : null}
+      <AiEntry
+        flag={AI_ONBOARD}
+        hint="一句话介绍，自动生成名片草稿（保存前请确认）"
+        placeholder="例如：我是华东重工采购总监，寻找钣金供应商"
+        buttonLabel="AI 生成名片草稿"
+        unavailableHint="AI 暂不可用，请手动填写"
+        run={async (aiText) => {
+          const d = await draftOnboard(aiText)
+          const patch: Partial<FormState> = {}
+          for (const x of d.fields ?? []) {
+            if (x.field === 'real_name') patch.name = x.value
+            if (x.field === 'intro') patch.intro = x.value
+            if (x.field === 'core_strength') patch.core_strength = x.value
+            if (x.field === 'background') patch.background = x.value
+          }
+          if (d.title && !patch.name) patch.name = d.title
+          setForm((f) => ({ ...f, ...patch }))
+          setAiCallID(d.call_id)
+          Taro.showToast({ title: '草稿已生成，请确认后保存', icon: 'none' })
+        }}
+      />
 
       <FormField label="名称" required value={form.name} onChange={(v) => set('name', v)} />
       <Uploader

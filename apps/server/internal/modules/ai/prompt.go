@@ -15,6 +15,13 @@ const (
 	KeyCostPer1kTokens = "ai.cost.fen_per_1ktoken" // 每千 token 成本（分）
 )
 
+// AI 观测告警阈值（p5 §8.2；0=不告警/用默认）。
+const (
+	KeyAlertCostFenDaily   = "ai.alert.cost.fen.daily"   // 当日成本上限（分）
+	KeyAlertAdoptRateMin   = "ai.alert.adopt_rate.min"   // 采纳率下限（百分比 0-100）
+	KeyAlertAdoptMinSample = "ai.alert.adopt.min_sample" // 采纳率告警最小样本量
+)
+
 // 隐私红线（p5 §1.7）：手机号/证件号/邮箱/微信号等敏感信息在构造提示词前剥离或掩码，
 // 统一入口 buildPrompt，禁止模块各自拼接提示词。
 var (

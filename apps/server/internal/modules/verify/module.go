@@ -364,14 +364,19 @@ func (p capProvider) Has(ctx context.Context, userID int64, capability string) (
 	case "realname":
 		return p.m.svc.IsRealname(ctx, userID)
 	case "verified":
-		// 企业/机构认证通过的账号（徽标打在 org 主体，一期以申请人账号为准）
-		badges, err := p.m.svc.BadgesOf(ctx, entityref.Ref{Type: "user", ID: userID})
-		if err != nil {
-			return false, err
-		}
-		for _, b := range badges {
-			if b.Code == contract.BadgeVerified || b.Code == contract.BadgeOfficial {
-				return true, nil
+		// 企业/机构认证通过的账号（徽标打在 org 主体；一期 org 主体 id 即申请人 userID，故两主体都查）
+		for _, ref := range []entityref.Ref{
+			{Type: "user", ID: userID},
+			{Type: "org", ID: userID},
+		} {
+			badges, err := p.m.svc.BadgesOf(ctx, ref)
+			if err != nil {
+				return false, err
+			}
+			for _, b := range badges {
+				if b.Code == contract.BadgeVerified || b.Code == contract.BadgeOfficial {
+					return true, nil
+				}
 			}
 		}
 		return false, nil

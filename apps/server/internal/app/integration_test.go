@@ -4607,6 +4607,12 @@ func TestIntegrationAIReviewSuggestion(t *testing.T) {
 	if sug.Risk < 0 || sug.Risk > 3 {
 		t.Fatalf("风险等级应在 0-3: %d", sug.Risk)
 	}
+	// p5 §6.2：AI 仅建议，不产生任何状态机转移（任务仍待审 0）
+	var st int16
+	_ = h.app.Pool.QueryRow(ctx, `SELECT status FROM trs_review_task WHERE id=$1`, taskID).Scan(&st)
+	if st != 0 {
+		t.Fatalf("AI 建议不得改动审核状态（应仍待审）: %d", st)
+	}
 	// 调用留痕（feature=review）
 	var n int
 	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM ai_call_log WHERE feature='review' AND outcome='ok'`).Scan(&n)
@@ -5538,5 +5544,270 @@ func TestIntegrationAdminOperations(t *testing.T) {
 	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM sys_audit WHERE action='notice:announcement:broadcast'`).Scan(&bcAudit)
 	if bcAudit == 0 {
 		t.Fatal("定向公告应写审计")
+	}
+}
+
+// 企业版门槛（p2 §8.6）：须 identity_type=2 且通过企业认证（verify「已认证」能力）。
+// 未认证拒绝并记 denied 审计；企业认证通过后开通成功。
+func TestIntegrationEnterpriseMembershipGate(t *testing.T) {
+	h := newTestApp(t)
+	ctx := context.Background()
+	_, admTok := loginAdmin(t, h)
+
+	// 以组织身份（identity_type=2）注册
+	phone := randPhone()
+	_, env := h.do(http.MethodPost, "/api/mp/v1/auth/wechat", "", map[string]any{
+		"code": "wx-" + phone, "phone_code": phone, "identity_type": 2,
+	})
+	var login struct {
+		UserID int64 `json:"user_id,string"`
+		Tokens struct {
+			AccessToken string `json:"access_token"`
+		} `json:"tokens"`
+	}
+	_ = json.Unmarshal(env.Data, &login)
+	if login.UserID == 0 {
+		t.Fatalf("组织身份登录失败: %+v", env)
+	}
+	tok := login.Tokens.AccessToken
+
+	// 未认证：企业版开通拒绝 120003 并记 denied 审计
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/membership/orders", tok, map[string]any{"level": 3, "years": 1}); s != http.StatusForbidden || e.Code != 120003 {
+		t.Fatalf("未认证企业开通应 120003/403: %d %+v", s, e)
+	}
+	var denied int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM sys_audit WHERE action='membership:enterprise:denied' AND result=1`).Scan(&denied)
+	if denied == 0 {
+		t.Fatal("企业版门槛拒绝应记 denied 审计")
+	}
+
+	// 提交并平台通过企业认证（cert_type=4）
+	_, env = h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+		"cert_type": 4, "agreed": true, "material_file_ids": []int64{1, 2},
+	})
+	var cert struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cert)
+	if cert.ID == 0 {
+		t.Fatalf("企业认证提交失败: %+v", env)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/certs/%d/review", cert.ID), admTok, map[string]any{"pass": true}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("企业认证审核失败: %d %+v", s, e)
+	}
+
+	// 通过后：企业版开通成功（生成 trade 订单）
+	_, env = h.do(http.MethodPost, "/api/mp/v1/membership/orders", tok, map[string]any{"level": 3, "years": 1})
+	var opened struct {
+		OrderID int64 `json:"order_id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &opened)
+	if opened.OrderID == 0 {
+		t.Fatalf("企业认证通过后应可开通企业版: %+v", env)
+	}
+}
+
+// 发布智能草稿仅预填（p5 §3.3）：草稿不落库；提交仍走原接口校验与内容安全流水线。
+func TestIntegrationAIPublishDraftPrefillOnly(t *testing.T) {
+	h := newTestApp(t)
+	uid, tok := loginUser(t, h)
+	_, admTok := loginAdmin(t, h)
+	ctx := context.Background()
+
+	// 实名（内容发布门槛）+ 开启 ai.publish（白名单当前用户）
+	if _, err := h.app.Pool.Exec(ctx, `INSERT INTO vfy_certification (id, user_id, cert_type, status) VALUES ($1::bigint+800000, $1, 1, 1)`, uid); err != nil {
+		t.Fatal(err)
+	}
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/feature-flags/"+aiContract.FlagPublish, admTok, map[string]any{
+		"enabled": true, "ratio": 0, "users": []int64{uid},
+	}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("开启 ai.publish 失败: %d %+v", s, e)
+	}
+
+	// 1) 生成草稿：仅返回预填字段，不写入内容表
+	var before int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM cnt_content WHERE author_id=$1`, uid).Scan(&before)
+	_, env := h.do(http.MethodPost, "/api/mp/v1/ai/publish-draft", tok, map[string]any{
+		"kind": "project", "text": "上海某钣金厂寻求 500 万融资，主营造车级零件",
+	})
+	var draft struct {
+		Title  string `json:"title"`
+		Fields []struct {
+			Field string `json:"field"`
+			Value string `json:"value"`
+		} `json:"fields"`
+	}
+	if err := json.Unmarshal(env.Data, &draft); err != nil || env.Code != 0 {
+		t.Fatalf("生成发布草稿失败: %+v err=%v", env, err)
+	}
+	var after int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM cnt_content WHERE author_id=$1`, uid).Scan(&after)
+	if after != before {
+		t.Fatalf("AI 草稿不得落库：before=%d after=%d", before, after)
+	}
+
+	// 2) 原接口提交仍有效（走原校验/内容安全）
+	_, env = h.do(http.MethodPost, "/api/mp/v1/contents", tok, map[string]any{
+		"kind": "project", "title": "手填发布",
+		"tagset": map[string]any{"region": "310000", "industry": []string{"A01"}},
+		"fields": map[string]any{"amount_wan": 500, "intro": "钣金"},
+	})
+	if env.Code != 0 {
+		t.Fatalf("原接口提交应成功: %+v", env)
+	}
+	// 3) 原接口校验仍生效（缺必填 title → 400）
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/contents", tok, map[string]any{"kind": "project"}); s != http.StatusBadRequest {
+		t.Fatalf("缺必填应 400: %d %+v", s, e)
+	}
+}
+
+// AI 后台管理（p5 §7.2/§8.2）：提示词版本管理（评测门禁）+ 用量/采纳率/成本统计。
+func TestIntegrationAIAdminPromptsUsage(t *testing.T) {
+	h := newTestApp(t)
+	uid, tok := loginUser(t, h)
+	_, admTok := loginAdmin(t, h)
+	ctx := context.Background()
+
+	// 1) 提示词管理：非管理员被拒；管理员可保存并回读
+	if s, _ := h.do(http.MethodPut, "/api/admin/v1/ai/prompts", tok, map[string]any{
+		"feature": "onboard", "version": "v9", "body": "提示词", "approved": true,
+	}); s != http.StatusForbidden {
+		t.Fatalf("非管理员改提示词应 403: %d", s)
+	}
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/ai/prompts", admTok, map[string]any{
+		"feature": "onboard", "version": "v9", "body": "后台提示词", "approved": false,
+	}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("保存提示词失败: %d %+v", s, e)
+	}
+	_, env := h.do(http.MethodGet, "/api/admin/v1/ai/prompts", admTok, nil)
+	var prompts struct {
+		Items []struct {
+			Feature, Version string
+			Approved         bool
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &prompts)
+	found := false
+	for _, p := range prompts.Items {
+		if p.Feature == "onboard" && p.Version == "v9" {
+			found = true
+			if p.Approved {
+				t.Fatal("未评测版本应 approved=false")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("应能读回提示词版本: %+v", prompts.Items)
+	}
+	// 审计留痕
+	var n int
+	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM sys_audit WHERE action='ai:prompt:save'`).Scan(&n)
+	if n == 0 {
+		t.Fatal("提示词变更应写审计")
+	}
+
+	// 2) 用量/采纳率/成本：成本单价 100 分/千 token
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/settings/ai.cost.fen_per_1ktoken", admTok, map[string]any{"value": "100"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("设置成本单价失败: %d %+v", s, e)
+	}
+	base := time.Now().UnixNano()
+	rows := []struct {
+		outcome string
+		adopted any
+		tokens  int
+	}{
+		{"ok", int16(1), 1000},
+		{"ok", int16(0), 500},
+		{"degraded", nil, 0},
+	}
+	for i, r := range rows {
+		if _, err := h.app.Pool.Exec(ctx, `
+			INSERT INTO ai_call_log (id, feature, user_id, tokens, outcome, adopted, created_at)
+			VALUES ($1,'onboard',$2,$3,$4,$5,now())`, base+int64(i), uid, r.tokens, r.outcome, r.adopted); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, env = h.do(http.MethodGet, "/api/admin/v1/ai/usage?days=1", admTok, nil)
+	var usage struct {
+		Items []struct {
+			Feature   string  `json:"feature"`
+			Calls     int64   `json:"calls"`
+			Degraded  int64   `json:"degraded"`
+			Adopted   int64   `json:"adopted"`
+			AdoptRate float64 `json:"adopt_rate"`
+			Tokens    int64   `json:"tokens"`
+			CostFen   int64   `json:"cost_fen"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &usage)
+	var got bool
+	for _, u := range usage.Items {
+		if u.Feature != "onboard" {
+			continue
+		}
+		got = true
+		// 测试库跨用例累积，按「与本用例新增一致」的稳健断言（不锁死总量）
+		if u.Calls < 2 || u.Degraded < 1 || u.Adopted < 1 {
+			t.Fatalf("用量统计不符: %+v", u)
+		}
+		if u.Tokens < 1500 {
+			t.Fatalf("token 统计应含本用例新增: %+v", u)
+		}
+		if u.AdoptRate <= 0 || u.AdoptRate > 1 {
+			t.Fatalf("采纳率应在 (0,1]: %+v", u)
+		}
+		if u.CostFen != u.Tokens*100/1000 {
+			t.Fatalf("成本应=tokens×100/1000: %+v", u)
+		}
+	}
+	if !got {
+		t.Fatalf("用量应含 onboard: %+v", usage.Items)
+	}
+
+	// 3) 观测告警（p5 §8.2）：成本超阈 + 采纳率骤降，经任务重跑触发
+	costBefore := obs.Default().AlertCount("ai_cost_anomaly")
+	dropBefore := obs.Default().AlertCount("ai_adopt_rate_drop")
+	for k, v := range map[string]string{
+		"ai.alert.cost.fen.daily":   "1",
+		"ai.alert.adopt_rate.min":   "99",
+		"ai.alert.adopt.min_sample": "1",
+	} {
+		if s, e := h.do(http.MethodPut, "/api/admin/v1/settings/"+k, admTok, map[string]any{"value": v}); s != http.StatusOK || e.Code != 0 {
+			t.Fatalf("设置告警阈值 %s 失败: %d %+v", k, s, e)
+		}
+	}
+	if s, e := h.do(http.MethodPost, "/api/admin/v1/jobs/ai.cost_guard/run", admTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("运行 AI 观测任务失败: %d %+v", s, e)
+	}
+	if obs.Default().AlertCount("ai_cost_anomaly") <= costBefore {
+		t.Fatal("成本超阈应触发告警")
+	}
+	if obs.Default().AlertCount("ai_adopt_rate_drop") <= dropBefore {
+		t.Fatal("采纳率骤降应触发告警")
+	}
+}
+
+// 关闭开关（不装载 ai）时全链路无影响（p5 §9.1）：AI 路由不存在，主链路照常。
+func TestIntegrationAIModuleExcluded(t *testing.T) {
+	noAI := []string{"dict", "media", "identity", "trust", "profile", "verify", "content",
+		"social", "trade", "membership", "msg", "discovery", "circle", "cube", "notice"}
+	h := newTestAppCfg(t, func(c *config.Config) { c.Modules = noAI })
+	uid, tok := loginUser(t, h)
+	ctx := context.Background()
+
+	// AI 路由不存在（未装载）
+	if s, _ := h.do(http.MethodPost, "/api/mp/v1/ai/onboard-draft", tok, map[string]any{"text": "x"}); s != http.StatusNotFound {
+		t.Fatalf("未装载 ai 时 AI 路由应 404: %d", s)
+	}
+	// 原表单/主链路照常：实名后发布内容
+	if _, err := h.app.Pool.Exec(ctx, `INSERT INTO vfy_certification (id, user_id, cert_type, status) VALUES ($1::bigint+800000, $1, 1, 1)`, uid); err != nil {
+		t.Fatal(err)
+	}
+	if _, env := h.do(http.MethodPost, "/api/mp/v1/contents", tok, map[string]any{
+		"kind": "project", "title": "无 AI 发布",
+		"tagset": map[string]any{"region": "310000", "industry": []string{"A01"}},
+		"fields": map[string]any{"amount_wan": 10, "intro": "手填"},
+	}); env.Code != 0 {
+		t.Fatalf("未装载 ai 不应影响主链路: %+v", env)
 	}
 }

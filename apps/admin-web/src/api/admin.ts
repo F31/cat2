@@ -346,4 +346,32 @@ export const adminApi = {
   replayDeadLetter(eventId: string) {
     return call<{ replayed: boolean }>('POST', `/admin/v1/dead-letters/${eventId}/replay`)
   },
+
+  aiPrompts() {
+    return call<{ items: AiPrompt[] }>('GET', '/admin/v1/ai/prompts')
+  },
+  aiSavePrompt(p: { feature: string; version: string; body: string; approved: boolean }) {
+    return call<{ saved: boolean }>('PUT', '/admin/v1/ai/prompts', p)
+  },
+  aiUsage(days = 7) {
+    return call<{ days: number; items: AiUsage[] }>('GET', `/admin/v1/ai/usage?days=${days}`)
+  },
+}
+
+export interface AiPrompt {
+  feature: string
+  version: string
+  body: string
+  approved: boolean
+}
+
+export interface AiUsage {
+  feature: string
+  calls: number
+  degraded: number
+  adopted: number
+  rejected: number
+  adopt_rate: number
+  tokens: number
+  cost_fen: number
 }

@@ -28,12 +28,18 @@
 | 磁盘/备份 | 备份失败或 WAL 归档中断 | 备份边车/`archive_command` 日志 | 立即排查，PITR 断档需重做全备并验证 |
 | 审核 SLA 将超时 | 距 SLA 到期 < 30m | `catcube_review_sla_overdue` + 队列 | 值班审核跟进 |
 
-## AI 相关（p5 落地后启用）
+## AI 相关（p5 §8.2；已落地告警见下）
 
-| 告警项 | 触发条件 | 处置动作 |
+| 告警 | 触发 | 处置 |
 | --- | --- | --- |
-| AI 采纳率骤降 | 日环比下降 > 30% | 检查提示词/模型版本；必要时关开关回退 |
-| AI 成本异常 | 日成本 > 预算阈值（`ai.budget.fen.daily`） | 自动拒绝（`030004`/429）+ 人工确认后限流/降级为规则路径 |
+| `ai_adopt_rate_drop` | 采纳率 < `ai.alert.adopt_rate.min`（默认 30%）且样本 ≥ `ai.alert.adopt.min_sample`（默认 20） | 检查提示词/模型版本；必要时关开关回退 |
+| `ai_cost_anomaly` | 当日成本 > `ai.alert.cost.fen.daily`（分，0=不告警） | 复核用量；必要时限流/降级为规则路径 |
+
+> 由定时任务 `ai.cost_guard`（每 10 分钟）评估，阈值经后台 `GET/PUT /api/admin/v1/settings` 热生效；
+> 指标 `catcube_ai_cost_fen_daily`/`catcube_ai_adopt_rate_pct`/`catcube_ai_tokens_daily`（`GET /metrics`）。
+
+| 指标类告警（预留） | 触发 | 处置 |
+| --- | --- | --- |
 | AI 降级升高 | `catcube_ai_degraded_total` 日环比 +50% | 检查上游可用性与开关配置（关闭开关即全量回退原表单） |
 | AI 幻觉升高 | `catcube_ai_output_dropped_total` 异常增长 | 复核提示词版本（`ai_prompt`，未评测版本不生效） |
 

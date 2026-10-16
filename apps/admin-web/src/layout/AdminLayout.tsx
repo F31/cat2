@@ -22,6 +22,7 @@ const FALLBACK: MenuProps['items'] = [
   { key: '/audits', label: '审计轨迹' },
   { key: '/exports', label: '导出中心' },
   { key: '/governance', label: '代操作' },
+  { key: '/ai-prompts', label: 'AI 提示词与用量' },
   { key: '/badges', label: '认证标识' },
 ]
 

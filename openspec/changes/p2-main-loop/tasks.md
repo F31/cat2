@@ -81,7 +81,7 @@
 - [x] 8.3 下单：调 trade.CreateOrder（biz_type=member，price_snapshot 存单价/年限/系数）
 - [x] 8.4 履约：注册 `OrderFulfiller(biz_type=member)`；`OrderPaid` → 开通/续期（幂等，按订单 ID 幂等）
 - [x] 8.5 状态机 #12（未开通→生效中→已过期）+ 到期回落 SchedulerJob；企业版主账号过期 → 子账号同步回落（`ExpireSubsByMaster` 置 status=2），归属记录保留 30 天（`PurgeRemovedSubs` 随 `membership.expire` 清理）；`TestIntegrationEnterpriseSubExpiry` 覆盖
-- [ ] 8.6 企业版门槛：开通时校验 identity `identity_type=2` + verify「已认证」能力（当前恒否→denied）；订阅 `CertificationApproved` 判资格、按手机号邀请、denied 记审计 **阻塞于企业认证（cert_type=4）未在 p2 verify（仅实名）实现**，随 verify 企业/机构认证阶段接通（审计存储已就绪，可直接 `audit.Record(ResultDenied)`）
+- [x] 8.6 企业版门槛：开通时校验 identity `identity_type=2` + verify「已认证」能力（`verified`；企业/机构认证通过授徽标，`capProvider` 同时查 user/org 主体）；不满足 → `120003` 并记 `membership:enterprise:denied` denied 审计。企业认证（cert_type=4/5）已由 p4 §6 实现，`TestIntegrationEnterpriseMembershipGate` 覆盖「未认证拒绝+审计 → 企业认证通过后可开通」。（`CertificationApproved` 用户提示由 notice 模板承接；按手机号邀请开通属运营动作，待 #13/产品确认）
 - [x] 8.7 退款金额计算：`RefundAmount(order)`=剩余完整年数×年费×实付折扣系数（取订单快照）；用户端无退款入口（仅后台）
 - [x] 8.8 事件 `MemberActivated/MemberExpired/SubAccountChanged` 已发；identity 订阅递增 authz_ver 已接通；discovery 订阅 `MemberActivated/Expired` → `SetMemberLevel` 落投影（修复 `dsc_search_doc` 查询 `'user:'||$1` 参数类型歧义导致等级更新失败）
 - [x] 8.9 CapabilityProvider（`member.active`/`member.enterprise`）已注册；会员等级作为 discovery 同分排序权重（企业版>VIP>普通）

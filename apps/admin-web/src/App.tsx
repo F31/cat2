@@ -15,6 +15,7 @@ import Settings from './pages/Settings'
 import AuditTrail from './pages/AuditTrail'
 import Exports from './pages/Exports'
 import Governance from './pages/Governance'
+import AiPrompts from './pages/AiPrompts'
 import Badges from './pages/Badges'
 import User360 from './pages/User360'
 import Dashboard from './pages/Dashboard'
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="audits" element={<AuditTrail />} />
         <Route path="exports" element={<Exports />} />
         <Route path="governance" element={<Governance />} />
+        <Route path="ai-prompts" element={<AiPrompts />} />
         <Route path="badges" element={<Badges />} />
         <Route path="users/:id/360" element={<User360 />} />
       </Route>

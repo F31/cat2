@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Taro from '@tarojs/taro'
 import { View, Text, Input, Button } from '@tarojs/components'
 import type { DiscoveryCard } from '@catcube/api-client'
 import { api } from '../../services/request'
-import { aiFeatures, parseSearch, isAiUnavailable, AI_SEARCH } from '../../services/ai'
+import { parseSearch, isAiUnavailable, AI_SEARCH } from '../../services/ai'
+import AiEntry from '../../ai-entry'
 import ContentCard from '../../components/ContentCard'
 import StateView from '../../components/StateView'
 
@@ -24,12 +25,6 @@ export default function Search() {
   const [items, setItems] = useState<DiscoveryCard[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
-  const [aiOn, setAiOn] = useState(false)
-
-  // AI 入口仅在开关开启时展示（关闭即回退普通关键词搜索）
-  useEffect(() => {
-    void aiFeatures().then((f) => setAiOn(!!f[AI_SEARCH]))
-  }, [])
 
   // AI 智能搜索：自然语言 → 结构化条件；失败（030001）回退关键词搜索并提示
   const runAI = async () => {
@@ -96,14 +91,13 @@ export default function Search() {
           搜索
         </Button>
       </View>
-      {aiOn ? (
-        <View className="ai-entry">
-          <Text className="ai-entry__hint">用一句话描述，例如「上海找钣金供应商」</Text>
-          <Button className="btn-secondary" size="mini" onClick={() => void runAI()}>
-            AI 智能搜索
-          </Button>
-        </View>
-      ) : null}
+      <AiEntry
+        flag={AI_SEARCH}
+        hint="用一句话描述，例如「上海找钣金供应商」"
+        buttonLabel="AI 智能搜索"
+        validate={() => (q.trim() ? null : '请先描述你要找什么')}
+        run={() => runAI()}
+      />
 
       <View className="tabs">
         {TABS.map((t) => (
