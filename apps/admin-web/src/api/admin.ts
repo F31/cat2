@@ -147,6 +147,13 @@ export const adminApi = {
     })
   },
 
+  createUser(body: { nickname: string; phone: string; identity_type: number }) {
+    return call<{ id: string }>('POST', '/admin/v1/users', body)
+  },
+  updateUser(id: string, body: { nickname: string; phone?: string; identity_type: number }) {
+    return call<{ id: string }>('PUT', `/admin/v1/users/${id}`, body)
+  },
+
   users(params: { status?: number; q?: string; limit?: number } = {}) {
     const qs = new URLSearchParams()
     if (params.status !== undefined) qs.set('status', String(params.status))

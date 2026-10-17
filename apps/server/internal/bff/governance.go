@@ -54,7 +54,8 @@ func (a *Aggregator) handleGovernanceUsers(w http.ResponseWriter, req *http.Requ
 		items = append(items, map[string]any{
 			"id": strconv.FormatInt(r.ID, 10), "nickname": r.Nickname, "status": r.Status,
 			"identity_type": r.IdentityType, "realname_status": r.RealnameStatus,
-			"created_at": r.CreatedAt, "member_level": lvl, "member_active": active,
+			"phone_masked": r.PhoneMasked, "created_at": r.CreatedAt,
+			"member_level": lvl, "member_active": active,
 		})
 	}
 	writeData(w, map[string]any{"items": items, "limit": f.Limit, "offset": f.Offset})

@@ -905,6 +905,45 @@ paths:
                             type: array
                             items: { $ref: '#/components/schemas/AdminUser' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [admin-identity]
+      summary: 新增用户（后台代建；手机号唯一）
+      operationId: adminCreateUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nickname, phone, identity_type]
+              properties:
+                nickname: { type: string, maxLength: 32 }
+                phone: { type: string }
+                identity_type: { type: integer, enum: [1, 2] }
+      responses:
+        '200': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /users/{id}:
+    put:
+      tags: [admin-identity]
+      summary: 编辑用户资料（昵称/手机号/主体类型；手机号留空不改）
+      operationId: adminUpdateUser
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nickname, identity_type]
+              properties:
+                nickname: { type: string, maxLength: 32 }
+                phone: { type: string }
+                identity_type: { type: integer, enum: [1, 2] }
+      responses:
+        '200': { description: 已更新, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /users/{id}/ban:
     post:
       tags: [admin-identity]

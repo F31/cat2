@@ -989,6 +989,24 @@ export interface paths {
         /** 用户列表（按状态/关键字） */
         get: operations["adminListUsers"];
         put?: never;
+        /** 新增用户（后台代建；手机号唯一） */
+        post: operations["adminCreateUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** 编辑用户资料（昵称/手机号/主体类型；手机号留空不改） */
+        put: operations["adminUpdateUser"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3092,6 +3110,68 @@ export interface operations {
                             items?: components["schemas"]["AdminUser"][];
                         };
                     };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    adminCreateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    nickname: string;
+                    phone: string;
+                    /** @enum {integer} */
+                    identity_type: 1 | 2;
+                };
+            };
+        };
+        responses: {
+            /** @description 已创建 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    adminUpdateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    nickname: string;
+                    phone?: string;
+                    /** @enum {integer} */
+                    identity_type: 1 | 2;
+                };
+            };
+        };
+        responses: {
+            /** @description 已更新 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
                 };
             };
             401: components["responses"]["Unauthorized"];

@@ -131,6 +131,42 @@ func (e AdminCreateExportJSONBodyTemplate) Valid() bool {
 	}
 }
 
+// Defines values for AdminCreateUserJSONBodyIdentityType.
+const (
+	AdminCreateUserJSONBodyIdentityTypeN1 AdminCreateUserJSONBodyIdentityType = 1
+	AdminCreateUserJSONBodyIdentityTypeN2 AdminCreateUserJSONBodyIdentityType = 2
+)
+
+// Valid indicates whether the value is a known member of the AdminCreateUserJSONBodyIdentityType enum.
+func (e AdminCreateUserJSONBodyIdentityType) Valid() bool {
+	switch e {
+	case AdminCreateUserJSONBodyIdentityTypeN1:
+		return true
+	case AdminCreateUserJSONBodyIdentityTypeN2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AdminUpdateUserJSONBodyIdentityType.
+const (
+	AdminUpdateUserJSONBodyIdentityTypeN1 AdminUpdateUserJSONBodyIdentityType = 1
+	AdminUpdateUserJSONBodyIdentityTypeN2 AdminUpdateUserJSONBodyIdentityType = 2
+)
+
+// Valid indicates whether the value is a known member of the AdminUpdateUserJSONBodyIdentityType enum.
+func (e AdminUpdateUserJSONBodyIdentityType) Valid() bool {
+	switch e {
+	case AdminUpdateUserJSONBodyIdentityTypeN1:
+		return true
+	case AdminUpdateUserJSONBodyIdentityTypeN2:
+		return true
+	default:
+		return false
+	}
+}
+
 // AdminMember defines model for AdminMember.
 type AdminMember struct {
 	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
@@ -643,6 +679,26 @@ type AdminListUsersParams struct {
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// AdminCreateUserJSONBody defines parameters for AdminCreateUser.
+type AdminCreateUserJSONBody struct {
+	IdentityType AdminCreateUserJSONBodyIdentityType `json:"identity_type"`
+	Nickname     string                              `json:"nickname"`
+	Phone        string                              `json:"phone"`
+}
+
+// AdminCreateUserJSONBodyIdentityType defines parameters for AdminCreateUser.
+type AdminCreateUserJSONBodyIdentityType int
+
+// AdminUpdateUserJSONBody defines parameters for AdminUpdateUser.
+type AdminUpdateUserJSONBody struct {
+	IdentityType AdminUpdateUserJSONBodyIdentityType `json:"identity_type"`
+	Nickname     string                              `json:"nickname"`
+	Phone        *string                             `json:"phone,omitempty"`
+}
+
+// AdminUpdateUserJSONBodyIdentityType defines parameters for AdminUpdateUser.
+type AdminUpdateUserJSONBodyIdentityType int
+
 // AdminBanUserJSONBody defines parameters for AdminBanUser.
 type AdminBanUserJSONBody struct {
 	Reason *string `json:"reason,omitempty"`
@@ -746,6 +802,12 @@ type AdminSetRoleScopeJSONRequestBody AdminSetRoleScopeJSONBody
 
 // AdminSetSettingJSONRequestBody defines body for AdminSetSetting for application/json ContentType.
 type AdminSetSettingJSONRequestBody AdminSetSettingJSONBody
+
+// AdminCreateUserJSONRequestBody defines body for AdminCreateUser for application/json ContentType.
+type AdminCreateUserJSONRequestBody AdminCreateUserJSONBody
+
+// AdminUpdateUserJSONRequestBody defines body for AdminUpdateUser for application/json ContentType.
+type AdminUpdateUserJSONRequestBody AdminUpdateUserJSONBody
 
 // AdminBanUserJSONRequestBody defines body for AdminBanUser for application/json ContentType.
 type AdminBanUserJSONRequestBody AdminBanUserJSONBody
@@ -980,6 +1042,12 @@ type ServerInterface interface {
 	// AdminListUsers 用户列表（按状态/关键字）
 	// (GET /users)
 	AdminListUsers(w http.ResponseWriter, r *http.Request, params AdminListUsersParams)
+	// AdminCreateUser 新增用户（后台代建；手机号唯一）
+	// (POST /users)
+	AdminCreateUser(w http.ResponseWriter, r *http.Request)
+	// AdminUpdateUser 编辑用户资料（昵称/手机号/主体类型；手机号留空不改）
+	// (PUT /users/{id})
+	AdminUpdateUser(w http.ResponseWriter, r *http.Request, id string)
 	// AdminUser360 用户 360（只读聚合：identity/profile/verify/membership/content/cube/circle/trust）
 	// (GET /users/{id}/360)
 	AdminUser360(w http.ResponseWriter, r *http.Request, id string)
@@ -3046,6 +3114,46 @@ func (siw *ServerInterfaceWrapper) AdminListUsers(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// AdminCreateUser operation middleware
+func (siw *ServerInterfaceWrapper) AdminCreateUser(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCreateUser(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminUpdateUser operation middleware
+func (siw *ServerInterfaceWrapper) AdminUpdateUser(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminUpdateUser(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminUser360 operation middleware
 func (siw *ServerInterfaceWrapper) AdminUser360(w http.ResponseWriter, r *http.Request) {
 
@@ -3334,6 +3442,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/dead-letters/{eventID}/replay", wrapper.AdminReplayDeadLetter)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/notice-templates", wrapper.AdminNoticeTemplates)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/users", wrapper.AdminListUsers)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/users", wrapper.AdminCreateUser)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/users/{id}", wrapper.AdminUpdateUser)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/users/{id}/ban", wrapper.AdminBanUser)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/users/{id}/unban", wrapper.AdminUnbanUser)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/contents", wrapper.AdminListContents)

@@ -89,11 +89,15 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/users/me", Handler: m.auth(m.handleMe)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/users/me/deactivate", Handler: m.auth(m.handleDeactivate)},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/users", Handler: m.auth(m.handleAdminUsers), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/users", Handler: m.auth(m.handleAdminCreateUser), Admin: true},
+		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/users/{id}", Handler: m.auth(m.handleAdminUpdateUser), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/users/{id}/ban", Handler: m.auth(m.handleAdminBan), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/users/{id}/unban", Handler: m.auth(m.handleAdminUnban), Admin: true},
 	)
 	// CapabilityProvider：账号状态（实名能力在 verify 注册，此处恒 false）
 	r.AuditPoints = append(r.AuditPoints,
+		audit.Point{Action: "identity:user:create", Path: "/api/admin/v1/users", Required: true, LogFailed: true, Module: "identity"},
+		audit.Point{Action: "identity:user:update", Path: "/api/admin/v1/users/{id}", Required: true, LogFailed: true, Module: "identity"},
 		audit.Point{Action: "identity:user:ban", Path: "/api/admin/v1/users/{id}/ban", Required: true, LogFailed: true, Module: "identity"},
 		audit.Point{Action: "identity:user:unban", Path: "/api/admin/v1/users/{id}/unban", Required: true, LogFailed: true, Module: "identity"},
 		audit.Point{Action: "identity:user:deactivate", Path: "/api/mp/v1/users/me/deactivate", Required: true, LogFailed: false, Module: "identity"},
@@ -182,7 +186,8 @@ func (m *Module) AdminSearchUsers(ctx context.Context, f contract.AdminUserFilte
 			created = u.CreatedAt.Unix()
 		}
 		out = append(out, contract.AdminUserRow{ID: u.ID, Nickname: u.Nickname, Status: u.Status,
-			IdentityType: u.IdentityType, RealnameStatus: u.RealnameStatus, CreatedAt: created})
+			IdentityType: u.IdentityType, RealnameStatus: u.RealnameStatus,
+			PhoneMasked: m.maskPhone(u.PhoneEnc), CreatedAt: created})
 	}
 	return out, nil
 }
@@ -577,6 +582,134 @@ func (m *Module) handleAdminUsers(w http.ResponseWriter, req *http.Request) {
 		})
 	}
 	writeData(w, map[string]any{"items": items})
+}
+
+// handleAdminCreateUser 后台新增用户（手机号唯一；写审计）。
+func (m *Module) handleAdminCreateUser(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		Nickname     string `json:"nickname"`
+		Phone        string `json:"phone"`
+		IdentityType int16  `json:"identity_type"`
+	}
+	if json.NewDecoder(req.Body).Decode(&body) != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	body.Nickname = strings.TrimSpace(body.Nickname)
+	body.Phone = strings.TrimSpace(body.Phone)
+	if body.IdentityType == 0 {
+		body.IdentityType = 1
+	}
+	if body.Nickname == "" || len([]rune(body.Nickname)) > 32 || !domain.ValidPhone(body.Phone) ||
+		(body.IdentityType != 1 && body.IdentityType != 2) {
+		writeErr(w, codeParamInvalid, "昵称/手机号/主体类型不合法")
+		return
+	}
+	if m.deps.Encryptor == nil {
+		writeErr(w, codeInternal, "加密未配置")
+		return
+	}
+	enc, err := m.deps.Encryptor.Encrypt([]byte(body.Phone))
+	if err != nil {
+		writeErr(w, codeInternal, "服务错误")
+		return
+	}
+	hmac := sensitive.BlindIndex(m.deps.BlindKey, body.Phone)
+	id := int64(ids.New())
+	if _, err := m.deps.Pool.Exec(req.Context(), `
+		INSERT INTO idn_user (id, phone_enc, phone_hmac, nickname, status, identity_type, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,0,$5,now(),now())`, id, enc, hmac, body.Nickname, body.IdentityType); err != nil {
+		writeErr(w, 1, "手机号已存在或创建失败")
+		return
+	}
+	m.auditUserEdit(req, "identity:user:create", id,
+		map[string]any{"nickname": body.Nickname, "phone_masked": mask.Phone(body.Phone), "identity_type": body.IdentityType}, nil)
+	writeData(w, map[string]any{"id": strconv.FormatInt(id, 10), "nickname": body.Nickname,
+		"phone_masked": mask.Phone(body.Phone), "identity_type": body.IdentityType})
+}
+
+// handleAdminUpdateUser 后台编辑用户资料（昵称/手机号/主体类型；手机号变更会递增授权版本）。
+func (m *Module) handleAdminUpdateUser(w http.ResponseWriter, req *http.Request) {
+	id, err := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	if err != nil || id == 0 {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	var body struct {
+		Nickname     string `json:"nickname"`
+		Phone        string `json:"phone"`
+		IdentityType int16  `json:"identity_type"`
+	}
+	if json.NewDecoder(req.Body).Decode(&body) != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	body.Nickname = strings.TrimSpace(body.Nickname)
+	body.Phone = strings.TrimSpace(body.Phone)
+	cur, err := m.store.UserByID(req.Context(), id)
+	if err != nil {
+		writeErr(w, 140001, "用户不存在")
+		return
+	}
+	nickname, identityType := cur.Nickname, cur.IdentityType
+	if body.Nickname != "" {
+		if len([]rune(body.Nickname)) > 32 {
+			writeErr(w, codeParamInvalid, "昵称过长")
+			return
+		}
+		nickname = body.Nickname
+	}
+	if body.IdentityType == 1 || body.IdentityType == 2 {
+		identityType = body.IdentityType
+	}
+	enc, hmac := cur.PhoneEnc, cur.PhoneHMAC
+	phoneMasked := m.maskPhone(cur.PhoneEnc)
+	bump := 0
+	if body.Phone != "" {
+		if !domain.ValidPhone(body.Phone) {
+			writeErr(w, codeParamInvalid, "手机号不合法")
+			return
+		}
+		if m.deps.Encryptor == nil {
+			writeErr(w, codeInternal, "加密未配置")
+			return
+		}
+		enc, err = m.deps.Encryptor.Encrypt([]byte(body.Phone))
+		if err != nil {
+			writeErr(w, codeInternal, "服务错误")
+			return
+		}
+		hmac = sensitive.BlindIndex(m.deps.BlindKey, body.Phone)
+		phoneMasked = mask.Phone(body.Phone)
+		bump = 1
+	}
+	if _, err := m.deps.Pool.Exec(req.Context(), `
+		UPDATE idn_user SET nickname=$2, identity_type=$3, phone_enc=$4, phone_hmac=$5,
+			authz_ver=authz_ver+$6, updated_at=now() WHERE id=$1`, id, nickname, identityType, enc, hmac, bump); err != nil {
+		writeErr(w, 1, "手机号已存在或更新失败")
+		return
+	}
+	m.auditUserEdit(req, "identity:user:update", id,
+		map[string]any{"nickname": nickname, "phone_masked": phoneMasked, "identity_type": identityType},
+		map[string]any{"nickname": cur.Nickname, "phone_masked": m.maskPhone(cur.PhoneEnc), "identity_type": cur.IdentityType})
+	writeData(w, map[string]any{"id": strconv.FormatInt(id, 10), "nickname": nickname,
+		"phone_masked": phoneMasked, "identity_type": identityType})
+}
+
+// auditUserEdit 后台新增/编辑用户审计。
+func (m *Module) auditUserEdit(req *http.Request, action string, id int64, after, before any) {
+	if m.deps.Audit == nil {
+		return
+	}
+	detail := map[string]any{"after": after}
+	if before != nil {
+		detail["before"] = before
+	}
+	_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+		ActorID: userIDFrom(req.Context()), ActorType: audit.ActorAdmin, Channel: "admin",
+		Action: action, TargetRef: fmt.Sprintf(`{"type":"user","id":"%d"}`, id),
+		Detail: detail, Result: audit.ResultOK, IP: audit.ClientIP(req), RequestID: audit.RequestIDOf(req.Context()),
+	})
 }
 
 func (m *Module) handleAdminBan(w http.ResponseWriter, req *http.Request) {

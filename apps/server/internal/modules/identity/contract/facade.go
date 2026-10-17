@@ -27,6 +27,7 @@ type AdminUserRow struct {
 	Status         int16  `json:"status"`
 	IdentityType   int16  `json:"identity_type"`
 	RealnameStatus int16  `json:"realname_status"`
+	PhoneMasked    string `json:"phone_masked"`
 	CreatedAt      int64  `json:"created_at"`
 }
 

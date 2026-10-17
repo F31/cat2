@@ -289,3 +289,61 @@ func TestIntegrationMiniappSettings(t *testing.T) {
 		t.Fatalf("小程序 AppID 未热生效: %q", v)
 	}
 }
+
+// 用户管理：后台新增/编辑用户，列表返回手机号（脱敏）。
+func TestIntegrationAdminUserCreateEdit(t *testing.T) {
+	h := newTestApp(t)
+	ctx := context.Background()
+	_, admTok := loginAdmin(t, h)
+	phone := fmt.Sprintf("139%08d", time.Now().UnixNano()%100000000)
+	phone2 := fmt.Sprintf("138%08d", time.Now().UnixNano()%100000000)
+	nick := fmt.Sprintf("后台新建-%d", time.Now().UnixNano()%100000)
+	defer func() {
+		_, _ = h.app.Pool.Exec(ctx, `DELETE FROM idn_user WHERE nickname LIKE '后台新建-%' OR nickname='后台改名'`)
+	}()
+
+	_, env := h.do(http.MethodPost, "/api/admin/v1/users", admTok,
+		map[string]any{"nickname": nick, "phone": phone, "identity_type": 1})
+	var created struct {
+		ID          string `json:"id"`
+		PhoneMasked string `json:"phone_masked"`
+	}
+	_ = json.Unmarshal(env.Data, &created)
+	if env.Code != 0 || created.ID == "" {
+		t.Fatalf("新增用户失败: %+v", env)
+	}
+	if created.PhoneMasked != phone[:3]+"****"+phone[7:] {
+		t.Fatalf("手机号脱敏不符: %q", created.PhoneMasked)
+	}
+
+	// 列表显示手机号
+	_, env = h.do(http.MethodGet, "/api/admin/v1/governance/users?q="+nick+"&limit=10", admTok, nil)
+	var list struct {
+		Items []struct {
+			ID          string `json:"id"`
+			PhoneMasked string `json:"phone_masked"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &list)
+	if len(list.Items) == 0 || list.Items[0].PhoneMasked != created.PhoneMasked {
+		t.Fatalf("用户列表缺少手机号: %+v", list)
+	}
+
+	// 编辑昵称/手机号
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/users/"+created.ID, admTok,
+		map[string]any{"nickname": "后台改名", "phone": phone2, "identity_type": 2}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("编辑用户失败: %d %+v", s, e)
+	}
+	var gotNick, gotEnc string
+	var gotType int16
+	_ = h.app.Pool.QueryRow(ctx, `SELECT nickname, encode(phone_enc,'hex'), identity_type FROM idn_user WHERE id=$1`, created.ID).
+		Scan(&gotNick, &gotEnc, &gotType)
+	if gotNick != "后台改名" || gotType != 2 || gotEnc == "" {
+		t.Fatalf("编辑未生效: %s %d %s", gotNick, gotType, gotEnc)
+	}
+	// 重复手机号拒绝
+	if _, e := h.do(http.MethodPost, "/api/admin/v1/users", admTok,
+		map[string]any{"nickname": "重复手机号", "phone": phone2, "identity_type": 1}); e.Code == 0 {
+		t.Fatal("重复手机号应失败")
+	}
+}

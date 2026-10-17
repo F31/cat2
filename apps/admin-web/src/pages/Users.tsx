@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Input, InputNumber, Modal, Select, Space, Table, Tag, message } from 'antd'
+import { Button, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useNavigate } from 'react-router-dom'
 import { adminApi, type AdminUser } from '../api/admin'
@@ -23,6 +23,7 @@ export default function Users() {
     status: number
     identity_type: number
     realname_status: number
+    phone_masked?: string
     created_at: number
     member_level: number
     member_active: boolean
@@ -38,6 +39,8 @@ export default function Users() {
   const [selectedRoles, setSelectedRoles] = useState<string[]>([])
   const [isSuper, setIsSuper] = useState(false)
   const [rolesLoading, setRolesLoading] = useState(false)
+  const [editing, setEditing] = useState<{ id?: string; phone_masked?: string } | null>(null)
+  const [userForm] = Form.useForm()
   const nav = useNavigate()
 
   const load = useCallback(async () => {
@@ -94,6 +97,42 @@ export default function Users() {
     }
   }
 
+  const openCreate = () => {
+    setEditing({})
+    userForm.setFieldsValue({ nickname: '', phone: '', identity_type: 1 })
+  }
+
+  const openEdit = (u: { id: string; nickname: string; identity_type: number; phone_masked?: string }) => {
+    setEditing({ id: u.id, phone_masked: u.phone_masked })
+    userForm.setFieldsValue({ nickname: u.nickname, phone: '', identity_type: u.identity_type })
+  }
+
+  const saveUser = async () => {
+    const v = await userForm.validateFields()
+    try {
+      if (editing?.id) {
+        await adminApi.updateUser(editing.id, {
+          nickname: String(v.nickname).trim(),
+          phone: String(v.phone ?? '').trim() || undefined,
+          identity_type: Number(v.identity_type),
+        })
+        message.success('用户信息已更新')
+      } else {
+        await adminApi.createUser({
+          nickname: String(v.nickname).trim(),
+          phone: String(v.phone).trim(),
+          identity_type: Number(v.identity_type),
+        })
+        message.success('用户已创建')
+      }
+      setEditing(null)
+      userForm.resetFields()
+      void load()
+    } catch (e) {
+      message.error(errText(e))
+    }
+  }
+
   const openRoles = async (u: { id: string; nickname?: string }) => {
     setRoleTarget(u)
     setRolesLoading(true)
@@ -123,6 +162,7 @@ export default function Users() {
   const columns: ColumnsType<(typeof rows)[number]> = [
     { title: 'ID', dataIndex: 'id' },
     { title: '昵称', dataIndex: 'nickname' },
+    { title: '手机号', dataIndex: 'phone_masked', render: (v?: string) => v || '—' },
     {
       title: '状态',
       dataIndex: 'status',
@@ -147,6 +187,9 @@ export default function Users() {
       title: '操作',
       render: (_, r) => (
         <Space>
+          <Button size="small" onClick={() => openEdit(r)}>
+            编辑
+          </Button>
           <Button size="small" onClick={() => nav(`/users/${r.id}/360`)}>
             360
           </Button>
@@ -186,7 +229,8 @@ export default function Users() {
 
   return (
     <>
-      <Space wrap style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+      <Space wrap>
         <Input
           placeholder="昵称模糊"
           style={{ width: 160 }}
@@ -235,6 +279,10 @@ export default function Users() {
           查询
         </Button>
       </Space>
+      <Button type="primary" onClick={openCreate}>
+        + 新增用户
+      </Button>
+      </div>
       <Table rowKey="id" loading={loading} columns={columns} dataSource={rows} size="small" />
       <Modal
         title={`限制发布 ${restrictTarget?.nickname ?? ''}`}
@@ -276,6 +324,36 @@ export default function Users() {
             />
           </>
         )}
+      </Modal>
+
+      <Modal
+        title={editing?.id ? '编辑用户' : '新增用户'}
+        open={!!editing}
+        onOk={() => void saveUser()}
+        onCancel={() => setEditing(null)}
+        okText="保存"
+      >
+        <Form form={userForm} layout="vertical">
+          <Form.Item name="nickname" label="昵称" rules={[{ required: true, message: '请输入昵称' }]}>
+            <Input maxLength={32} placeholder="昵称" />
+          </Form.Item>
+          <Form.Item
+            name="phone"
+            label="手机号"
+            rules={editing?.id ? [] : [{ required: true, message: '请输入手机号' }]}
+            extra={editing?.id ? `当前：${editing.phone_masked || '—'}；留空则不修改` : '手机号全局唯一'}
+          >
+            <Input maxLength={11} placeholder={editing?.id ? '留空不修改' : '11 位手机号'} />
+          </Form.Item>
+          <Form.Item name="identity_type" label="主体类型" rules={[{ required: true }]}>
+            <Select
+              options={[
+                { value: 1, label: '个人' },
+                { value: 2, label: '组织' },
+              ]}
+            />
+          </Form.Item>
+        </Form>
       </Modal>
 
       <Modal
