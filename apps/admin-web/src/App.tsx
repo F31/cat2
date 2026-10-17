@@ -29,6 +29,8 @@ import VerifyCerts from './pages/VerifyCerts'
 import DictPage from './pages/DictPage'
 import ProfileTemplates from './pages/ProfileTemplates'
 import MiniappSettings from './pages/MiniappSettings'
+import ChannelSettings from './pages/ChannelSettings'
+import MembershipPricing from './pages/MembershipPricing'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />
@@ -72,6 +74,8 @@ export default function App() {
         <Route path="dict" element={<DictPage />} />
         <Route path="profile-templates" element={<ProfileTemplates />} />
         <Route path="miniapp-settings" element={<MiniappSettings />} />
+        <Route path="channel-settings" element={<ChannelSettings />} />
+        <Route path="membership-pricing" element={<MembershipPricing />} />
         <Route path="users/:id/360" element={<User360 />} />
       </Route>
     </Routes>

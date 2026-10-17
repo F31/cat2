@@ -81,6 +81,7 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/subscribe-quota/apply", Handler: m.auth(m.handleApplyQuota)},
 		// 后台：模板与公告管理（页面随 p4；此处提供只读列表）
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/notice-templates", Handler: m.auth(m.handleAdminTemplates), Admin: true},
+		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/notice-templates/{code}", Handler: m.auth(m.handleAdminTemplateUpdate), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/notices/broadcast", Handler: m.auth(m.handleAdminBroadcast), Admin: true},
 	)
 	// 订阅全部业务事件（事件驱动触达）
@@ -93,6 +94,7 @@ func (m *Module) Register(r *module.Registry) error {
 	)
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "notice:announcement:broadcast", Path: "/api/admin/v1/notices/broadcast", Required: true, LogFailed: true, Module: "notice"},
+		audit.Point{Action: "notice:template:update", Path: "/api/admin/v1/notice-templates/{code}", Required: true, LogFailed: true, Module: "notice"},
 	)
 	return nil
 }
@@ -203,6 +205,50 @@ func (m *Module) handleAdminTemplates(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 	writeData(w, map[string]any{"items": list})
+}
+
+// handleAdminTemplateUpdate 后台修改通知模板（文案/渠道/可关闭）。
+func (m *Module) handleAdminTemplateUpdate(w http.ResponseWriter, req *http.Request) {
+	code := req.PathValue("code")
+	var body struct {
+		TitleTpl   string   `json:"title_tpl"`
+		ContentTpl string   `json:"content_tpl"`
+		Channels   []string `json:"channels"`
+		Closeable  bool     `json:"closeable"`
+	}
+	if code == "" || json.NewDecoder(req.Body).Decode(&body) != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	body.TitleTpl = strings.TrimSpace(body.TitleTpl)
+	body.ContentTpl = strings.TrimSpace(body.ContentTpl)
+	if body.TitleTpl == "" || len(body.TitleTpl) > 120 || body.ContentTpl == "" || len(body.ContentTpl) > 500 {
+		writeErr(w, codeParamInvalid, "标题/内容不合法")
+		return
+	}
+	allowed := map[string]bool{domain.ChannelInApp: true, domain.ChannelSubscribe: true, domain.ChannelSMS: true}
+	channels := make([]string, 0, len(body.Channels))
+	for _, c := range body.Channels {
+		c = strings.TrimSpace(c)
+		if !allowed[c] {
+			writeErr(w, codeParamInvalid, "渠道不合法")
+			return
+		}
+		channels = append(channels, c)
+	}
+	if len(channels) == 0 {
+		writeErr(w, codeParamInvalid, "至少选择一个渠道")
+		return
+	}
+	if err := m.svc.UpdateTemplate(req.Context(), code, body.TitleTpl, body.ContentTpl, channels, body.Closeable); err != nil {
+		if errors.Is(err, domain.ErrTemplateNotFound) {
+			writeErr(w, codeNotFound, "模板不存在")
+			return
+		}
+		writeErr(w, codeInternal, "服务错误")
+		return
+	}
+	writeData(w, map[string]any{"saved": true})
 }
 
 // ---- 辅助 ----

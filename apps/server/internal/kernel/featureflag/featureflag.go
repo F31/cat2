@@ -23,6 +23,22 @@ type Rules struct {
 	Ratio int     `json:"ratio,omitempty"` // 比例放量 0-100（稳定哈希，按用户粘性）
 }
 
+// KeyDef 可配置的开关键（后台下拉；与各模块常量保持一致）。
+type KeyDef struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+// Known 已知开关键（新增功能时在此登记；AI 场景来自 ai/contract）。
+var Known = []KeyDef{
+	{Key: "ai.onboard", Label: "AI 一句话入驻", Description: "生成入驻草稿"},
+	{Key: "ai.publish", Label: "AI 发布草稿", Description: "内容发布草稿生成"},
+	{Key: "ai.search", Label: "AI 自然语言搜索", Description: "搜索条件解析"},
+	{Key: "ai.review", Label: "AI 审核辅助", Description: "审核预分类/摘要"},
+	{Key: "ai.cs", Label: "AI 智能客服", Description: "平台规则问答"},
+}
+
 // Store 开关存储（sys_feature_flag）。
 type Store struct{ pool *db.Pool }
 

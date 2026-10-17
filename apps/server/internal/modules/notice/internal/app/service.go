@@ -27,6 +27,8 @@ type Repo interface {
 	BatchInsertNotice(ctx context.Context, items []infra.Notice) (int, error)
 	UpsertTemplate(ctx context.Context, id int64, t domain.Template) error
 	ListTemplates(ctx context.Context) ([]domain.Template, error)
+	TemplateByEvent(ctx context.Context, eventCode string) (domain.Template, error)
+	UpdateTemplate(ctx context.Context, eventCode, title, content string, channels []string, closeable bool) (int64, error)
 	InsertNotice(ctx context.Context, q infra.Querier, n infra.Notice) error
 	ListNotices(ctx context.Context, userID int64, unreadOnly bool, limit int) ([]infra.Notice, error)
 	UnreadCount(ctx context.Context, userID int64) (int, error)
@@ -89,7 +91,7 @@ func Topics() []string {
 
 // Handle 事件触达：查模板 → 接收人 → 偏好 → 渠道（订阅额度不足降级站内）→ 合并或写站内。
 func (s *Service) Handle(ctx context.Context, e eventbus.Event) error {
-	tpl, ok := s.template(e.Topic)
+	tpl, ok := s.template(ctx, e.Topic)
 	if !ok {
 		return nil
 	}
@@ -185,14 +187,50 @@ type Template struct {
 	Closeable  bool     `json:"closeable"`
 }
 
-// Templates 模板列表（后台只读）。
-func (s *Service) Templates(_ context.Context) ([]Template, error) {
-	out := make([]Template, 0, len(Templates))
-	for _, t := range Templates {
+// Templates 模板列表（DB 为准；空库先登记默认模板）。
+func (s *Service) Templates(ctx context.Context) ([]Template, error) {
+	rows, err := s.repo.ListTemplates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		if err := s.Register(ctx); err != nil {
+			return nil, err
+		}
+		rows, _ = s.repo.ListTemplates(ctx)
+	}
+	out := make([]Template, 0, len(rows))
+	for _, t := range rows {
 		out = append(out, Template{Code: t.Code, Module: t.Module, TitleTpl: t.TitleTpl,
 			ContentTpl: t.ContentTpl, Channels: t.Channels, MergeRule: t.MergeRule, Closeable: t.Closeable})
 	}
+	if len(out) == 0 {
+		for _, t := range Templates {
+			out = append(out, Template{Code: t.Code, Module: t.Module, TitleTpl: t.TitleTpl,
+				ContentTpl: t.ContentTpl, Channels: t.Channels, MergeRule: t.MergeRule, Closeable: t.Closeable})
+		}
+	}
 	return out, nil
+}
+
+// UpdateTemplate 后台修改模板（文案/渠道/可关闭）；DB 为准，事件处理即时生效。
+func (s *Service) UpdateTemplate(ctx context.Context, code, title, content string, channels []string, closeable bool) error {
+	n, err := s.repo.UpdateTemplate(ctx, code, title, content, channels, closeable)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		if err := s.Register(ctx); err != nil {
+			return err
+		}
+		if n, err = s.repo.UpdateTemplate(ctx, code, title, content, channels, closeable); err != nil {
+			return err
+		}
+	}
+	if n == 0 {
+		return domain.ErrTemplateNotFound
+	}
+	return nil
 }
 
 // ---- 查询与偏好 ----
@@ -250,7 +288,7 @@ func (s *Service) Broadcast(ctx context.Context, userIDs []int64, title, content
 }
 
 func (s *Service) SetPreference(ctx context.Context, userID int64, code string, enabled bool) error {
-	tpl, ok := s.template(code)
+	tpl, ok := s.template(ctx, code)
 	if !ok {
 		return domain.ErrTemplateNotFound
 	}
@@ -261,7 +299,7 @@ func (s *Service) SetPreference(ctx context.Context, userID int64, code string, 
 }
 
 func (s *Service) ApplyQuota(ctx context.Context, userID int64, code string, n int) error {
-	if _, ok := s.template(code); !ok {
+	if _, ok := s.template(ctx, code); !ok {
 		return domain.ErrTemplateNotFound
 	}
 	if n <= 0 || n > 10 {
@@ -272,7 +310,10 @@ func (s *Service) ApplyQuota(ctx context.Context, userID int64, code string, n i
 
 // ---- 内部 ----
 
-func (s *Service) template(topic string) (domain.Template, bool) {
+func (s *Service) template(ctx context.Context, topic string) (domain.Template, bool) {
+	if t, err := s.repo.TemplateByEvent(ctx, topic); err == nil {
+		return t, true
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	t, ok := s.templates[topic]

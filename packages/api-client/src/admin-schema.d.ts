@@ -969,9 +969,26 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 通知模板（只读；编辑随 p4） */
+        /** 通知模板列表 */
         get: operations["adminNoticeTemplates"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notice-templates/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** 修改通知模板（文案/渠道/可关闭） */
+        put: operations["adminUpdateNoticeTemplate"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3084,6 +3101,38 @@ export interface operations {
                     };
                 };
             };
+        };
+    };
+    adminUpdateNoticeTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    title_tpl: string;
+                    content_tpl: string;
+                    channels: ("inapp" | "subscribe" | "sms")[];
+                    closeable?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description 已保存 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     adminListUsers: {

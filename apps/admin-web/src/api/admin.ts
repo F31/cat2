@@ -61,6 +61,7 @@ export interface AdminMenu {
   label: string
   path: string
   module: string
+  parent_key?: string
   group?: string
   group_label?: string
   group_order?: number
@@ -207,6 +208,9 @@ export const adminApi = {
   noticeTemplates() {
     return call<{ items: NoticeTemplate[] }>('GET', '/admin/v1/notice-templates')
   },
+  updateNoticeTemplate(code: string, body: { title_tpl: string; content_tpl: string; channels: string[]; closeable: boolean }) {
+    return call<{ saved: boolean }>('PUT', `/admin/v1/notice-templates/${encodeURIComponent(code)}`, body)
+  },
 
   // ---- 字典 / 画像字段模板 ----
   dictSubjectTypes() {
@@ -266,8 +270,12 @@ export const adminApi = {
     })
   },
 
-  menus() {
-    return call<{ items: AdminMenu[] }>('GET', '/admin/v1/menus')
+  menus(group?: string) {
+    const qs = group ? `?group=${encodeURIComponent(group)}` : ''
+    return call<{ items: AdminMenu[]; groups?: Array<{ key: string; label: string; order: number }> }>(
+      'GET',
+      `/admin/v1/menus${qs}`,
+    )
   },
   me() {
     return call<{ user_id: string; nickname: string; super: boolean; roles: Array<{ code: string; name: string }> }>(
@@ -499,9 +507,12 @@ export const adminApi = {
   },
 
   featureFlags() {
-    return call<{ items: FeatureFlag[] }>('GET', '/admin/v1/feature-flags')
+    return call<{ items: FeatureFlag[]; known?: Array<{ key: string; label: string; description?: string }> }>(
+      'GET',
+      '/admin/v1/feature-flags',
+    )
   },
-  setFeatureFlag(key: string, enabled: boolean, ratio = 0, users: number[] = []) {
+  setFeatureFlag(key: string, enabled: boolean, ratio = 0, users: string[] = []) {
     return call<{ saved: boolean }>('PUT', `/admin/v1/feature-flags/${key}`, { enabled, ratio, users })
   },
 

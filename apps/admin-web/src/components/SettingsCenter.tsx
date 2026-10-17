@@ -25,7 +25,7 @@ function groupOf(key: string): string {
 }
 
 /** 配置中心：完全由 SettingsSchema 驱动（§8.2）；新增配置项不写前端代码。 */
-export default function SettingsCenter({ only }: { only?: string }) {
+export default function SettingsCenter({ only, exclude }: { only?: string; exclude?: string[] }) {
   const [items, setItems] = useState<SettingItem[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -49,6 +49,7 @@ export default function SettingsCenter({ only }: { only?: string }) {
     const m = new Map<string, SettingItem[]>()
     for (const it of items) {
       if (only && !it.key.startsWith(`${only}.`)) continue
+      if (exclude?.some((p) => it.key.startsWith(`${p}.`))) continue
       const g = groupOf(it.key)
       m.set(g, [...(m.get(g) ?? []), it])
     }
@@ -58,7 +59,7 @@ export default function SettingsCenter({ only }: { only?: string }) {
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
     })
     return ordered.map((g) => ({ key: g, label: g, items: m.get(g) ?? [] }))
-  }, [items, only])
+  }, [items, only, exclude])
 
   return (
     <>

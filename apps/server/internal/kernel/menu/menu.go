@@ -11,6 +11,7 @@ import (
 const Schema = `
 CREATE TABLE IF NOT EXISTS sys_admin_menu (
 	key varchar(64) PRIMARY KEY,
+	parent_key varchar(64) NOT NULL DEFAULT '',
 	label varchar(64) NOT NULL,
 	path varchar(128) NOT NULL UNIQUE,
 	module varchar(32) NOT NULL,
@@ -24,6 +25,7 @@ CREATE TABLE IF NOT EXISTS sys_admin_menu (
 	updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_sys_admin_menu_order ON sys_admin_menu(group_order, item_order);
+ALTER TABLE sys_admin_menu ADD COLUMN IF NOT EXISTS parent_key varchar(64) NOT NULL DEFAULT '';
 `
 
 // Item 菜单项（JSON 字段与前端约定一致）。
@@ -32,6 +34,7 @@ type Item struct {
 	Label        string `json:"label"`
 	Path         string `json:"path"`
 	Module       string `json:"module"`
+	ParentKey    string `json:"parent_key,omitempty"`
 	Group        string `json:"group"`
 	GroupLabel   string `json:"group_label"`
 	GroupOrder   int    `json:"group_order"`
@@ -51,10 +54,10 @@ func (s *Store) Seed(ctx context.Context, items []Item) error {
 	for _, it := range items {
 		if _, err := s.pool.Exec(ctx, `
 			INSERT INTO sys_admin_menu
-				(key,label,path,module,group_key,group_label,group_order,item_order,required_perm,super_only,enabled)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+				(key,parent_key,label,path,module,group_key,group_label,group_order,item_order,required_perm,super_only,enabled)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 			ON CONFLICT (key) DO NOTHING`,
-			it.Key, it.Label, it.Path, it.Module, it.Group, it.GroupLabel, it.GroupOrder, it.Order,
+			it.Key, it.ParentKey, it.Label, it.Path, it.Module, it.Group, it.GroupLabel, it.GroupOrder, it.Order,
 			it.RequiredPerm, it.SuperOnly, it.Enabled); err != nil {
 			return err
 		}
@@ -62,12 +65,12 @@ func (s *Store) Seed(ctx context.Context, items []Item) error {
 	return nil
 }
 
-// List 全部启用菜单（按一级/组内顺序）。
-func (s *Store) List(ctx context.Context) ([]Item, error) {
+// List 启用菜单；group 为空=全部，否则仅该一级分组（按组内顺序）。
+func (s *Store) List(ctx context.Context, group string) ([]Item, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT key,label,path,module,group_key,group_label,group_order,item_order,required_perm,super_only,enabled
-		FROM sys_admin_menu WHERE enabled=true
-		ORDER BY group_order, item_order, key`)
+		SELECT key,parent_key,label,path,module,group_key,group_label,group_order,item_order,required_perm,super_only,enabled
+		FROM sys_admin_menu WHERE enabled=true AND ($1='' OR group_key=$1)
+		ORDER BY group_order, item_order, key`, group)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +78,7 @@ func (s *Store) List(ctx context.Context) ([]Item, error) {
 	out := []Item{}
 	for rows.Next() {
 		var it Item
-		if err := rows.Scan(&it.Key, &it.Label, &it.Path, &it.Module, &it.Group, &it.GroupLabel,
+		if err := rows.Scan(&it.Key, &it.ParentKey, &it.Label, &it.Path, &it.Module, &it.Group, &it.GroupLabel,
 			&it.GroupOrder, &it.Order, &it.RequiredPerm, &it.SuperOnly, &it.Enabled); err != nil {
 			return nil, err
 		}

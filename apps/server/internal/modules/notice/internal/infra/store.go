@@ -77,6 +77,31 @@ func (s *Store) ListTemplates(ctx context.Context) ([]domain.Template, error) {
 	return out, rows.Err()
 }
 
+// TemplateByEvent 按事件码取模板（事件处理时以 DB 为准，后台修改即时生效）。
+func (s *Store) TemplateByEvent(ctx context.Context, eventCode string) (domain.Template, error) {
+	var t domain.Template
+	var ch []byte
+	err := s.pool.QueryRow(ctx, `
+		SELECT event_code, module, title_tpl, content_tpl, channels, receiver_rule, COALESCE(merge_rule,''), closeable
+		FROM ntc_template WHERE event_code=$1 AND status=1`, eventCode).
+		Scan(&t.EventCode, &t.Module, &t.TitleTpl, &t.ContentTpl, &ch, &t.ReceiverRule, &t.MergeRule, &t.Closeable)
+	if err != nil {
+		return domain.Template{}, err
+	}
+	_ = json.Unmarshal(ch, &t.Channels)
+	t.Code = t.EventCode
+	return t, nil
+}
+
+// UpdateTemplate 后台修改文案/渠道/可关闭；返回影响行数。
+func (s *Store) UpdateTemplate(ctx context.Context, eventCode, title, content string, channels []string, closeable bool) (int64, error) {
+	ch, _ := json.Marshal(channels)
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE ntc_template SET title_tpl=$2, content_tpl=$3, channels=$4, closeable=$5
+		WHERE event_code=$1`, eventCode, title, content, ch, closeable)
+	return tag.RowsAffected(), err
+}
+
 // InsertNotice 写站内信。
 func (s *Store) InsertNotice(ctx context.Context, q Querier, n Notice) error {
 	_, err := q.Exec(ctx, `

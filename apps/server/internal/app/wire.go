@@ -397,23 +397,20 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		trustMod.RegisterSubjectProvider(contentMod.ProviderFor(k))
 	}
 
-	// 后台菜单声明（p1 §9.9/§11.7）：模块 → AdminSection 声明式；p4 按 RBAC 菜单级过滤
+	// 后台菜单（DB 驱动）：默认返回全部可见树；?group=xxx 仅返回该一级分组。
 	menuStore := menu.New(pool)
 	menusHandler := func(w http.ResponseWriter, req *http.Request) {
 		uid, _ := adminUID(req)
 		isSuper, _ := a.RBAC.IsSuper(req.Context(), uid)
-		all, err := menuStore.List(req.Context())
+		all, err := menuStore.List(req.Context(), "")
 		if err != nil {
-			adminJSON := func(w http.ResponseWriter, code int, msg string, data any) {
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(map[string]any{"code": code, "message": msg, "data": data})
-			}
-			adminJSON(w, 9, "菜单加载失败", nil)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 9, "message": "菜单加载失败", "data": nil})
 			return
 		}
-		items := make([]menu.Item, 0, len(all))
+		visible := make([]menu.Item, 0, len(all))
 		if isSuper {
-			items = all
+			visible = all
 		} else {
 			perms, _ := a.RBAC.Perms(req.Context(), uid)
 			mods := rbac.VisibleModules(perms)
@@ -428,14 +425,55 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 				if it.RequiredPerm != "" && !permSet[it.RequiredPerm] {
 					continue
 				}
-				if !mods[it.Module] {
+				// 分类节点（/m/ 占位路径）不按模块过滤，由子节点决定是否展示
+				if !strings.HasPrefix(it.Path, "/m/") && !mods[it.Module] {
 					continue
 				}
-				items = append(items, it)
+				visible = append(visible, it)
 			}
 		}
+		// 剪掉没有可见子节点的分类
+		hasChild := map[string]bool{}
+		for _, it := range visible {
+			if it.ParentKey != "" {
+				hasChild[it.ParentKey] = true
+			}
+		}
+		kept := make([]menu.Item, 0, len(visible))
+		for _, it := range visible {
+			if strings.HasPrefix(it.Path, "/m/") && !hasChild[it.Key] {
+				continue
+			}
+			kept = append(kept, it)
+		}
+		// 一级分组（按可见菜单去重，保持顺序）
+		type groupInfo struct {
+			Key   string `json:"key"`
+			Label string `json:"label"`
+			Order int    `json:"order"`
+		}
+		groups := make([]groupInfo, 0, 8)
+		seen := map[string]bool{}
+		for _, it := range kept {
+			if seen[it.Group] {
+				continue
+			}
+			seen[it.Group] = true
+			groups = append(groups, groupInfo{Key: it.Group, Label: it.GroupLabel, Order: it.GroupOrder})
+		}
+		items := kept
+		if g := strings.TrimSpace(req.URL.Query().Get("group")); g != "" {
+			filtered := make([]menu.Item, 0, len(kept))
+			for _, it := range kept {
+				if it.Group == g {
+					filtered = append(filtered, it)
+				}
+			}
+			items = filtered
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "ok", "data": map[string]any{"items": items}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "ok",
+			"data": map[string]any{"items": items, "groups": groups}})
 	}
 	a.Mux.HandleFunc("GET /api/admin/v1/menus", requireAdmin(identityMod.Facade(), a.RBAC, settingsReg, a.Audit, menusHandler))
 

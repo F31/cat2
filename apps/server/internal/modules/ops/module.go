@@ -439,9 +439,9 @@ func (m *Module) handleFlags(w http.ResponseWriter, req *http.Request) {
 	items := make([]map[string]any, 0, len(list))
 	for _, f := range list {
 		items = append(items, map[string]any{"key": f.Key, "enabled": f.Enabled,
-			"ratio": f.Rules.Ratio, "users": f.Rules.Users})
+			"ratio": f.Rules.Ratio, "users": int64Strings(f.Rules.Users)})
 	}
-	writeData(w, map[string]any{"items": items})
+	writeData(w, map[string]any{"items": items, "known": featureflag.Known})
 }
 
 // handleSetFlag 后台：配置开关（enabled/ratio/users）。
@@ -452,14 +452,15 @@ func (m *Module) handleSetFlag(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	var body struct {
-		Enabled bool    `json:"enabled"`
-		Ratio   int     `json:"ratio"`
-		Users   []int64 `json:"users"`
+		Enabled bool              `json:"enabled"`
+		Ratio   int               `json:"ratio"`
+		Users   []json.RawMessage `json:"users"`
 	}
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		writeErr(w, 1, "参数错误")
 		return
 	}
+	users := parseUserIDs(body.Users)
 	if body.Ratio < 0 || body.Ratio > 100 {
 		writeErr(w, 1, "ratio 需在 0-100")
 		return
@@ -468,12 +469,12 @@ func (m *Module) handleSetFlag(w http.ResponseWriter, req *http.Request) {
 	if list, err := m.deps.Flags.List(req.Context()); err == nil {
 		for _, f := range list {
 			if f.Key == key {
-				before = map[string]any{"enabled": f.Enabled, "ratio": f.Rules.Ratio, "users": f.Rules.Users}
+				before = map[string]any{"enabled": f.Enabled, "ratio": f.Rules.Ratio, "users": int64Strings(f.Rules.Users)}
 			}
 		}
 	}
 	err := m.deps.Flags.Set(req.Context(), featureflag.Flag{Key: key, Enabled: body.Enabled,
-		Rules: featureflag.Rules{Users: body.Users, Ratio: body.Ratio}})
+		Rules: featureflag.Rules{Users: users, Ratio: body.Ratio}})
 	if m.deps.Audit != nil {
 		res := audit.ResultOK
 		if err != nil {
@@ -483,7 +484,7 @@ func (m *Module) handleSetFlag(w http.ResponseWriter, req *http.Request) {
 			ActorID: userIDFrom(req.Context()), ActorType: audit.ActorAdmin, Channel: "admin",
 			Action: "ops:feature_flag:set", TargetRef: `{"type":"feature_flag","id":"` + key + `"}`,
 			Detail: audit.Change{Before: before, After: map[string]any{"enabled": body.Enabled,
-				"ratio": body.Ratio, "users": body.Users}}.Snapshot("特性开关切换"),
+				"ratio": body.Ratio, "users": int64Strings(users)}}.Snapshot("特性开关切换"),
 			Result: res, IP: audit.ClientIP(req), RequestID: audit.RequestIDOf(req.Context()),
 		})
 	}
@@ -610,4 +611,32 @@ func logErr(action string, err error) {
 	if err != nil {
 		slog.Error("ops: "+action, "err", err)
 	}
+}
+
+// int64Strings 用户 ID 以字符串返回，避免 JS Number 精度丢失。
+func int64Strings(ids []int64) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, strconv.FormatInt(id, 10))
+	}
+	return out
+}
+
+// parseUserIDs 兼容前端字符串与旧脚本数字。
+func parseUserIDs(raws []json.RawMessage) []int64 {
+	out := make([]int64, 0, len(raws))
+	for _, raw := range raws {
+		var s string
+		if json.Unmarshal(raw, &s) == nil {
+			if id, err := strconv.ParseInt(s, 10, 64); err == nil {
+				out = append(out, id)
+			}
+			continue
+		}
+		var n int64
+		if json.Unmarshal(raw, &n) == nil {
+			out = append(out, n)
+		}
+	}
+	return out
 }

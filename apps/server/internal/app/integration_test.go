@@ -3616,6 +3616,38 @@ func TestIntegrationAdminMenus(t *testing.T) {
 	if len(want) != 0 {
 		t.Fatalf("菜单声明缺失: %+v", want)
 	}
+	// 按一级分组动态返回：?group=system 只含系统管理，且包含二/三级 parent_key
+	_, genv := h.do(http.MethodGet, "/api/admin/v1/menus?group=system", tok, nil)
+	var gres struct {
+		Items []struct {
+			Group     string `json:"group"`
+			ParentKey string `json:"parent_key"`
+			Path      string `json:"path"`
+		} `json:"items"`
+		Groups []struct {
+			Key string `json:"key"`
+		} `json:"groups"`
+	}
+	_ = json.Unmarshal(genv.Data, &gres)
+	if len(gres.Groups) == 0 {
+		t.Fatalf("一级分组不应为空: %+v", gres.Groups)
+	}
+	hasParent, hasChild := false, false
+	for _, it := range gres.Items {
+		if it.Group != "system" {
+			t.Fatalf("分组结果混入其它一级菜单: %+v", it)
+		}
+		if it.ParentKey == "" && it.Path == "/m/system/authority" {
+			hasParent = true
+		}
+		if it.ParentKey == "system.authority" {
+			hasChild = true
+		}
+	}
+	if !hasParent || !hasChild {
+		t.Fatalf("系统管理缺少二/三级结构: %+v", gres.Items)
+	}
+
 	// 当前账号信息（右上角用户名/角色）
 	_, meEnv := h.do(http.MethodGet, "/api/admin/v1/me", tok, nil)
 	var me struct {

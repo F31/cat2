@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Layout, Menu, Button, Space, Dropdown, Modal, Descriptions, Tag, theme } from 'antd'
 import type { MenuProps } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -7,26 +7,20 @@ import { adminApi, type AdminMenu } from '../api/admin'
 
 const { Header, Sider, Content } = Layout
 
-type Group = { key: string; label: string; order: number; items: AdminMenu[] }
+type GroupInfo = { key: string; label: string; order: number }
 type Me = { user_id: string; nickname: string; super: boolean; roles: Array<{ code: string; name: string }> }
 
-// 拉取失败时的静态兜底（与后端 sys_admin_menu 默认分组一致；首页不占菜单）。
+// 拉取失败时的静态兜底（首页不占菜单；仅保证基本可用）。
 const FALLBACK: AdminMenu[] = [
   { key: 'content.list', label: '内容列表', path: '/contents', module: 'content', group: 'content', group_label: '内容管理', group_order: 2, order: 1 },
   { key: 'content.reviews', label: '审核队列', path: '/reviews', module: 'trust', group: 'content', group_label: '内容管理', group_order: 2, order: 2 },
   { key: 'content.certs', label: '认证审核', path: '/verify-certs', module: 'verify', group: 'content', group_label: '内容管理', group_order: 2, order: 3 },
-  { key: 'content.badges', label: '认证标识', path: '/badges', module: 'verify', group: 'content', group_label: '内容管理', group_order: 2, order: 4 },
-  { key: 'content.dict', label: '主体类型与选项', path: '/dict', module: 'dict', group: 'content', group_label: '内容管理', group_order: 2, order: 5 },
-  { key: 'content.templates', label: '画像字段模板', path: '/profile-templates', module: 'profile', group: 'content', group_label: '内容管理', group_order: 2, order: 6 },
   { key: 'trade.orders', label: '订单管理', path: '/orders', module: 'trade', group: 'trade', group_label: '交易与会员', group_order: 3, order: 1 },
   { key: 'trade.members', label: '会员管理', path: '/members', module: 'membership', group: 'trade', group_label: '交易与会员', group_order: 3, order: 2 },
-  { key: 'trade.exports', label: '导出中心', path: '/exports', module: 'ops', group: 'trade', group_label: '交易与会员', group_order: 3, order: 3 },
   { key: 'collab.cubes', label: '猫立方管理', path: '/cubes', module: 'cube', group: 'collab', group_label: '圈子与立方', group_order: 4, order: 1 },
   { key: 'collab.circles', label: '圈子管理', path: '/circles', module: 'circle', group: 'collab', group_label: '圈子与立方', group_order: 4, order: 2 },
   { key: 'operation.channel', label: '运营商', path: '/channel-operators', module: 'channel', group: 'operation', group_label: '运营管理', group_order: 5, order: 1 },
   { key: 'operation.settlements', label: '渠道结算', path: '/channel-settlements', module: 'channel', group: 'operation', group_label: '运营管理', group_order: 5, order: 2 },
-  { key: 'operation.governance', label: '代操作', path: '/governance', module: 'ops', group: 'operation', group_label: '运营管理', group_order: 5, order: 3 },
-  { key: 'operation.ai', label: 'AI 提示词与用量', path: '/ai-prompts', module: 'ai', group: 'operation', group_label: '运营管理', group_order: 5, order: 4 },
   { key: 'system.users', label: '用户管理', path: '/users', module: 'identity', group: 'system', group_label: '系统管理', group_order: 6, order: 1 },
   { key: 'system.roles', label: '角色管理', path: '/roles', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 2 },
   { key: 'system.settings', label: '系统设置', path: '/system-settings', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 3 },
@@ -34,47 +28,105 @@ const FALLBACK: AdminMenu[] = [
   { key: 'system.flags', label: '特性开关', path: '/feature-flags', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 5 },
   { key: 'system.dead', label: '死信队列', path: '/dead-letters', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 6 },
   { key: 'system.notice', label: '通知模板', path: '/templates', module: 'notice', group: 'system', group_label: '系统管理', group_order: 6, order: 7 },
-  { key: 'system.business', label: '业务配置', path: '/settings', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 8 },
-  { key: 'system.miniapp', label: '小程序设置', path: '/miniapp-settings', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 9 },
 ]
 
-function buildGroups(items: AdminMenu[]): Group[] {
-  const m = new Map<string, Group>()
+function groupsFromItems(items: AdminMenu[]): GroupInfo[] {
+  const m = new Map<string, GroupInfo>()
   for (const it of items) {
-    const key = it.group || 'system'
-    const g = m.get(key) ?? { key, label: it.group_label || '系统管理', order: it.group_order ?? 99, items: [] }
-    g.items.push(it)
-    m.set(key, g)
+    if (!it.group) continue
+    if (!m.has(it.group)) m.set(it.group, { key: it.group, label: it.group_label || it.group, order: it.group_order ?? 99 })
   }
-  return [...m.values()]
-    .sort((a, b) => a.order - b.order)
-    .map((g) => ({ ...g, items: [...g.items].sort((a, b) => (a.order ?? 99) - (b.order ?? 99)) }))
+  return [...m.values()].sort((a, b) => a.order - b.order)
 }
 
-function matchItem(groups: Group[], pathname: string): { group?: Group; item?: AdminMenu } {
-  for (const g of groups) {
-    const item = g.items.find((i) => pathname === i.path || pathname.startsWith(`${i.path}/`))
-    if (item) return { group: g, item }
-  }
-  return {}
+function matchIn(items: AdminMenu[], pathname: string): AdminMenu | undefined {
+  return items.find((i) => !i.path.startsWith('/m/') && (pathname === i.path || pathname.startsWith(`${i.path}/`)))
 }
 
-// 后台壳：顶部一级菜单 + 左侧二级菜单；深色体系与左侧一致。
+function groupForPath(items: AdminMenu[], pathname: string): GroupInfo | undefined {
+  const hit = matchIn(items, pathname)
+  if (!hit?.group) return undefined
+  return { key: hit.group, label: hit.group_label || hit.group, order: hit.group_order ?? 99 }
+}
+
+function firstLeaf(items: AdminMenu[]): AdminMenu | undefined {
+  const byParent = new Map<string, AdminMenu[]>()
+  for (const it of items) {
+    const p = it.parent_key || ''
+    byParent.set(p, [...(byParent.get(p) ?? []), it])
+  }
+  const walk = (parent: string): AdminMenu | undefined => {
+    for (const it of byParent.get(parent) ?? []) {
+      if (it.path.startsWith('/m/')) {
+        const child = walk(it.key)
+        if (child) return child
+      } else {
+        return it
+      }
+    }
+    return undefined
+  }
+  return walk('')
+}
+
+function treeOf(items: AdminMenu[]): MenuProps['items'] {
+  const byParent = new Map<string, AdminMenu[]>()
+  for (const it of items) {
+    const p = it.parent_key || ''
+    byParent.set(p, [...(byParent.get(p) ?? []), it])
+  }
+  const node = (it: AdminMenu): NonNullable<MenuProps['items']>[number] => {
+    const children = byParent.get(it.key) ?? []
+    if (children.length > 0) {
+      return { key: it.key, label: it.label, children: children.map(node) }
+    }
+    return { key: it.path, label: it.label }
+  }
+  return (byParent.get('') ?? []).map(node)
+}
+
+// 后台壳：顶部一级菜单 + 左侧按分组动态获取的二/三级菜单树（三级默认折叠）。
 export default function AdminLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const { token } = theme.useToken()
-  const [menus, setMenus] = useState<AdminMenu[]>(FALLBACK)
+  const [allItems, setAllItems] = useState<AdminMenu[]>(FALLBACK)
+  const [topGroups, setTopGroups] = useState<GroupInfo[]>(groupsFromItems(FALLBACK))
+  const [groupItems, setGroupItems] = useState<AdminMenu[]>([])
+  const [activeGroup, setActiveGroup] = useState('')
+  const [openGroups, setOpenGroups] = useState<string[]>([])
   const [me, setMe] = useState<Me | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
-  const [openGroups, setOpenGroups] = useState<string[]>([])
+
+  const loadGroup = useCallback(
+    async (key: string, goFirst: boolean) => {
+      try {
+        const res = await adminApi.menus(key)
+        const items = res.items ?? []
+        setGroupItems(items)
+        setActiveGroup(key)
+        const leaf = firstLeaf(items)
+        setOpenGroups(leaf?.parent_key ? [leaf.parent_key] : [])
+        if (goFirst && leaf) navigate(leaf.path)
+      } catch {
+        /* 保持当前菜单 */
+      }
+    },
+    [navigate],
+  )
 
   useEffect(() => {
     void (async () => {
       try {
         const res = await adminApi.menus()
-        if (res.items?.length) setMenus(res.items)
+        const items = res.items ?? []
+        if (items.length) {
+          setAllItems(items)
+          setTopGroups(res.groups?.length ? res.groups : groupsFromItems(items))
+          const g = groupForPath(items, location.pathname)
+          if (g) await loadGroup(g.key, false)
+        }
       } catch {
         /* 回退静态菜单 */
       }
@@ -86,17 +138,25 @@ export default function AdminLayout() {
         /* 未登录/接口不可用 */
       }
     })()
+    // 仅在首次挂载时初始化；后续路由变化由下面的 effect 处理。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const groups = useMemo(() => buildGroups(menus), [menus])
-  const active = useMemo(() => matchItem(groups, location.pathname), [groups, location.pathname])
-  const topItems: MenuProps['items'] = groups.map((g) => ({ key: g.key, label: g.label }))
-  // 左侧菜单树：一级分组 → 二级页面；默认全部收起，点击顶部一级时展开对应分组。
-  const treeItems: MenuProps['items'] = groups.map((g) => ({
-    key: g.key,
-    label: g.label,
-    children: g.items.map((i) => ({ key: i.path, label: i.label })),
-  }))
+  const activeItem = useMemo(() => matchIn(groupItems, location.pathname), [groupItems, location.pathname])
+
+  useEffect(() => {
+    if (activeItem) {
+      if (activeItem.parent_key) {
+        setOpenGroups((prev) => (prev.includes(activeItem.parent_key!) ? prev : [...prev, activeItem.parent_key!]))
+      }
+      return
+    }
+    const g = groupForPath(allItems, location.pathname)
+    if (g && g.key !== activeGroup) void loadGroup(g.key, false)
+  }, [location.pathname, activeItem, allItems, activeGroup, loadGroup])
+
+  const topItems: MenuProps['items'] = topGroups.map((g) => ({ key: g.key, label: g.label }))
+  const treeItems = useMemo(() => treeOf(groupItems), [groupItems])
 
   const logout = () => {
     clearToken()
@@ -134,15 +194,9 @@ export default function AdminLayout() {
         <Menu
           theme="dark"
           mode="horizontal"
-          selectedKeys={active.group ? [active.group.key] : []}
+          selectedKeys={activeItem?.group ? [activeItem.group] : []}
           items={topItems}
-          onClick={(e) => {
-            const g = groups.find((x) => x.key === e.key)
-            if (g?.items[0]) {
-              setOpenGroups([g.key])
-              navigate(g.items[0].path)
-            }
-          }}
+          onClick={(e) => void loadGroup(String(e.key), true)}
           style={{ flex: 1, minWidth: 0, background: 'transparent', borderBottom: 'none' }}
         />
         <Dropdown
@@ -167,12 +221,12 @@ export default function AdminLayout() {
         </Dropdown>
       </Header>
       <Layout>
-        {active.group ? (
+        {activeItem ? (
           <Sider theme="dark" width={220}>
             <Menu
               theme="dark"
               mode="inline"
-              selectedKeys={[active.item?.path ?? '']}
+              selectedKeys={[activeItem.path]}
               openKeys={openGroups}
               onOpenChange={(keys) => setOpenGroups(keys.map(String))}
               items={treeItems}
@@ -193,11 +247,7 @@ export default function AdminLayout() {
           <Descriptions.Item label="用户 ID">{me?.user_id || '—'}</Descriptions.Item>
           <Descriptions.Item label="角色">
             {me?.super ? <Tag color="red">超级管理员</Tag> : null}
-            {me?.roles?.length
-              ? me.roles.map((r) => <Tag key={r.code}>{r.name}</Tag>)
-              : me?.super
-                ? null
-                : '—'}
+            {me?.roles?.length ? me.roles.map((r) => <Tag key={r.code}>{r.name}</Tag>) : me?.super ? null : '—'}
           </Descriptions.Item>
           <Descriptions.Item label="权限说明">
             {me?.super ? '隐含全部权限' : '按角色权限点与数据范围生效'}

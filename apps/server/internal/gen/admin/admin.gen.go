@@ -131,6 +131,27 @@ func (e AdminCreateExportJSONBodyTemplate) Valid() bool {
 	}
 }
 
+// Defines values for AdminUpdateNoticeTemplateJSONBodyChannels.
+const (
+	Inapp     AdminUpdateNoticeTemplateJSONBodyChannels = "inapp"
+	Sms       AdminUpdateNoticeTemplateJSONBodyChannels = "sms"
+	Subscribe AdminUpdateNoticeTemplateJSONBodyChannels = "subscribe"
+)
+
+// Valid indicates whether the value is a known member of the AdminUpdateNoticeTemplateJSONBodyChannels enum.
+func (e AdminUpdateNoticeTemplateJSONBodyChannels) Valid() bool {
+	switch e {
+	case Inapp:
+		return true
+	case Sms:
+		return true
+	case Subscribe:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AdminCreateUserJSONBodyIdentityType.
 const (
 	AdminCreateUserJSONBodyIdentityTypeN1 AdminCreateUserJSONBodyIdentityType = 1
@@ -610,6 +631,17 @@ type AdminTransferMasterJSONBody struct {
 	ToUserId string `json:"to_user_id"`
 }
 
+// AdminUpdateNoticeTemplateJSONBody defines parameters for AdminUpdateNoticeTemplate.
+type AdminUpdateNoticeTemplateJSONBody struct {
+	Channels   []AdminUpdateNoticeTemplateJSONBodyChannels `json:"channels"`
+	Closeable  *bool                                       `json:"closeable,omitempty"`
+	ContentTpl string                                      `json:"content_tpl"`
+	TitleTpl   string                                      `json:"title_tpl"`
+}
+
+// AdminUpdateNoticeTemplateJSONBodyChannels defines parameters for AdminUpdateNoticeTemplate.
+type AdminUpdateNoticeTemplateJSONBodyChannels string
+
 // AdminBroadcastNoticeJSONBody defines parameters for AdminBroadcastNotice.
 type AdminBroadcastNoticeJSONBody struct {
 	Content string   `json:"content"`
@@ -778,6 +810,9 @@ type AdminAdjustMemberJSONRequestBody AdminAdjustMemberJSONBody
 
 // AdminTransferMasterJSONRequestBody defines body for AdminTransferMaster for application/json ContentType.
 type AdminTransferMasterJSONRequestBody AdminTransferMasterJSONBody
+
+// AdminUpdateNoticeTemplateJSONRequestBody defines body for AdminUpdateNoticeTemplate for application/json ContentType.
+type AdminUpdateNoticeTemplateJSONRequestBody AdminUpdateNoticeTemplateJSONBody
 
 // AdminBroadcastNoticeJSONRequestBody defines body for AdminBroadcastNotice for application/json ContentType.
 type AdminBroadcastNoticeJSONRequestBody AdminBroadcastNoticeJSONBody
@@ -982,9 +1017,12 @@ type ServerInterface interface {
 	// AdminMenus 后台菜单声明（AdminSection 声明式；p4 扩菜单级/操作级权限点）
 	// (GET /menus)
 	AdminMenus(w http.ResponseWriter, r *http.Request)
-	// AdminNoticeTemplates 通知模板（只读；编辑随 p4）
+	// AdminNoticeTemplates 通知模板列表
 	// (GET /notice-templates)
 	AdminNoticeTemplates(w http.ResponseWriter, r *http.Request)
+	// AdminUpdateNoticeTemplate 修改通知模板（文案/渠道/可关闭）
+	// (PUT /notice-templates/{code})
+	AdminUpdateNoticeTemplate(w http.ResponseWriter, r *http.Request, code string)
 	// AdminBroadcastNotice 定向公告（管理员代操作，站内信；审计）
 	// (POST /notices/broadcast)
 	AdminBroadcastNotice(w http.ResponseWriter, r *http.Request)
@@ -2656,6 +2694,32 @@ func (siw *ServerInterfaceWrapper) AdminNoticeTemplates(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// AdminUpdateNoticeTemplate operation middleware
+func (siw *ServerInterfaceWrapper) AdminUpdateNoticeTemplate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminUpdateNoticeTemplate(w, r, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminBroadcastNotice operation middleware
 func (siw *ServerInterfaceWrapper) AdminBroadcastNotice(w http.ResponseWriter, r *http.Request) {
 
@@ -3441,6 +3505,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/dead-letters", wrapper.AdminDeadLetters)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/dead-letters/{eventID}/replay", wrapper.AdminReplayDeadLetter)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/notice-templates", wrapper.AdminNoticeTemplates)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/notice-templates/{code}", wrapper.AdminUpdateNoticeTemplate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/users", wrapper.AdminListUsers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/users", wrapper.AdminCreateUser)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/users/{id}", wrapper.AdminUpdateUser)

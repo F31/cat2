@@ -857,7 +857,7 @@ paths:
   /notice-templates:
     get:
       tags: [admin-governance]
-      summary: 通知模板（只读；编辑随 p4）
+      summary: 通知模板列表
       operationId: adminNoticeTemplates
       responses:
         '200':
@@ -873,6 +873,28 @@ paths:
                         type: object
                         properties:
                           items: { type: array, items: { type: object } }
+  /notice-templates/{code}:
+    put:
+      tags: [admin-governance]
+      summary: 修改通知模板（文案/渠道/可关闭）
+      operationId: adminUpdateNoticeTemplate
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title_tpl, content_tpl, channels]
+              properties:
+                title_tpl: { type: string, maxLength: 120 }
+                content_tpl: { type: string, maxLength: 500 }
+                channels: { type: array, items: { type: string, enum: [inapp, subscribe, sms] } }
+                closeable: { type: boolean }
+      responses:
+        '200': { description: 已保存, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /users:
     get:
       tags: [admin-identity]

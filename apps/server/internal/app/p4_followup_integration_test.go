@@ -347,3 +347,55 @@ func TestIntegrationAdminUserCreateEdit(t *testing.T) {
 		t.Fatal("重复手机号应失败")
 	}
 }
+
+// 通知模板可修改：文案/渠道/可关闭即时保存，列表回读一致。
+func TestIntegrationNoticeTemplateUpdate(t *testing.T) {
+	h := newTestApp(t)
+	_, admTok := loginAdmin(t, h)
+	code := "circle.DemandPublished.v1"
+	_, env := h.do(http.MethodGet, "/api/admin/v1/notice-templates", admTok, nil)
+	var list struct {
+		Items []struct {
+			Code       string   `json:"code"`
+			TitleTpl   string   `json:"title_tpl"`
+			ContentTpl string   `json:"content_tpl"`
+			Channels   []string `json:"channels"`
+			Closeable  bool     `json:"closeable"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &list)
+	var old struct {
+		Title, Content string
+		Channels       []string
+		Closeable      bool
+	}
+	for _, it := range list.Items {
+		if it.Code == code {
+			old.Title, old.Content, old.Channels, old.Closeable = it.TitleTpl, it.ContentTpl, it.Channels, it.Closeable
+		}
+	}
+	if old.Title == "" {
+		t.Fatalf("模板 %s 未初始化", code)
+	}
+	defer func() {
+		_, _ = h.do(http.MethodPut, "/api/admin/v1/notice-templates/"+code, admTok, map[string]any{
+			"title_tpl": old.Title, "content_tpl": old.Content, "channels": old.Channels, "closeable": old.Closeable,
+		})
+	}()
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/notice-templates/"+code, admTok, map[string]any{
+		"title_tpl": "圈内新需求（改）", "content_tpl": "新内容 {title}", "channels": []string{"inapp"}, "closeable": false,
+	}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("更新模板失败: %d %+v", s, e)
+	}
+	_, env = h.do(http.MethodGet, "/api/admin/v1/notice-templates", admTok, nil)
+	_ = json.Unmarshal(env.Data, &list)
+	found := false
+	for _, it := range list.Items {
+		if it.Code == code {
+			found = it.TitleTpl == "圈内新需求（改）" && it.ContentTpl == "新内容 {title}" && len(it.Channels) == 1 && !it.Closeable
+		}
+	}
+	if !found {
+		t.Fatal("模板修改未生效")
+	}
+}
