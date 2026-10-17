@@ -64,6 +64,8 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cards/me/completion", Handler: m.auth(m.handleCompletion)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cards/me/share", Handler: m.auth(m.handleShare)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cards/{ref}", Handler: m.handlePublicCard},
+		// 后台：画像字段模板（字段池 + 各主体类型渲染结果；p4 §8.1）
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/profile-templates", Handler: m.auth(m.handleAdminTemplates), Admin: true},
 	)
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "profile:identity:modify:denied", Path: "/api/mp/v1/cards/me", Required: true, LogFailed: true, Module: "profile"},
@@ -176,6 +178,30 @@ func (m *Module) handlePutMe(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	writeData(w, card)
+}
+
+// handleAdminTemplates 后台画像字段模板：主体类型 × 字段模板 + 字段池。
+func (m *Module) handleAdminTemplates(w http.ResponseWriter, req *http.Request) {
+	types, err := m.deps.Dict.SubjectTypes(req.Context())
+	if err != nil {
+		writeErr(w, codeInternal, "服务错误")
+		return
+	}
+	defs, err := m.deps.Dict.FieldDefs(req.Context())
+	if err != nil {
+		writeErr(w, codeInternal, "服务错误")
+		return
+	}
+	items := make([]map[string]any, 0, len(types))
+	for _, t := range types {
+		fields, err := m.deps.Dict.FieldTemplate(req.Context(), t.Code)
+		if err != nil {
+			writeErr(w, codeInternal, "字段模板格式非法："+err.Error())
+			return
+		}
+		items = append(items, map[string]any{"code": t.Code, "name": t.Name, "fields": fields})
+	}
+	writeData(w, map[string]any{"items": items, "field_pool": defs})
 }
 
 func (m *Module) handleCompletion(w http.ResponseWriter, req *http.Request) {

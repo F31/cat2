@@ -85,6 +85,7 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/join", Handler: m.auth(m.handleJoin)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/members", Handler: m.auth(m.handleMembers)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/dissolve", Handler: m.auth(m.handleDissolve)},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/circles", Handler: m.auth(m.handleAdminList), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/circles/{id}/dissolve", Handler: m.auth(m.handleAdminDissolve), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/convert", Handler: m.auth(m.handleConvert)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/demands", Handler: m.auth(m.handlePublishDemand)},
@@ -326,6 +327,43 @@ func (m *Module) handleDissolve(w http.ResponseWriter, req *http.Request) {
 }
 
 // handleAdminDissolve 平台代操作：解散圈子（before/after 快照入审计）。
+// handleAdminList 平台圈子列表（名称模糊检索；id 一律以字符串返回）。
+func (m *Module) handleAdminList(w http.ResponseWriter, req *http.Request) {
+	limit, _ := strconv.Atoi(req.URL.Query().Get("limit"))
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	q := strings.TrimSpace(req.URL.Query().Get("q"))
+	rows, err := m.deps.Pool.Query(req.Context(), `
+		SELECT id, name, type, status, owner_user_id, member_count, COALESCE(region_code,''), created_at
+		FROM cir_circle
+		WHERE ($1 = '' OR name ILIKE '%' || $1 || '%')
+		ORDER BY created_at DESC LIMIT $2`, q, limit)
+	if err != nil {
+		writeErr(w, 9, "服务错误")
+		return
+	}
+	defer rows.Close()
+	items := make([]map[string]any, 0, limit)
+	for rows.Next() {
+		var id, owner int64
+		var name, region string
+		var typ, status int16
+		var members int
+		var created time.Time
+		if err := rows.Scan(&id, &name, &typ, &status, &owner, &members, &region, &created); err != nil {
+			writeErr(w, 9, "服务错误")
+			return
+		}
+		items = append(items, map[string]any{
+			"id": strconv.FormatInt(id, 10), "name": name, "type": typ, "status": status,
+			"owner_user_id": strconv.FormatInt(owner, 10), "member_count": members,
+			"region_code": region, "created_at": created.Unix(),
+		})
+	}
+	writeData(w, map[string]any{"items": items})
+}
+
 func (m *Module) handleAdminDissolve(w http.ResponseWriter, req *http.Request) {
 	id := pathID(req, "id")
 	var body struct {

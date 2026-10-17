@@ -23,6 +23,11 @@ import ChannelOperators from './pages/ChannelOperators'
 import ChannelSettlements from './pages/ChannelSettlements'
 import User360 from './pages/User360'
 import Dashboard from './pages/Dashboard'
+import Cubes from './pages/Cubes'
+import Circles from './pages/Circles'
+import VerifyCerts from './pages/VerifyCerts'
+import DictPage from './pages/DictPage'
+import ProfileTemplates from './pages/ProfileTemplates'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />
@@ -60,6 +65,11 @@ export default function App() {
         <Route path="system-settings" element={<SystemSettings />} />
         <Route path="channel-operators" element={<ChannelOperators />} />
         <Route path="channel-settlements" element={<ChannelSettlements />} />
+        <Route path="cubes" element={<Cubes />} />
+        <Route path="circles" element={<Circles />} />
+        <Route path="verify-certs" element={<VerifyCerts />} />
+        <Route path="dict" element={<DictPage />} />
+        <Route path="profile-templates" element={<ProfileTemplates />} />
         <Route path="users/:id/360" element={<User360 />} />
       </Route>
     </Routes>

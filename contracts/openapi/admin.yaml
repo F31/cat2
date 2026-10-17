@@ -164,6 +164,23 @@ paths:
             schema: { type: object, required: [reason], properties: { reason: { type: string } } }
       responses:
         '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /profile-templates:
+    get:
+      tags: [admin-profile]
+      summary: 画像字段模板（主体类型 × 字段 + 字段池）
+      operationId: adminProfileTemplates
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /circles:
+    get:
+      tags: [admin-circle]
+      summary: 圈子列表（后台）
+      operationId: adminCircles
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
   /circles/{id}/dissolve:
     post:
       tags: [admin-governance]

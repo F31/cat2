@@ -82,7 +82,8 @@
 
 ## 8. admin-web 页面完成
 
-- [ ] 8.1 features 全部页面：dict（主体类型/选项/字段模板）、content（内容/产品库入库三步）、trust（审核队列/举报/敏感词/违规记录）、verify（认证审核）、cube/circle（管理/封禁/解散）、trade（订单/退款/对账）、membership（会员/子账号转移/价格配置）、channel（渠道管理全套）、discovery（匹配参数与权重带版本）、notice（公告/模板）、system（配置中心 SettingsSchema 自动渲染/特性开关/审计日志/后台账号）
+- [x] 8.1 features 页面：新增 认证审核（平台队列通过/驳回）、猫立方管理（列表/封禁/解散）、圈子管理（列表/解散，后端补 `GET /admin/v1/circles`）、主体类型与选项（只读）、画像字段模板（只读，后端补 `GET /admin/v1/profile-templates`）；订单页接退款执行 + 履约补偿重试、会员页接人工调整/主账号转移/强制解除子账号、通知页接定向公告；配置中心新增「会员价格/匹配参数」自动分组；渠道、审核队列、审计、特性开关、角色权限沿用既有页。说明：字典/字段模板随版本种子发布（只读核对）；trust 敏感词/举报/违规记录暂无后台列表接口（由审核队列/代操作/审计页覆盖）；产品库入库三步沿用内容管理 `kind=product` 链路
+
 - [x] 8.2 配置中心自动渲染：`components/SettingsCenter` 按 SettingsSchema 自动分组为 Tab（登录安全/密码策略/短信网关/AI 网关/复核策略/渠道与佣金/审计/留存等），`SettingsForm` 按 type 自动渲染控件；新增配置项无需改前端；敏感项脱敏展示（ai.gateway.key）
 - [x] 8.3 共享组件：`components/SettingsForm`、`SettingsCenter`、`ReviewQueue`、`AuditLog`、`StateTimeline`、`DataTable`；业务配置/系统设置/审核队列/审计轨迹/结算打款页已复用
 

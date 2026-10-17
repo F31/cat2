@@ -9,10 +9,12 @@ const GROUP_LABEL: Record<string, string> = {
   ai: 'AI 网关',
   policy: '复核策略',
   channel: '渠道与佣金',
+  membership: '会员价格',
+  dsc: '匹配参数',
   audit: '审计与告警',
   msg: '消息留存',
 }
-const GROUP_ORDER = ['登录安全', '密码策略', '短信网关', 'AI 网关', '复核策略', '渠道与佣金', '审计与告警', '消息留存']
+const GROUP_ORDER = ['登录安全', '密码策略', '短信网关', 'AI 网关', '复核策略', '渠道与佣金', '会员价格', '匹配参数', '审计与告警', '消息留存']
 
 function groupOf(key: string): string {
   if (key.startsWith('admin.security.password.')) return '密码策略'

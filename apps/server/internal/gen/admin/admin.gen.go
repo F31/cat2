@@ -435,6 +435,12 @@ type AdminChannelRejectSettlementJSONBody struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
+// AdminCirclesParams defines parameters for AdminCircles.
+type AdminCirclesParams struct {
+	Q     *string `form:"q,omitempty" json:"q,omitempty"`
+	Limit *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // AdminDissolveCircleJSONBody defines parameters for AdminDissolveCircle.
 type AdminDissolveCircleJSONBody struct {
 	Reason string `json:"reason"`
@@ -799,6 +805,9 @@ type ServerInterface interface {
 	// AdminChannelReviewSettlement 复核结算单
 	// (POST /channel/settlements/{id}/review)
 	AdminChannelReviewSettlement(w http.ResponseWriter, r *http.Request, id string)
+	// AdminCircles 圈子列表（后台）
+	// (GET /circles)
+	AdminCircles(w http.ResponseWriter, r *http.Request, params AdminCirclesParams)
 	// AdminDissolveCircle 平台解散圈子（代操作，前后值审计）
 	// (POST /circles/{id}/dissolve)
 	AdminDissolveCircle(w http.ResponseWriter, r *http.Request, id string)
@@ -886,6 +895,9 @@ type ServerInterface interface {
 	// AdminPermissions 权限点注册表（后台「角色与权限」页）
 	// (GET /permissions)
 	AdminPermissions(w http.ResponseWriter, r *http.Request)
+	// AdminProfileTemplates 画像字段模板（主体类型 × 字段 + 字段池）
+	// (GET /profile-templates)
+	AdminProfileTemplates(w http.ResponseWriter, r *http.Request)
 	// AdminRefund 发起退款
 	// (POST /refunds)
 	AdminRefund(w http.ResponseWriter, r *http.Request)
@@ -1708,6 +1720,52 @@ func (siw *ServerInterfaceWrapper) AdminChannelReviewSettlement(w http.ResponseW
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminChannelReviewSettlement(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminCircles operation middleware
+func (siw *ServerInterfaceWrapper) AdminCircles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AdminCirclesParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCircles(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2576,6 +2634,20 @@ func (siw *ServerInterfaceWrapper) AdminPermissions(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// AdminProfileTemplates operation middleware
+func (siw *ServerInterfaceWrapper) AdminProfileTemplates(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminProfileTemplates(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminRefund operation middleware
 func (siw *ServerInterfaceWrapper) AdminRefund(w http.ResponseWriter, r *http.Request) {
 
@@ -3156,6 +3228,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes", wrapper.AdminCubes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/ban", wrapper.AdminBanCube)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/dissolve", wrapper.AdminDissolveCube)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/profile-templates", wrapper.AdminProfileTemplates)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles", wrapper.AdminCircles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/dissolve", wrapper.AdminDissolveCircle)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/notices/broadcast", wrapper.AdminBroadcastNotice)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/ai/prompts", wrapper.AdminAiPrompts)

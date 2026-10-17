@@ -186,6 +186,56 @@ export const adminApi = {
     return call<{ items: NoticeTemplate[] }>('GET', '/admin/v1/notice-templates')
   },
 
+  // ---- 字典 / 画像字段模板 ----
+  dictSubjectTypes() {
+    return call<DictSubjectType[]>('GET', '/mp/v1/dict/subject-types')
+  },
+  dictOptions(dimension: string) {
+    return call<DictOption[]>('GET', `/mp/v1/dict/options?dimension=${encodeURIComponent(dimension)}`)
+  },
+  profileTemplates() {
+    return call<{ items: ProfileTemplate[]; field_pool: FieldDef[] }>('GET', '/admin/v1/profile-templates')
+  },
+
+  // ---- 认证审核（verify）----
+  pendingCerts(reviewerType = 1) {
+    return call<{ items: AdminCert[] }>('GET', `/admin/v1/certs/pending?reviewer_type=${reviewerType}&limit=100`)
+  },
+  reviewCert(id: string, pass: boolean, reason: string) {
+    return call<{ reviewed: boolean }>('POST', `/admin/v1/certs/${id}/review`, { pass, reason })
+  },
+
+  // ---- 猫立方 / 圈子管理 ----
+  cubes(q?: string) {
+    const qs = new URLSearchParams()
+    if (q) qs.set('q', q)
+    qs.set('limit', '100')
+    return call<{ items: AdminCube[] }>('GET', `/admin/v1/cubes?${qs.toString()}`)
+  },
+  circles(q?: string) {
+    const qs = new URLSearchParams()
+    if (q) qs.set('q', q)
+    qs.set('limit', '100')
+    return call<{ items: AdminCircle[] }>('GET', `/admin/v1/circles?${qs.toString()}`)
+  },
+
+  // ---- 退款 / 履约补偿 ----
+  refund(orderId: string, amountFen: number, reason: string) {
+    return call<{ id: string }>('POST', '/admin/v1/refunds', { order_id: orderId, amount_fen: amountFen, reason })
+  },
+  retryFulfillment(orderId: string) {
+    return call<{ reset: boolean }>('POST', `/admin/v1/fulfillments/${orderId}/retry`)
+  },
+
+  // ---- 会员代操作 ----
+  forceRemoveSub(masterId: string, subUserId: string, reason: string) {
+    return call<{ removed: boolean }>('POST', '/admin/v1/memberships/sub-accounts/remove', {
+      master_id: masterId,
+      sub_user_id: subUserId,
+      reason,
+    })
+  },
+
   menus() {
     return call<{ items: AdminMenu[] }>('GET', '/admin/v1/menus')
   },
@@ -453,6 +503,68 @@ export interface AiUsage {
   adopt_rate: number
   tokens: number
   cost_fen: number
+}
+
+export interface DictSubjectType {
+  code: string
+  name: string
+  can_publish: boolean
+  home_visible: boolean
+  sort: number
+  enabled: boolean
+}
+
+export interface DictOption {
+  dimension: string
+  code: string
+  label: string
+  parent_code?: string
+  sort: number
+  enabled: boolean
+}
+
+export interface FieldDef {
+  field: string
+  label: string
+  value_type: string
+}
+
+export interface ProfileTemplate {
+  code: string
+  name: string
+  fields: Array<{ field: string; label: string; value_type: string; required: boolean; sort: number }>
+}
+
+export interface AdminCert {
+  id: string
+  user_id: string
+  cert_type: number
+  status: number
+  reject_reason?: string
+  submitted_at: string
+}
+
+export interface AdminCube {
+  id: string
+  name: string
+  leader_id: string
+  honey_id: string
+  plan_level: number
+  plan_expire_at?: string
+  status: number
+  member_count: number
+  region_code?: string
+}
+
+export interface AdminCircle {
+  id: string
+  name: string
+  type: number
+  status: number
+  owner_user_id: string
+  member_count: number
+  region_code?: string
+  created_at: number
 }
 
 export interface ChannelOperatorRow {

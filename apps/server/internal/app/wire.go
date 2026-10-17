@@ -825,6 +825,7 @@ func adminSectionsFor(mods []module.Module) []module.AdminSection {
 		"membership": {{Key: "membership.members", Label: "会员管理", Path: "/members", Module: "membership"}},
 		"cube":       {{Key: "cube.cubes", Label: "猫立方管理", Path: "/cubes", Module: "cube"}},
 		"circle":     {{Key: "circle.circles", Label: "圈子管理", Path: "/circles", Module: "circle"}},
+		"verify":     {{Key: "verify.certs", Label: "认证审核", Path: "/verify-certs", Module: "verify"}},
 		"profile":    {{Key: "profile.templates", Label: "画像字段模板", Path: "/profile-templates", Module: "profile"}},
 		"notice":     {{Key: "notice.templates", Label: "通知模板", Path: "/templates", Module: "notice"}},
 		"ops":        {{Key: "ops.dead_letters", Label: "死信队列", Path: "/dead-letters", Module: "ops"}, {Key: "ops.rbac", Label: "角色与权限", Path: "/roles", Module: "ops"}, {Key: "ops.system_settings", Label: "系统设置", Path: "/system-settings", Module: "ops"}},
