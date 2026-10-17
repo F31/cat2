@@ -1428,6 +1428,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/circles/{id}/invite/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 重置邀请（旧链接/二维码立即失效） */
+        post: operations["resetCircleInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/circles/{id}/card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 圈名片数据（圈信息 + 小程序码；客户端 Canvas 渲染并保存） */
+        get: operations["circleCard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/circles/{id}/members": {
         parameters: {
             query?: never;
@@ -3819,6 +3853,7 @@ export interface operations {
         parameters: {
             query: {
                 ref: string;
+                from_circle?: string;
             };
             header?: never;
             path?: never;
@@ -5502,6 +5537,52 @@ export interface operations {
                             expire_at?: string;
                         };
                     };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    resetCircleInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    circleCard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 名片数据 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
                 };
             };
             403: components["responses"]["Forbidden"];

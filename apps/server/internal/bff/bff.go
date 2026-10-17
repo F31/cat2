@@ -177,6 +177,18 @@ type DetailData struct {
 	Badges    []verifycontract.Badge     `json:"badges,omitempty"`
 	Member    *membershipcontract.Member `json:"member,omitempty"`
 	Following bool                       `json:"following"`
+	// 圈子分享落地页（PRD §5.12.6/§11.4）：来源圈 + 非成员摘要态。
+	FromCircle  *FromCircle `json:"from_circle,omitempty"`
+	PreviewOnly bool        `json:"preview_only,omitempty"`
+}
+
+// FromCircle 分享来源圈（服务端校验归属后下发，客户端不可伪造）。
+type FromCircle struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Status  int16  `json:"status"`
+	Joined  bool   `json:"joined"`
+	CanJoin bool   `json:"can_join"`
 }
 
 func (a *Aggregator) handleFeed(w http.ResponseWriter, req *http.Request) {
@@ -238,6 +250,25 @@ func (a *Aggregator) handleDetail(w http.ResponseWriter, req *http.Request) {
 			out.Content = &item
 			if card, err := a.deps.Profile.CardOf(req.Context(), item.OwnerRef.ID); err == nil {
 				out.Owner = &card
+			}
+		}
+		// 来自圈子的分享：校验内容确属该圈，非成员只给摘要（§5.12.6/§11.4）
+		if cid, _ := strconv.ParseInt(req.URL.Query().Get("from_circle"), 10, 64); cid > 0 && out.Content != nil {
+			if mounted, _ := a.deps.Circle.ContentMounted(req.Context(), cid, ref); mounted {
+				if d, err := a.deps.Circle.Detail(req.Context(), uid, cid); err == nil {
+					joined := d.Joined || d.MyRole > 0
+					out.FromCircle = &FromCircle{
+						ID: strconv.FormatInt(d.ID, 10), Name: d.Name, Status: d.Status,
+						Joined: joined, CanJoin: d.Status == 0 && !joined,
+					}
+					if !joined {
+						c := *out.Content
+						c.Fields = nil
+						c.MemberGate = append(c.MemberGate, "circle_preview")
+						out.Content = &c
+						out.PreviewOnly = true
+					}
+				}
 			}
 		}
 	default:

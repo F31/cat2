@@ -242,6 +242,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/circles/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 圈子批量封禁/归档/解封/恢复（action=ban|archive|unban|restore；≤100，逐圈审计） */
+        post: operations["adminBatchCircles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/circles/{id}/dissolve": {
         parameters: {
             query?: never;
@@ -1791,6 +1808,35 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description 列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
+    adminBatchCircles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    action: "ban" | "archive" | "unban" | "restore";
+                    ids: string[];
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果（逐圈成功/失败） */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -52,6 +53,46 @@ func (c *AuthClient) accessToken(ctx context.Context) (string, error) {
 	c.tk.token = r.AccessToken
 	c.tk.expireAt = time.Now().Add(time.Duration(r.ExpiresIn-300) * time.Second)
 	return r.AccessToken, nil
+}
+
+// MiniProgramCode 生成小程序码（getwxacodeunlimit；返回 PNG 字节）。
+func (c *AuthClient) MiniProgramCode(ctx context.Context, page, scene string) ([]byte, error) {
+	token, err := c.accessToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	body, _ := json.Marshal(map[string]any{
+		"page": page, "scene": scene, "check_path": false, "env_version": "release",
+		"width": 430,
+	})
+	url := "https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token=" + token
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return nil, err
+	}
+	// 微信错误以 JSON 返回；图片为 PNG（或 JPEG）。
+	if len(raw) > 0 && raw[0] == '{' {
+		var e struct {
+			ErrCode int    `json:"errcode"`
+			ErrMsg  string `json:"errmsg"`
+		}
+		_ = json.Unmarshal(raw, &e)
+		return nil, fmt.Errorf("wechat: 小程序码失败 %d %s", e.ErrCode, e.ErrMsg)
+	}
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("wechat: 小程序码为空")
+	}
+	return raw, nil
 }
 
 type phoneResp struct {

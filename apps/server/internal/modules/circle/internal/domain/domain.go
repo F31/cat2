@@ -13,10 +13,18 @@ const (
 	CircleActive    = "active"
 	CircleEnded     = "ended"
 	CircleDissolved = "dissolved"
+	CircleBanned    = "banned"
+	CircleArchived  = "archived"
 
-	EventEnd      = "end"
-	EventConvert  = "convert" // 转常设（已结束→进行中）
-	EventDissolve = "dissolve"
+	EventEnd           = "end"
+	EventConvert       = "convert" // 转常设（已结束→进行中）
+	EventDissolve      = "dissolve"
+	EventBan           = "ban"
+	EventArchive       = "archive"
+	EventUnbanActive   = "unban_active"
+	EventUnbanEnded    = "unban_ended"
+	EventRestoreActive = "restore_active"
+	EventRestoreEnded  = "restore_ended"
 )
 
 // 需求状态字符串（状态机 #11）。
@@ -26,16 +34,26 @@ const (
 	EventExpire   = "expire"
 )
 
-// MachineCircle 状态机 #10：常设/临时→已结束→已解散（已结束可转常设）。
+// MachineCircle 状态机 #10：进行中→已结束→已解散；平台封禁/归档可恢复。
 var MachineCircle = statemachine.Def{
 	Name:     "circle.circle",
-	States:   []string{CircleActive, CircleEnded, CircleDissolved},
+	States:   []string{CircleActive, CircleEnded, CircleDissolved, CircleBanned, CircleArchived},
 	Terminal: []string{CircleDissolved},
 	Transitions: []statemachine.Transition{
 		{From: CircleActive, Event: EventEnd, To: CircleEnded, Actor: "system"},
 		{From: CircleEnded, Event: EventConvert, To: CircleActive, Actor: "owner"},
 		{From: CircleActive, Event: EventDissolve, To: CircleDissolved, Actor: "owner"},
 		{From: CircleEnded, Event: EventDissolve, To: CircleDissolved, Actor: "owner"},
+		{From: CircleBanned, Event: EventDissolve, To: CircleDissolved, Actor: "admin"},
+		{From: CircleArchived, Event: EventDissolve, To: CircleDissolved, Actor: "admin"},
+		{From: CircleActive, Event: EventBan, To: CircleBanned, Actor: "admin"},
+		{From: CircleEnded, Event: EventBan, To: CircleBanned, Actor: "admin"},
+		{From: CircleActive, Event: EventArchive, To: CircleArchived, Actor: "admin"},
+		{From: CircleEnded, Event: EventArchive, To: CircleArchived, Actor: "admin"},
+		{From: CircleBanned, Event: EventUnbanActive, To: CircleActive, Actor: "admin"},
+		{From: CircleBanned, Event: EventUnbanEnded, To: CircleEnded, Actor: "admin"},
+		{From: CircleArchived, Event: EventRestoreActive, To: CircleActive, Actor: "admin"},
+		{From: CircleArchived, Event: EventRestoreEnded, To: CircleEnded, Actor: "admin"},
 	},
 }
 
@@ -61,6 +79,7 @@ var (
 	ErrAnnounceQuota = errors.New("circle: 公告每日额度已满（每圈 3 条）")
 	ErrMountLimit    = errors.New("circle: 挂载数已达单圈上限")
 	ErrEnded         = errors.New("circle: 圈子已结束（只读）")
+	ErrInvalidState  = errors.New("circle: 当前状态不允许该操作")
 )
 
 const (

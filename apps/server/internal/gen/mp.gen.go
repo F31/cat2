@@ -1328,7 +1328,8 @@ type AggregateContactParams struct {
 
 // AggregateDetailParams defines parameters for AggregateDetail.
 type AggregateDetailParams struct {
-	Ref string `form:"ref" json:"ref"`
+	Ref        string  `form:"ref" json:"ref"`
+	FromCircle *string `form:"from_circle,omitempty" json:"from_circle,omitempty"`
 }
 
 // AiCustomerServiceJSONBody defines parameters for AiCustomerService.
@@ -2051,6 +2052,9 @@ type ServerInterface interface {
 	// ApplyCircle 申请加入（圈主审）
 	// (POST /circles/{id}/apply)
 	ApplyCircle(w http.ResponseWriter, r *http.Request, id string)
+	// CircleCard 圈名片数据（圈信息 + 小程序码；客户端 Canvas 渲染并保存）
+	// (GET /circles/{id}/card)
+	CircleCard(w http.ResponseWriter, r *http.Request, id string)
 	// ConvertCircle 已结束转常设（圈主）
 	// (POST /circles/{id}/convert)
 	ConvertCircle(w http.ResponseWriter, r *http.Request, id string)
@@ -2072,6 +2076,9 @@ type ServerInterface interface {
 	// InviteCircle 生成/重置邀请链接（有效期=圈剩余存续期；可重置旧链作废）
 	// (POST /circles/{id}/invite)
 	InviteCircle(w http.ResponseWriter, r *http.Request, id string)
+	// ResetCircleInvite 重置邀请（旧链接/二维码立即失效）
+	// (POST /circles/{id}/invite/reset)
+	ResetCircleInvite(w http.ResponseWriter, r *http.Request, id string)
 	// ListCircleMembers 成员列表
 	// (GET /circles/{id}/members)
 	ListCircleMembers(w http.ResponseWriter, r *http.Request, id string)
@@ -2568,6 +2575,19 @@ func (siw *ServerInterfaceWrapper) AggregateDetail(w http.ResponseWriter, r *htt
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "ref"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ref", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from_circle" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from_circle", r.URL.Query(), &params.FromCircle, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from_circle"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from_circle", Err: err})
 		}
 		return
 	}
@@ -3341,6 +3361,32 @@ func (siw *ServerInterfaceWrapper) ApplyCircle(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// CircleCard operation middleware
+func (siw *ServerInterfaceWrapper) CircleCard(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CircleCard(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ConvertCircle operation middleware
 func (siw *ServerInterfaceWrapper) ConvertCircle(w http.ResponseWriter, r *http.Request) {
 
@@ -3539,6 +3585,32 @@ func (siw *ServerInterfaceWrapper) InviteCircle(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.InviteCircle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResetCircleInvite operation middleware
+func (siw *ServerInterfaceWrapper) ResetCircleInvite(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResetCircleInvite(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6315,6 +6387,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/{id}", wrapper.GetCircle)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/apply", wrapper.ApplyCircle)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/invite", wrapper.InviteCircle)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/invite/reset", wrapper.ResetCircleInvite)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/{id}/card", wrapper.CircleCard)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/{id}/members", wrapper.ListCircleMembers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/dissolve", wrapper.DissolveCircle)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/convert", wrapper.ConvertCircle)

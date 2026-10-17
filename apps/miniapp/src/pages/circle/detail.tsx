@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import Taro, { useDidShow, useRouter } from '@tarojs/taro'
-import { View, Text, Button } from '@tarojs/components'
+import Taro, { useDidShow, useRouter, useShareAppMessage } from '@tarojs/taro'
+import { View, Text, Button, Canvas } from '@tarojs/components'
 import type { Circle, CircleDemand, CircleMount } from '@catcube/api-client'
 import { api } from '../../services/request'
 import { ensureLogin } from '../../services/auth'
@@ -42,7 +42,54 @@ export default function CircleDetail() {
 
   useDidShow(() => {
     void load()
+    void Taro.showShareMenu({ withShareTicket: true })
   })
+
+  useShareAppMessage(() => ({
+    title: circle ? `来自「${circle.name}」的圈子` : '猫平方圈子',
+    path: `/pages/circle/detail?id=${id}`,
+  }))
+
+  const saveCard = async () => {
+    if (!circle) return
+    try {
+      Taro.showLoading({ title: '生成名片…' })
+      const c = await api.circleCard(id)
+      const fs = Taro.getFileSystemManager()
+      const qrPath = `${Taro.env.USER_DATA_PATH}/circle-qr-${Date.now()}.png`
+      fs.writeFileSync(qrPath, Taro.base64ToArrayBuffer(c.qr_png_base64), 'binary')
+      const ctx = Taro.createCanvasContext('circleCard')
+      ctx.setFillStyle('#ffffff')
+      ctx.fillRect(0, 0, 750, 1000)
+      ctx.setFillStyle('#2f54eb')
+      ctx.fillRect(0, 0, 750, 12)
+      ctx.setFillStyle('#111111')
+      ctx.setFontSize(46)
+      ctx.fillText(c.name.slice(0, 14), 40, 110)
+      ctx.setFillStyle('#666666')
+      ctx.setFontSize(26)
+      wrapText(ctx, c.intro || '这个圈子还没有简介', 40, 175, 24, 38)
+      ctx.setFillStyle('#333333')
+      ctx.setFontSize(28)
+      ctx.fillText(`圈主：${c.owner_name}`, 40, 470)
+      ctx.fillText(`${c.member_count} 位成员`, 40, 520)
+      ctx.setFillStyle('#2f54eb')
+      ctx.setFontSize(30)
+      ctx.fillText('扫码加入圈子', 40, 780)
+      ctx.setFillStyle('#999999')
+      ctx.setFontSize(22)
+      ctx.fillText(`邀请码 ${c.invite_code}`, 40, 830)
+      ctx.drawImage(qrPath, 470, 720, 220, 220)
+      await new Promise<void>((resolve) => ctx.draw(false, () => resolve()))
+      const res = await Taro.canvasToTempFilePath({ canvasId: 'circleCard' })
+      await Taro.saveImageToPhotosAlbum({ filePath: res.tempFilePath })
+      Taro.hideLoading()
+      Taro.showToast({ title: '已保存到相册', icon: 'success' })
+    } catch {
+      Taro.hideLoading()
+      Taro.showToast({ title: '保存失败（需相册权限）', icon: 'none' })
+    }
+  }
 
   const join = async () => {
     try {
@@ -139,11 +186,25 @@ export default function CircleDetail() {
               发布需求 / 动态
             </Button>
           </View>
+          <Button className="btn-secondary" onClick={() => void saveCard()}>
+            保存圈名片
+          </Button>
           <Button className="btn-secondary" onClick={() => Taro.navigateTo({ url: `/pages/circle/settings?id=${id}` })}>
             圈设置
           </Button>
         </>
       )}
+      <Canvas canvasId="circleCard" id="circleCard" style={{ position: 'fixed', left: '-2000px', top: 0, width: '750px', height: '1000px' }} />
     </View>
   )
+}
+
+// 简单按字符换行（中文为主；最多 6 行）。
+function wrapText(ctx: Taro.CanvasContext, text: string, x: number, y: number, perLine: number, lineHeight: number) {
+  const chars = Array.from(text)
+  let line = 0
+  for (let i = 0; i < chars.length && line < 6; i += perLine) {
+    ctx.fillText(chars.slice(i, i + perLine).join(''), x, y + line * lineHeight)
+    line++
+  }
 }

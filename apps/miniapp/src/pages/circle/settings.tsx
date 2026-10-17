@@ -42,6 +42,15 @@ export default function CircleSettings() {
     }
   }
 
+  const resetInvite = async () => {
+    try {
+      const r = await api.resetCircleInvite(id)
+      Taro.showToast({ title: `已重置（${r.invalidated} 条旧邀请失效）`, icon: 'success' })
+    } catch {
+      Taro.showToast({ title: '仅圈主可重置', icon: 'none' })
+    }
+  }
+
   const dissolve = async () => {
     try {
       await api.dissolveCircle(id)
@@ -67,6 +76,11 @@ export default function CircleSettings() {
             {circle.status === 1 ? (
               <Button className="btn-secondary" onClick={() => void convert()}>
                 转常设圈（不再到期）
+              </Button>
+            ) : null}
+            {circle.status === 0 ? (
+              <Button className="btn-secondary" onClick={() => void resetInvite()}>
+                重置邀请（旧链接/二维码失效）
               </Button>
             ) : null}
             <Button className="btn-danger" onClick={() => setConfirming(true)}>

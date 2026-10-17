@@ -228,6 +228,8 @@ export interface DetailData {
   badges?: { code: string; label: string; level: number }[]
   member?: Member
   following: boolean
+  from_circle?: { id: string; name: string; status: number; joined: boolean; can_join: boolean }
+  preview_only?: boolean
 }
 
 export interface Session {
@@ -929,6 +931,20 @@ export function createClient(opts: ClientOptions) {
     },
     circleInvite(id: string) {
       return call<{ code: string; expire_at: string }>('POST', `/circles/${id}/invite`)
+    },
+    resetCircleInvite(id: string) {
+      return call<{ invalidated: number }>('POST', `/circles/${id}/invite/reset`)
+    },
+    circleCard(id: string) {
+      return call<{
+        circle_id: string
+        name: string
+        intro: string
+        member_count: number
+        owner_name: string
+        invite_code: string
+        qr_png_base64: string
+      }>('GET', `/circles/${id}/card`)
     },
     joinCircle(code: string) {
       return call<Circle>('POST', '/circles/join', { code })

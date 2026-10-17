@@ -955,6 +955,10 @@ paths:
           in: query
           required: true
           schema: { type: string, description: 'EntityRef，如 user:123 / content.project:456' }
+        - name: from_circle
+          in: query
+          required: false
+          schema: { type: string, description: '分享来源圈 ID（服务端校验内容已挂载；非成员仅返回摘要）' }
       responses:
         '200':
           description: 聚合详情（游客访问时 following=false、member 省略）
@@ -2345,6 +2349,28 @@ paths:
                   - type: object
                     properties:
                       data: { type: object, properties: { code: { type: string }, expire_at: { type: string, format: date-time } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /circles/{id}/invite/reset:
+    post:
+      tags: [circle]
+      summary: 重置邀请（旧链接/二维码立即失效）
+      operationId: resetCircleInvite
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /circles/{id}/card:
+    get:
+      tags: [circle]
+      summary: 圈名片数据（圈信息 + 小程序码；客户端 Canvas 渲染并保存）
+      operationId: circleCard
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 名片数据, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
   /circles/{id}/members:
     get:

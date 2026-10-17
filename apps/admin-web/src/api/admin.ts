@@ -212,11 +212,19 @@ export const adminApi = {
     qs.set('limit', '100')
     return call<{ items: AdminCube[] }>('GET', `/admin/v1/cubes?${qs.toString()}`)
   },
-  circles(q?: string) {
+  circles(q?: string, status?: number) {
     const qs = new URLSearchParams()
     if (q) qs.set('q', q)
+    if (status != null) qs.set('status', String(status))
     qs.set('limit', '100')
     return call<{ items: AdminCircle[] }>('GET', `/admin/v1/circles?${qs.toString()}`)
+  },
+  batchCircleStatus(action: 'ban' | 'archive' | 'unban' | 'restore', ids: string[], reason: string) {
+    return call<{ items: Array<{ id: string; ok: boolean; before?: number; after?: number; error?: string }>; succeeded: number; failed: number }>(
+      'POST',
+      '/admin/v1/circles/batch',
+      { action, ids, reason },
+    )
   },
 
   // ---- 退款 / 履约补偿 ----
@@ -565,6 +573,7 @@ export interface AdminCircle {
   member_count: number
   region_code?: string
   created_at: number
+  prev_status?: number
 }
 
 export interface ChannelOperatorRow {

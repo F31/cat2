@@ -56,6 +56,30 @@ func (e AdminGrantBadgeJSONBodySubjectType) Valid() bool {
 	}
 }
 
+// Defines values for AdminBatchCirclesJSONBodyAction.
+const (
+	Archive AdminBatchCirclesJSONBodyAction = "archive"
+	Ban     AdminBatchCirclesJSONBodyAction = "ban"
+	Restore AdminBatchCirclesJSONBodyAction = "restore"
+	Unban   AdminBatchCirclesJSONBodyAction = "unban"
+)
+
+// Valid indicates whether the value is a known member of the AdminBatchCirclesJSONBodyAction enum.
+func (e AdminBatchCirclesJSONBodyAction) Valid() bool {
+	switch e {
+	case Archive:
+		return true
+	case Ban:
+		return true
+	case Restore:
+		return true
+	case Unban:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AdminListContentsParamsKind.
 const (
 	AdminListContentsParamsKindEvent   AdminListContentsParamsKind = "event"
@@ -441,6 +465,16 @@ type AdminCirclesParams struct {
 	Limit *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// AdminBatchCirclesJSONBody defines parameters for AdminBatchCircles.
+type AdminBatchCirclesJSONBody struct {
+	Action AdminBatchCirclesJSONBodyAction `json:"action"`
+	Ids    []string                        `json:"ids"`
+	Reason string                          `json:"reason"`
+}
+
+// AdminBatchCirclesJSONBodyAction defines parameters for AdminBatchCircles.
+type AdminBatchCirclesJSONBodyAction string
+
 // AdminDissolveCircleJSONBody defines parameters for AdminDissolveCircle.
 type AdminDissolveCircleJSONBody struct {
 	Reason string `json:"reason"`
@@ -659,6 +693,9 @@ type AdminChannelPaySettlementJSONRequestBody AdminChannelPaySettlementJSONBody
 // AdminChannelRejectSettlementJSONRequestBody defines body for AdminChannelRejectSettlement for application/json ContentType.
 type AdminChannelRejectSettlementJSONRequestBody AdminChannelRejectSettlementJSONBody
 
+// AdminBatchCirclesJSONRequestBody defines body for AdminBatchCircles for application/json ContentType.
+type AdminBatchCirclesJSONRequestBody AdminBatchCirclesJSONBody
+
 // AdminDissolveCircleJSONRequestBody defines body for AdminDissolveCircle for application/json ContentType.
 type AdminDissolveCircleJSONRequestBody AdminDissolveCircleJSONBody
 
@@ -808,6 +845,9 @@ type ServerInterface interface {
 	// AdminCircles 圈子列表（后台）
 	// (GET /circles)
 	AdminCircles(w http.ResponseWriter, r *http.Request, params AdminCirclesParams)
+	// AdminBatchCircles 圈子批量封禁/归档/解封/恢复（action=ban|archive|unban|restore；≤100，逐圈审计）
+	// (POST /circles/batch)
+	AdminBatchCircles(w http.ResponseWriter, r *http.Request)
 	// AdminDissolveCircle 平台解散圈子（代操作，前后值审计）
 	// (POST /circles/{id}/dissolve)
 	AdminDissolveCircle(w http.ResponseWriter, r *http.Request, id string)
@@ -1766,6 +1806,20 @@ func (siw *ServerInterfaceWrapper) AdminCircles(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminCircles(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminBatchCircles operation middleware
+func (siw *ServerInterfaceWrapper) AdminBatchCircles(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminBatchCircles(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3230,6 +3284,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/dissolve", wrapper.AdminDissolveCube)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/profile-templates", wrapper.AdminProfileTemplates)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles", wrapper.AdminCircles)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/batch", wrapper.AdminBatchCircles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/dissolve", wrapper.AdminDissolveCircle)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/notices/broadcast", wrapper.AdminBroadcastNotice)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/ai/prompts", wrapper.AdminAiPrompts)

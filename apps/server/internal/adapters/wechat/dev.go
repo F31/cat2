@@ -3,6 +3,7 @@ package wechat
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 )
@@ -12,6 +13,17 @@ import (
 type DevAuthClient struct{}
 
 func NewDevAuthClient() *DevAuthClient { return &DevAuthClient{} }
+
+// 1x1 透明 PNG：开发态占位小程序码（绝不用于生产）。
+const devCodePNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+
+// MiniProgramCode 开发态占位图（生产由真实 appid 生成）。
+func (d *DevAuthClient) MiniProgramCode(_ context.Context, _, scene string) ([]byte, error) {
+	if scene == "" {
+		return nil, fmt.Errorf("wechat(dev): scene 为空")
+	}
+	return base64.StdEncoding.DecodeString(devCodePNG)
+}
 
 // Code2Session 用 code 派生稳定 openid（同一 code → 同一 openid）。
 func (d *DevAuthClient) Code2Session(_ context.Context, code string) (string, string, error) {

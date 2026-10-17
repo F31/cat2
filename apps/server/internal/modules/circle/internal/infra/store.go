@@ -124,7 +124,8 @@ func (s *Store) GetCircle(ctx context.Context, id int64) (Circle, error) {
 // ListByUser 我加入/创建的圈子。
 func (s *Store) ListByUser(ctx context.Context, userID int64) ([]Circle, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+circleCols+` FROM cir_circle c
-		WHERE c.owner_user_id=$1 OR EXISTS (SELECT 1 FROM cir_member m WHERE m.circle_id=c.id AND m.user_ref=$1 AND m.status=0)
+		WHERE (c.owner_user_id=$1 OR EXISTS (SELECT 1 FROM cir_member m WHERE m.circle_id=c.id AND m.user_ref=$1 AND m.status=0))
+		  AND c.status NOT IN (3,4)
 		ORDER BY c.created_at DESC`, userID)
 	if err != nil {
 		return nil, err
@@ -413,6 +414,15 @@ func (s *Store) GetMount(ctx context.Context, id int64) (Mount, error) {
 		return Mount{}, ErrNotFound
 	}
 	return m, err
+}
+
+// IsMounted 内容是否已挂载到该圈（status=0 且已同意）。
+func (s *Store) IsMounted(ctx context.Context, circleID int64, itemRef string) (bool, error) {
+	var ok bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM cir_mount
+			WHERE circle_id=$1 AND item_ref=$2 AND status=0 AND approval_status=1)`, circleID, itemRef).Scan(&ok)
+	return ok, err
 }
 
 // ListMounts 圈内挂载（status=0）。

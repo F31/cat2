@@ -93,6 +93,11 @@ type WeChatAuth interface {
 	GetPhoneNumber(ctx context.Context, sessionKey, encryptedData, iv string) (string, error)
 }
 
+// MiniProgramCoder 微信小程序码生成端口（scene 建议≤32字符）。
+type MiniProgramCoder interface {
+	MiniProgramCode(ctx context.Context, page, scene string) ([]byte, error)
+}
+
 // RealnameVerify 实名二要素核验端口（真实姓名 + 身份证号，接第三方接口；
 // 不上传证件照；人脸核身高风险时触发，由实现方在内部编排）。
 type RealnameVerify interface {

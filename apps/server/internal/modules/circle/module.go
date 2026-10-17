@@ -3,6 +3,7 @@ package circle
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
 	"catcube/internal/kernel/policy"
+	"catcube/internal/kernel/rbac"
 	"catcube/internal/kernel/sensitive"
 	"catcube/internal/modules/circle/contract"
 	"catcube/internal/modules/circle/internal/app"
@@ -23,6 +25,7 @@ import (
 	"catcube/internal/modules/circle/internal/infra"
 	contentcontract "catcube/internal/modules/content/contract"
 	idcontract "catcube/internal/modules/identity/contract"
+	"catcube/internal/ports"
 	"catcube/internal/shared/entityref"
 )
 
@@ -38,6 +41,7 @@ type Deps struct {
 	Entities  *entityref.Registry
 	Content   contentcontract.Facade
 	Cube      cubefacade
+	Coder     ports.MiniProgramCoder
 }
 
 // Module circle 模块。
@@ -82,11 +86,14 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}", Handler: m.handleDetail},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/apply", Handler: m.auth(m.handleApply)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/invite", Handler: m.auth(m.handleInvite)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/invite/reset", Handler: m.auth(m.handleResetInvite)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/card", Handler: m.auth(m.handleCard)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/join", Handler: m.auth(m.handleJoin)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/members", Handler: m.auth(m.handleMembers)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/dissolve", Handler: m.auth(m.handleDissolve)},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/circles", Handler: m.auth(m.handleAdminList), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/circles/{id}/dissolve", Handler: m.auth(m.handleAdminDissolve), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/circles/{id}/dissolve", Handler: m.auth(m.handleAdminDissolve), Admin: true, Perm: rbac.PermModeration},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/circles/batch", Handler: m.auth(m.handleBatchStatus), Admin: true, Perm: rbac.PermModeration},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/convert", Handler: m.auth(m.handleConvert)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/demands", Handler: m.auth(m.handlePublishDemand)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/demands", Handler: m.handleListDemands},
@@ -106,6 +113,10 @@ func (m *Module) Register(r *module.Registry) error {
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "circle:dissolve", Path: "/api/mp/v1/circles/{id}/dissolve", Required: true, LogFailed: true, Module: "circle"},
 		audit.Point{Action: "circle:admin:dissolve", Path: "/api/admin/v1/circles/{id}/dissolve", Required: true, LogFailed: true, Module: "circle"},
+		audit.Point{Action: "circle:admin:ban", Path: "/api/admin/v1/circles/batch", Required: true, LogFailed: true, Module: "circle"},
+		audit.Point{Action: "circle:admin:archive", Path: "/api/admin/v1/circles/batch", Required: true, LogFailed: true, Module: "circle"},
+		audit.Point{Action: "circle:admin:unban", Path: "/api/admin/v1/circles/batch", Required: true, LogFailed: true, Module: "circle"},
+		audit.Point{Action: "circle:admin:restore", Path: "/api/admin/v1/circles/batch", Required: true, LogFailed: true, Module: "circle"},
 		audit.Point{Action: "circle:convert", Path: "/api/mp/v1/circles/{id}/convert", Required: true, LogFailed: false, Module: "circle"},
 	)
 	r.StateMachines = append(r.StateMachines, domain.MachineCircle, domain.MachineDemand)
@@ -189,6 +200,10 @@ func (m *Module) DecideMount(ctx context.Context, mountID, userID int64, approve
 }
 func (m *Module) ToCube(ctx context.Context, circleID, demandID, cubeID, userID int64) (int64, error) {
 	return m.svc.ToCube(ctx, circleID, demandID, cubeID, userID)
+}
+
+func (m *Module) ContentMounted(ctx context.Context, circleID int64, itemRef string) (bool, error) {
+	return m.svc.ContentMounted(ctx, circleID, itemRef)
 }
 
 // ProviderFor trust.ReviewSubjectProvider（circle.demand）。
@@ -334,11 +349,15 @@ func (m *Module) handleAdminList(w http.ResponseWriter, req *http.Request) {
 		limit = 50
 	}
 	q := strings.TrimSpace(req.URL.Query().Get("q"))
+	status := -1
+	if v, err := strconv.Atoi(req.URL.Query().Get("status")); err == nil {
+		status = v
+	}
 	rows, err := m.deps.Pool.Query(req.Context(), `
-		SELECT id, name, type, status, owner_user_id, member_count, COALESCE(region_code,''), created_at
+		SELECT id, name, type, status, owner_user_id, member_count, COALESCE(region_code,''), created_at, prev_status
 		FROM cir_circle
-		WHERE ($1 = '' OR name ILIKE '%' || $1 || '%')
-		ORDER BY created_at DESC LIMIT $2`, q, limit)
+		WHERE ($1 = '' OR name ILIKE '%' || $1 || '%') AND ($3 < 0 OR status=$3)
+		ORDER BY created_at DESC LIMIT $2`, q, limit, status)
 	if err != nil {
 		writeErr(w, 9, "服务错误")
 		return
@@ -348,20 +367,126 @@ func (m *Module) handleAdminList(w http.ResponseWriter, req *http.Request) {
 	for rows.Next() {
 		var id, owner int64
 		var name, region string
-		var typ, status int16
+		var typ, cstatus int16
+		var prev *int16
 		var members int
 		var created time.Time
-		if err := rows.Scan(&id, &name, &typ, &status, &owner, &members, &region, &created); err != nil {
+		if err := rows.Scan(&id, &name, &typ, &cstatus, &owner, &members, &region, &created, &prev); err != nil {
 			writeErr(w, 9, "服务错误")
 			return
 		}
 		items = append(items, map[string]any{
-			"id": strconv.FormatInt(id, 10), "name": name, "type": typ, "status": status,
-			"owner_user_id": strconv.FormatInt(owner, 10), "member_count": members,
+			"id": strconv.FormatInt(id, 10), "name": name, "type": typ, "status": cstatus,
+			"prev_status": prev, "owner_user_id": strconv.FormatInt(owner, 10), "member_count": members,
 			"region_code": region, "created_at": created.Unix(),
 		})
 	}
 	writeData(w, map[string]any{"items": items})
+}
+
+// handleBatchStatus 平台批量封禁/归档/解封/恢复（≤100；必填原因；逐圈审计与结果）。
+func (m *Module) handleBatchStatus(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		Action string   `json:"action"`
+		IDs    []string `json:"ids"`
+		Reason string   `json:"reason"`
+	}
+	if json.NewDecoder(req.Body).Decode(&body) != nil || len(body.IDs) == 0 || len(body.IDs) > 100 || strings.TrimSpace(body.Reason) == "" {
+		writeErr(w, codeParamInvalid, "参数错误（1-100 个圈子且必须给原因）")
+		return
+	}
+	action := body.Action
+	switch action {
+	case "ban", "archive", "unban", "restore":
+	default:
+		writeErr(w, codeParamInvalid, "不支持的动作")
+		return
+	}
+	type item struct {
+		ID     string `json:"id"`
+		OK     bool   `json:"ok"`
+		Before int16  `json:"before,omitempty"`
+		After  int16  `json:"after,omitempty"`
+		Error  string `json:"error,omitempty"`
+	}
+	items := make([]item, 0, len(body.IDs))
+	succeeded, failed := 0, 0
+	for _, raw := range body.IDs {
+		id, _ := strconv.ParseInt(raw, 10, 64)
+		if id == 0 {
+			items = append(items, item{ID: raw, Error: "非法圈子ID"})
+			failed++
+			continue
+		}
+		before, after, err := m.svc.AdminSetStatus(req.Context(), id, action)
+		if err != nil {
+			items = append(items, item{ID: raw, Error: err.Error()})
+			failed++
+			m.auditCircleBatch(req, action, id, before, 0, body.Reason, false)
+			continue
+		}
+		m.auditCircleBatch(req, action, id, before, after, body.Reason, true)
+		items = append(items, item{ID: raw, OK: true, Before: before, After: after})
+		succeeded++
+	}
+	writeData(w, map[string]any{"items": items, "succeeded": succeeded, "failed": failed})
+}
+
+// auditCircleBatch 批量处置逐圈审计（前后状态 + 批量原因）。
+func (m *Module) auditCircleBatch(req *http.Request, action string, id int64, before, after int16, reason string, ok bool) {
+	if m.deps.Audit == nil {
+		return
+	}
+	res := audit.ResultOK
+	if !ok {
+		res = audit.ResultFailed
+	}
+	_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+		ActorID: userIDFrom(req.Context()), ActorType: audit.ActorAdmin, Channel: "admin",
+		Action: "circle:admin:" + action, TargetRef: fmt.Sprintf(`{"id":"%d","type":"circle"}`, id),
+		Detail: audit.Change{Before: map[string]any{"status": before}, After: map[string]any{"status": after}}.Snapshot(reason),
+		Result: res, IP: audit.ClientIP(req), RequestID: audit.RequestIDOf(req.Context()),
+	})
+}
+
+// handleResetInvite 圈主重置邀请（旧链接/二维码立即失效）。
+func (m *Module) handleResetInvite(w http.ResponseWriter, req *http.Request) {
+	n, err := m.svc.ResetInvites(req.Context(), pathID(req, "id"), userIDFrom(req.Context()))
+	if err != nil {
+		writeCircleErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"invalidated": n})
+}
+
+// handleCard 圈名片数据：圈信息 + 小程序码（前端 Canvas 负责排版与保存）。
+func (m *Module) handleCard(w http.ResponseWriter, req *http.Request) {
+	id := pathID(req, "id")
+	d, code, err := m.svc.CardContext(req.Context(), id, userIDFrom(req.Context()))
+	if err != nil {
+		writeCircleErr(w, err)
+		return
+	}
+	ownerName := ""
+	if b, err := m.deps.Identity.UserBrief(req.Context(), d.OwnerUserID); err == nil {
+		ownerName = b.Nickname
+	}
+	if ownerName == "" {
+		ownerName = "圈主"
+	}
+	var qr []byte
+	if m.deps.Coder != nil {
+		qr, err = m.deps.Coder.MiniProgramCode(req.Context(), "pages/circle/index", "c="+code)
+		if err != nil {
+			writeErr(w, codeInternal, "小程序码生成失败")
+			return
+		}
+	}
+	writeData(w, map[string]any{
+		"circle_id": d.ID, "name": d.Name, "intro": d.Intro, "member_count": d.MemberCount,
+		"owner_name": ownerName, "invite_code": code,
+		"qr_png_base64": base64.StdEncoding.EncodeToString(qr),
+	})
 }
 
 func (m *Module) handleAdminDissolve(w http.ResponseWriter, req *http.Request) {

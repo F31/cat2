@@ -181,6 +181,24 @@ paths:
         - { name: limit, in: query, schema: { type: integer } }
       responses:
         '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /circles/batch:
+    post:
+      tags: [admin-circle]
+      summary: 圈子批量封禁/归档/解封/恢复（action=ban|archive|unban|restore；≤100，逐圈审计）
+      operationId: adminBatchCircles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, ids, reason]
+              properties:
+                action: { type: string, enum: [ban, archive, unban, restore] }
+                ids: { type: array, items: { type: string }, maxItems: 100 }
+                reason: { type: string }
+      responses:
+        '200': { description: 结果（逐圈成功/失败）, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
   /circles/{id}/dissolve:
     post:
       tags: [admin-governance]

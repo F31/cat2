@@ -11,6 +11,8 @@ const (
 	CircleActive    int16 = 0
 	CircleEnded     int16 = 1
 	CircleDissolved int16 = 2
+	CircleBanned    int16 = 3
+	CircleArchived  int16 = 4
 )
 
 // 圈类型。
@@ -128,6 +130,8 @@ type Facade interface {
 	ListMounts(ctx context.Context, circleID int64) ([]Mount, error)
 	DecideMount(ctx context.Context, mountID, userID int64, approve bool) error
 	ToCube(ctx context.Context, circleID, demandID, cubeID, userID int64) (int64, error)
+	// ContentMounted 内容是否已挂载到该圈（分享归属校验，防伪造「来自 XX 圈」）。
+	ContentMounted(ctx context.Context, circleID int64, itemRef string) (bool, error)
 }
 
 // Mount 挂载记录。

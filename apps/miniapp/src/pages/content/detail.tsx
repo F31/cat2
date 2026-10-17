@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import Taro, { useRouter } from '@tarojs/taro'
+import Taro, { useRouter, useShareAppMessage } from '@tarojs/taro'
 import { View, Text, Button } from '@tarojs/components'
 import { ApiError, type DetailData } from '@catcube/api-client'
 import { api } from '../../services/request'
@@ -37,8 +37,35 @@ export default function ContentDetail() {
 
   useEffect(() => {
     void load()
+    void Taro.showShareMenu({ withShareTicket: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useShareAppMessage(() => {
+    const fc = detail?.from_circle
+    const base = `/pages/content/detail?ref=${encodeURIComponent(ref)}`
+    return {
+      title: fc ? `来自「${fc.name}」的分享` : detail?.card?.name ?? String(detail?.content?.title ?? '猫平方'),
+      path: fc ? `${base}&from_circle=${fc.id}` : base,
+    }
+  })
+
+  const joinFromCircle = async () => {
+    if (!detail?.from_circle) return
+    if (detail.from_circle.joined) {
+      Taro.navigateTo({ url: `/pages/circle/detail?id=${detail.from_circle.id}` })
+      return
+    }
+    try {
+      await ensureLogin()
+      await api.applyCircle(detail.from_circle.id)
+      Taro.showToast({ title: '已申请加入', icon: 'success' })
+      void load()
+    } catch (e) {
+      const code = e && typeof e === 'object' && 'code' in e ? (e as { code: number }).code : 0
+      Taro.showToast({ title: code === 140003 ? '需先完成实名认证' : '加入失败', icon: 'none' })
+    }
+  }
 
   const toggleFollow = async () => {
     if (!detail) return
@@ -126,6 +153,18 @@ export default function ContentDetail() {
           </View>
         ) : null}
       </View>
+
+      {detail.from_circle ? (
+        <View className="detail-block" style={{ background: '#f6f8ff', borderRadius: '12px', padding: '16px' }}>
+          <Text className="detail-block__title">来自「{detail.from_circle.name}」</Text>
+          <Text className="detail-block__body">
+            {detail.preview_only ? '加入圈子后可查看全文' : detail.from_circle.joined ? '你已在该圈中' : '加入圈子，参与讨论'}
+          </Text>
+          <Button className="btn-primary" disabled={!detail.from_circle.can_join && !detail.from_circle.joined} onClick={() => void joinFromCircle()}>
+            {detail.from_circle.joined ? '进入圈子' : detail.from_circle.can_join ? '加入圈子' : '该圈已结束'}
+          </Button>
+        </View>
+      ) : null}
 
       {card ? (
         <>

@@ -150,15 +150,18 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		Pool: pool, Bus: bus, Encryptor: encryptor, BlindKey: blindKey, DevSMSCode: cfg.DevSMSCode,
 		Audit: auditRec, Settings: settingsReg,
 	}
+	var miniCoder ports.MiniProgramCoder
 	if cfg.WeChatAppID != "" && cfg.WeChatAppSecret != "" {
 		authClient := wechat.NewAuthClient(cfg.WeChatAppID, cfg.WeChatAppSecret)
 		identityDeps.WeChat = authClient
 		identityDeps.PhoneCode = authClient
+		miniCoder = authClient
 	} else {
 		dev := wechat.NewDevAuthClient()
 		slog.Info("微信未配置 appid/secret：使用开发态登录实现（不可用于生产）")
 		identityDeps.WeChat = dev
 		identityDeps.PhoneCode = dev
+		miniCoder = dev
 	}
 	storage := oss.NewClient(cfg.OSSEndpoint, cfg.OSSBucket, cfg.CDNHost, cfg.OSSAK, cfg.OSSSK)
 
@@ -227,7 +230,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	circleMod := circle.New(circle.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine,
 		Encryptor: encryptor, Entities: entityReg, Content: contentMod.Facade(), Cube: cubeMod.Facade(),
-		Audit: auditRec,
+		Audit: auditRec, Coder: miniCoder,
 	})
 	// cube 作为群成员解析器注册给 msg（msg 不认识猫立方）
 	msgMod.SetMemberResolver(cubeMod.SessionMemberResolver())

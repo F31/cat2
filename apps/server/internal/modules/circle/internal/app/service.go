@@ -55,6 +55,7 @@ type Repo interface {
 	ListMounts(ctx context.Context, circleID int64) ([]infra.Mount, error)
 	SetMountApproval(ctx context.Context, q infra.Querier, id int64, approve bool) error
 	MarkDemandTransferred(ctx context.Context, demandID int64, ref string) error
+	IsMounted(ctx context.Context, circleID int64, itemRef string) (bool, error)
 }
 
 // Options 构造参数。
@@ -177,6 +178,10 @@ func (s *Service) Detail(ctx context.Context, viewerID, circleID int64) (contrac
 	c, err := s.repo.GetCircle(ctx, circleID)
 	if err != nil {
 		return contract.CircleDetail{}, err
+	}
+	// 封禁/归档：前台不可见（后台经专用列表查看）
+	if c.Status == contract.CircleBanned || c.Status == contract.CircleArchived {
+		return contract.CircleDetail{}, domain.ErrNotFound
 	}
 	role, joined, err := s.roleOf(ctx, circleID, viewerID)
 	if err != nil {
@@ -312,6 +317,133 @@ func (s *Service) AdminDissolve(ctx context.Context, circleID int64) error {
 			CircleID: circleID, Name: c.Name, UserID: c.OwnerUserID,
 		}))
 	})
+}
+
+// ContentMounted 内容是否已挂载到该圈。
+func (s *Service) ContentMounted(ctx context.Context, circleID int64, itemRef string) (bool, error) {
+	return s.repo.IsMounted(ctx, circleID, itemRef)
+}
+
+// AdminSetStatus 平台批量封禁/归档/解封/恢复；返回变更前后状态（审计由模块层写）。
+func (s *Service) AdminSetStatus(ctx context.Context, circleID int64, action string) (int16, int16, error) {
+	var before, after int16
+	var name string
+	err := s.pool.InTx(ctx, func(tx db.Tx) error {
+		var cur int16
+		var prev *int16
+		if err := tx.QueryRow(ctx, `SELECT status, prev_status, name FROM cir_circle WHERE id=$1 FOR UPDATE`, circleID).
+			Scan(&cur, &prev, &name); err != nil {
+			return domain.ErrNotFound
+		}
+		before = cur
+		switch action {
+		case "ban":
+			if cur != contract.CircleActive && cur != contract.CircleEnded {
+				return domain.ErrInvalidState
+			}
+			after = contract.CircleBanned
+		case "archive":
+			if cur != contract.CircleActive && cur != contract.CircleEnded {
+				return domain.ErrInvalidState
+			}
+			after = contract.CircleArchived
+		case "unban":
+			if cur != contract.CircleBanned {
+				return domain.ErrInvalidState
+			}
+			after = contract.CircleActive
+			if prev != nil && *prev == contract.CircleEnded {
+				after = contract.CircleEnded
+			}
+		case "restore":
+			if cur != contract.CircleArchived {
+				return domain.ErrInvalidState
+			}
+			after = contract.CircleActive
+			if prev != nil && *prev == contract.CircleEnded {
+				after = contract.CircleEnded
+			}
+		default:
+			return domain.ErrInvalidState
+		}
+		keepPrev := action == "ban" || action == "archive"
+		var prevArg any
+		if keepPrev {
+			prevArg = cur
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE cir_circle SET status=$2::smallint, prev_status=$3::smallint,
+				archived_at=CASE WHEN $2::smallint=4 THEN now() ELSE archived_at END,
+				updated_at=now(), version=version+1 WHERE id=$1`, circleID, after, prevArg); err != nil {
+			return err
+		}
+		// 封禁/归档：从广场与搜索下架；解封/恢复：重新上架
+		if after == contract.CircleBanned || after == contract.CircleArchived {
+			return s.publish(ctx, tx, contract.NewCircleEnded(ids.New().String(), contract.CirclePayload{
+				CircleID: circleID, Name: name,
+			}))
+		}
+		return s.publish(ctx, tx, contract.NewCircleCreated(ids.New().String(), contract.CirclePayload{
+			CircleID: circleID, Name: name,
+		}))
+	})
+	return before, after, err
+}
+
+// CardContext 圈名片数据：校验成员/圈主并复用有效邀请码（无则新建）。
+func (s *Service) CardContext(ctx context.Context, circleID, userID int64) (contract.CircleDetail, string, error) {
+	c, err := s.repo.GetCircle(ctx, circleID)
+	if err != nil {
+		return contract.CircleDetail{}, "", err
+	}
+	if c.Status != contract.CircleActive {
+		return contract.CircleDetail{}, "", domain.ErrEnded
+	}
+	ok, err := s.isMemberOrOwner(ctx, circleID, userID)
+	if err != nil || !ok {
+		return contract.CircleDetail{}, "", domain.ErrNoPermission
+	}
+	var code string
+	err = s.pool.QueryRow(ctx, `
+		SELECT code FROM cir_invite
+		WHERE circle_id=$1 AND status=0 AND expire_at>now()
+		ORDER BY created_at DESC LIMIT 1`, circleID).Scan(&code)
+	if err != nil {
+		code, _, err = s.InviteCode(ctx, circleID, userID)
+		if err != nil {
+			return contract.CircleDetail{}, "", err
+		}
+	}
+	d, err := s.Detail(ctx, userID, circleID)
+	if err != nil {
+		return contract.CircleDetail{}, "", err
+	}
+	return d, code, nil
+}
+
+// ResetInvites 圈主重置邀请：旧链接/二维码立即失效（PRD §11.4）。
+func (s *Service) ResetInvites(ctx context.Context, circleID, userID int64) (int64, error) {
+	c, err := s.repo.GetCircle(ctx, circleID)
+	if err != nil {
+		return 0, err
+	}
+	if c.OwnerUserID != userID {
+		return 0, domain.ErrNoPermission
+	}
+	if c.Status != contract.CircleActive {
+		return 0, domain.ErrEnded
+	}
+	var n int64
+	err = s.pool.InTx(ctx, func(tx db.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE cir_invite SET status=1 WHERE circle_id=$1 AND status=0`, circleID)
+		if err != nil {
+			return err
+		}
+		n = tag.RowsAffected()
+		_, err = tx.Exec(ctx, `UPDATE cir_circle SET version=version+1, updated_at=now() WHERE id=$1`, circleID)
+		return err
+	})
+	return n, err
 }
 
 // ConvertToPermanent 已结束转常设（圈主）。

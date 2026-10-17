@@ -17,7 +17,9 @@ CREATE TABLE IF NOT EXISTS cir_circle (
 	member_count int NOT NULL DEFAULT 0,
 	feed_count int NOT NULL DEFAULT 0,
 	recommendable_at timestamptz NOT NULL DEFAULT now(),
-	status smallint NOT NULL DEFAULT 0,      -- 0进行中/1已结束/2已解散
+	status smallint NOT NULL DEFAULT 0,      -- 0进行中/1已结束/2已解散/3已封禁/4已归档
+	prev_status smallint,                   -- 封禁/归档前状态（解封/恢复用）
+	archived_at timestamptz,
 	dissolved_at timestamptz,
 	owner_space_id smallint NOT NULL DEFAULT 1,
 	version int NOT NULL DEFAULT 1,
@@ -26,6 +28,8 @@ CREATE TABLE IF NOT EXISTS cir_circle (
 );
 CREATE INDEX IF NOT EXISTS idx_cir_circle_owner ON cir_circle(owner_user_id, status);
 CREATE INDEX IF NOT EXISTS idx_cir_circle_end ON cir_circle(status, end_at);
+ALTER TABLE cir_circle ADD COLUMN IF NOT EXISTS prev_status smallint;
+ALTER TABLE cir_circle ADD COLUMN IF NOT EXISTS archived_at timestamptz;
 
 CREATE TABLE IF NOT EXISTS cir_member (
 	id bigint PRIMARY KEY,
