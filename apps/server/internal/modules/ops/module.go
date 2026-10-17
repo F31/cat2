@@ -145,7 +145,7 @@ var Schemas = []settings.Schema{
 	// 系统设置 · AI 网关（ADR-003）
 	{Key: "ai.gateway.enabled", Type: settings.TypeBool, Default: "false", Description: "是否启用独立 AI 网关（安全围栏）"},
 	{Key: "ai.gateway.url", Type: settings.TypeString, Default: "", Description: "AI 网关接入地址"},
-	{Key: "ai.gateway.key", Type: settings.TypeString, Default: "", Description: "AI 网关密钥（敏感；仅超管可见/修改）"},
+	{Key: "ai.gateway.key", Type: settings.TypeString, Default: "", Description: "AI 网关密钥（敏感；仅超管可见/修改）", Sensitive: true},
 
 	// 系统设置 · 复核策略（p4 §3.12）：复核 ≠ 执行
 	{Key: "policy.dual_control", Type: settings.TypeString,
@@ -329,6 +329,9 @@ func (m *Module) handleSettings(w http.ResponseWriter, req *http.Request) {
 		value := sc.Default
 		if err == nil {
 			value = cur
+		}
+		if sc.Sensitive && value != "" {
+			value = "******" // 敏感配置不回显明文
 		}
 		items = append(items, map[string]any{
 			"key": sc.Key, "type": string(sc.Type), "value": value,

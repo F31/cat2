@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button, Form, Input, InputNumber, Modal, Space, Table, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { adminApi, type ChannelSettlementRow } from '../api/admin'
+import StateTimeline from '../components/StateTimeline'
 
 const STATUS: Record<number, { text: string; color: string }> = {
   0: { text: '待结算', color: 'gold' },
@@ -151,6 +152,14 @@ export default function ChannelSettlements() {
       </Modal>
 
       <Modal title="结算打款（复核≠执行）" open={!!paying} onOk={() => void pay()} onCancel={() => setPaying(null)} okText="确认打款">
+        <StateTimeline
+          steps={[
+            { key: '0', label: '待结算' },
+            { key: '1', label: '已复核' },
+            { key: '2', label: '已打款' },
+          ]}
+          current={String(paying?.status ?? 0)}
+        />
         <p style={{ color: '#888' }}>同一人不得既复核又打款；请填写对公打款凭证（media 引用）。</p>
         <Form form={payForm} layout="vertical">
           <Form.Item name="voucher_ref" label="凭证引用" rules={[{ required: true }]}>

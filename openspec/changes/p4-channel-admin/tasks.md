@@ -83,8 +83,8 @@
 ## 8. admin-web 页面完成
 
 - [ ] 8.1 features 全部页面：dict（主体类型/选项/字段模板）、content（内容/产品库入库三步）、trust（审核队列/举报/敏感词/违规记录）、verify（认证审核）、cube/circle（管理/封禁/解散）、trade（订单/退款/对账）、membership（会员/子账号转移/价格配置）、channel（渠道管理全套）、discovery（匹配参数与权重带版本）、notice（公告/模板）、system（配置中心 SettingsSchema 自动渲染/特性开关/审计日志/后台账号）
-- [ ] 8.2 配置中心不手写页面：由 SettingsSchema 自动渲染；新增配置项不写前端代码
-- [ ] 8.3 后台共享组件：SettingsForm、ReviewQueue、AuditTrail、StateTimeline、DataTable
+- [x] 8.2 配置中心自动渲染：`components/SettingsCenter` 按 SettingsSchema 自动分组为 Tab（登录安全/密码策略/短信网关/AI 网关/复核策略/渠道与佣金/审计/留存等），`SettingsForm` 按 type 自动渲染控件；新增配置项无需改前端；敏感项脱敏展示（ai.gateway.key）
+- [x] 8.3 共享组件：`components/SettingsForm`、`SettingsCenter`、`ReviewQueue`、`AuditLog`、`StateTimeline`、`DataTable`；业务配置/系统设置/审核队列/审计轨迹/结算打款页已复用
 
 ## 9. 测试与门禁
 
