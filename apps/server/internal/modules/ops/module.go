@@ -99,6 +99,9 @@ func (m *Module) Register(r *module.Registry) error {
 		audit.Point{Action: "ops:job:run", Path: "/api/admin/v1/jobs/{name}/run", Required: true, LogFailed: true, Module: "ops"},
 		audit.Point{Action: "export:create", Path: "/api/admin/v1/exports", Required: true, LogFailed: true, Module: "ops"},
 		audit.Point{Action: "export:download", Path: "/api/admin/v1/exports/{id}/download", Required: true, LogFailed: true, Module: "ops"},
+		audit.Point{Action: "channel:commission_rule:set", Path: "/api/admin/v1/settings/{key}", Required: true, LogFailed: true, Module: "channel"},
+		audit.Point{Action: "discovery:weight:set", Path: "/api/admin/v1/settings/{key}", Required: true, LogFailed: true, Module: "discovery"},
+		audit.Point{Action: "membership:price:set", Path: "/api/admin/v1/settings/{key}", Required: true, LogFailed: true, Module: "membership"},
 	)
 	return nil
 }
@@ -360,11 +363,49 @@ func (m *Module) handleSetSetting(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	op := userIDFrom(req.Context())
+	before, _ := m.deps.Settings.Get(req.Context(), 1, key)
+	sc, _ := m.deps.Settings.GetSchema(key)
 	if err := m.deps.Settings.Set(req.Context(), 1, key, body.Value, op); err != nil {
+		m.recordSetting(req, op, key, sc, before, body.Value, audit.ResultFailed)
 		writeErr(w, 9, "服务错误")
 		return
 	}
+	m.recordSetting(req, op, key, sc, before, body.Value, audit.ResultOK)
 	writeData(w, map[string]any{"saved": true})
+}
+
+// recordSetting 配置中心审计：佣金规则/匹配权重等按业务归属记独立 action（p4 §5.4）。
+func (m *Module) recordSetting(req *http.Request, op int64, key string, sc settings.Schema, before, after string, result audit.Result) {
+	if m.deps.Audit == nil {
+		return
+	}
+	// 敏感值不落审计原文
+	redact := func(v string) string {
+		if sc.Sensitive && v != "" && v != "******" {
+			return "******"
+		}
+		return v
+	}
+	detail := audit.Change{Before: map[string]any{"value": redact(before)}, After: map[string]any{"value": redact(after)}}.Snapshot(key)
+	_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+		ActorID: op, ActorType: audit.ActorAdmin, Channel: "admin", Action: SettingAction(key),
+		TargetRef: `{"type":"setting","id":"` + key + `"}`, Detail: detail,
+		Result: result, IP: audit.ClientIP(req), RequestID: audit.RequestIDOf(req.Context()),
+	})
+}
+
+// SettingAction 配置键 → 审计动作（跨模块配置归属其业务模块）。
+func SettingAction(key string) string {
+	switch {
+	case strings.HasPrefix(key, "channel.commission."):
+		return "channel:commission_rule:set"
+	case strings.HasPrefix(key, "dsc.weight."):
+		return "discovery:weight:set"
+	case strings.HasPrefix(key, "membership.year_fee_"), strings.HasPrefix(key, "membership.discount_"):
+		return "membership:price:set"
+	default:
+		return "ops:setting:set"
+	}
 }
 
 // handleFlags 后台：开关列表。
@@ -406,8 +447,30 @@ func (m *Module) handleSetFlag(w http.ResponseWriter, req *http.Request) {
 		writeErr(w, 1, "ratio 需在 0-100")
 		return
 	}
-	if err := m.deps.Flags.Set(req.Context(), featureflag.Flag{Key: key, Enabled: body.Enabled,
-		Rules: featureflag.Rules{Users: body.Users, Ratio: body.Ratio}}); err != nil {
+	var before map[string]any
+	if list, err := m.deps.Flags.List(req.Context()); err == nil {
+		for _, f := range list {
+			if f.Key == key {
+				before = map[string]any{"enabled": f.Enabled, "ratio": f.Rules.Ratio, "users": f.Rules.Users}
+			}
+		}
+	}
+	err := m.deps.Flags.Set(req.Context(), featureflag.Flag{Key: key, Enabled: body.Enabled,
+		Rules: featureflag.Rules{Users: body.Users, Ratio: body.Ratio}})
+	if m.deps.Audit != nil {
+		res := audit.ResultOK
+		if err != nil {
+			res = audit.ResultFailed
+		}
+		_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+			ActorID: userIDFrom(req.Context()), ActorType: audit.ActorAdmin, Channel: "admin",
+			Action: "ops:feature_flag:set", TargetRef: `{"type":"feature_flag","id":"` + key + `"}`,
+			Detail: audit.Change{Before: before, After: map[string]any{"enabled": body.Enabled,
+				"ratio": body.Ratio, "users": body.Users}}.Snapshot("特性开关切换"),
+			Result: res, IP: audit.ClientIP(req), RequestID: audit.RequestIDOf(req.Context()),
+		})
+	}
+	if err != nil {
 		writeErr(w, 9, "服务错误")
 		return
 	}
@@ -434,7 +497,21 @@ func (m *Module) handleReplay(w http.ResponseWriter, req *http.Request) {
 		writeErr(w, 1, "参数错误")
 		return
 	}
-	if err := m.deps.Outbox.Replay(req.Context(), id); err != nil {
+	err := m.deps.Outbox.Replay(req.Context(), id)
+	if m.deps.Audit != nil {
+		res := audit.ResultOK
+		if err != nil {
+			res = audit.ResultFailed
+		}
+		_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+			ActorID: userIDFrom(req.Context()), ActorType: audit.ActorAdmin, Channel: "admin",
+			Action: "ops:dead_letter:replay", TargetRef: `{"type":"dead_letter","id":"` + id + `"}`,
+			Detail: audit.Change{Before: map[string]any{"state": "dead"},
+				After: map[string]any{"state": "replayed", "error": errText(err)}}.Snapshot("死信重放"),
+			Result: res, IP: audit.ClientIP(req), RequestID: audit.RequestIDOf(req.Context()),
+		})
+	}
+	if err != nil {
 		writeErr(w, 9, "服务错误")
 		return
 	}

@@ -189,10 +189,11 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	profileMod := profile.New(profile.Deps{
 		Pool: pool, Bus: bus, Media: mediaMod.Facade(), Dict: dictMod.Facade(),
 		Identity: identityMod.Facade(), Encryptor: encryptor, EntityRegistry: entityReg,
+		Audit: auditRec,
 	})
 	verifyMod := verify.New(verify.Deps{
 		Pool: pool, Bus: bus, Verify: realname.NewDevClient(),
-		Identity: identityMod.Facade(), Encryptor: encryptor,
+		Identity: identityMod.Facade(), Encryptor: encryptor, Audit: auditRec,
 	})
 	contentMod := content.New(content.Deps{
 		Pool: pool, Bus: bus, Dict: dictMod.Facade(), Trust: trustMod.Facade(), Media: mediaMod.Facade(),
@@ -303,6 +304,15 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		a.scheduler().Register(toSchedulerJobs(reg.Jobs))
 	}
 
+	// 后台治理（RBAC）审计点（内核接口，非模块路由；p4 §5.4 admin/内核）
+	a.AuditPoints = append(a.AuditPoints,
+		audit.Point{Action: "ops:rbac:role:set", Path: "/api/admin/v1/roles/{code}/permissions", Required: true, LogFailed: true, Module: "ops"},
+		audit.Point{Action: "ops:rbac:role:scope", Path: "/api/admin/v1/roles/{code}/scope", Required: true, LogFailed: true, Module: "ops"},
+		audit.Point{Action: "ops:rbac:role:create", Path: "/api/admin/v1/roles", Required: true, LogFailed: true, Module: "ops"},
+		audit.Point{Action: "ops:rbac:role:delete", Path: "/api/admin/v1/roles/{code}", Required: true, LogFailed: true, Module: "ops"},
+		audit.Point{Action: "ops:rbac:assign", Path: "/api/admin/v1/admin-users/{id}/roles", Required: true, LogFailed: true, Module: "ops"},
+	)
+
 	// 履约能力注册（装配根唯一装配扩展点）：会员开通/续期由 trade 支付成功回调触发
 	tradeMod.RegisterFulfiller(membershipMod)
 	tradeMod.RegisterFulfiller(cubeMod)
@@ -377,7 +387,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		Social: socialMod.Facade(), Msg: msgMod.Facade(), Verify: verifyMod.Facade(),
 		Membership: membershipMod.Facade(), Content: contentMod.Facade(),
 		Cube: cubeMod.Facade(), Circle: circleMod.Facade(), Trust: trustMod.Facade(), Cache: cache,
-		ContactDailyLimit: cfg.ContactDailyLimit,
+		ContactDailyLimit: cfg.ContactDailyLimit, Audit: auditRec,
 	}).Register(a.Mux)
 
 	// 跨模块扩展点装配（装配根唯一 import 所有模块）：审核对象提供者

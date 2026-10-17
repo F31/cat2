@@ -433,6 +433,9 @@ func (m *Module) handleChangePlan(w http.ResponseWriter, req *http.Request) {
 		writeCubeErr(w, err)
 		return
 	}
+	m.auditCube(req, "cube:plan:change", fmt.Sprintf(`{"type":"cube","id":"%d"}`, cubeID),
+		map[string]any{"level": body.Level, "years": body.Years, "order_id": strconv.FormatInt(o.ID, 10),
+			"amount_fen": o.AmountFen})
 	writeData(w, map[string]any{"order_id": strconv.FormatInt(o.ID, 10), "amount_fen": o.AmountFen})
 }
 

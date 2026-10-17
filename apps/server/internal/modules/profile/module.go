@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
@@ -34,6 +35,7 @@ type Deps struct {
 	Identity       idcontract.Facade
 	Encryptor      *sensitive.Encryptor
 	EntityRegistry *entityref.Registry
+	Audit          *audit.Recorder
 }
 
 // Module profile 模块。
@@ -62,6 +64,10 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cards/me/completion", Handler: m.auth(m.handleCompletion)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cards/me/share", Handler: m.auth(m.handleShare)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cards/{ref}", Handler: m.handlePublicCard},
+	)
+	r.AuditPoints = append(r.AuditPoints,
+		audit.Point{Action: "profile:identity:modify:denied", Path: "/api/mp/v1/cards/me", Required: true, LogFailed: true, Module: "profile"},
+		audit.Point{Action: "profile:contact:view", Path: "/api/mp/v1/aggregate/contact", Required: true, LogFailed: false, Module: "profile"},
 	)
 	// 订阅注册事件：建默认名片（第一层画像）
 	r.EventSubs = append(r.EventSubs, eventbus.Subscription{
@@ -158,6 +164,14 @@ func (m *Module) handlePutMe(w http.ResponseWriter, req *http.Request) {
 	}
 	card, err := m.svc.UpdateCard(req.Context(), userIDFrom(req.Context()), in)
 	if err != nil {
+		if errors.Is(err, domain.ErrFieldLocked) && m.deps.Audit != nil {
+			_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+				ActorID: userIDFrom(req.Context()), ActorType: audit.ActorUser, Channel: "mp",
+				Action: "profile:identity:modify:denied", TargetRef: fmt.Sprintf(`{"type":"user","id":"%d"}`, userIDFrom(req.Context())),
+				Detail: map[string]any{"reason": err.Error()}, Result: audit.ResultDenied,
+				IP: audit.ClientIP(req), RequestID: audit.RequestIDOf(req.Context()),
+			})
+		}
 		writeCardErr(w, err)
 		return
 	}

@@ -96,6 +96,8 @@ func (m *Module) Register(r *module.Registry) error {
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "identity:user:ban", Path: "/api/admin/v1/users/{id}/ban", Required: true, LogFailed: true, Module: "identity"},
 		audit.Point{Action: "identity:user:unban", Path: "/api/admin/v1/users/{id}/unban", Required: true, LogFailed: true, Module: "identity"},
+		audit.Point{Action: "identity:user:deactivate", Path: "/api/mp/v1/users/me/deactivate", Required: true, LogFailed: false, Module: "identity"},
+		audit.Point{Action: "identity:login:locked", Path: "/api/mp/v1/auth/phone", Required: true, LogFailed: true, Module: "identity"},
 	)
 	r.CapProviders = append(r.CapProviders, capProvider{m})
 	// 会员权益变化 → 递增授权版本，消除令牌陈旧窗口（topic 按契约；R0 不 import membership R3）
@@ -311,6 +313,7 @@ func (m *Module) handleWechatLogin(w http.ResponseWriter, req *http.Request) {
 	}
 	res, err := m.svc.WeChatLogin(req.Context(), body.Code, phoneCode, body.Device, clientIP(req), body.IdentityType)
 	if err != nil {
+		m.auditLoginDenied(req, err)
 		writeLoginErr(w, err)
 		return
 	}
@@ -344,6 +347,7 @@ func (m *Module) handleSMSLogin(w http.ResponseWriter, req *http.Request) {
 	}
 	res, err := m.svc.SMSLogin(req.Context(), body.Phone, body.Code, body.Device, clientIP(req))
 	if err != nil {
+		m.auditLoginDenied(req, err)
 		writeLoginErr(w, err)
 		return
 	}
@@ -382,7 +386,27 @@ func (m *Module) handleDeactivate(w http.ResponseWriter, req *http.Request) {
 		writeErr(w, codeInternal, "服务错误")
 		return
 	}
+	if m.deps.Audit != nil {
+		_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+			ActorID: uid, ActorType: audit.ActorUser, Channel: "mp", Action: "identity:user:deactivate",
+			TargetRef: fmt.Sprintf(`{"type":"user","id":"%d"}`, uid),
+			Result:    audit.ResultOK, IP: clientIP(req), UserAgent: req.UserAgent(),
+			RequestID: audit.RequestIDOf(req.Context()),
+		})
+	}
 	writeData(w, map[string]any{"deactivated": true})
+}
+
+// auditLoginDenied 登录拒绝（锁定/失败）审计：防爆破与撞库溯源。
+func (m *Module) auditLoginDenied(req *http.Request, cause error) {
+	if m.deps.Audit == nil || !errors.Is(cause, domain.ErrLocked) {
+		return
+	}
+	_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+		ActorID: 0, ActorType: audit.ActorUser, Channel: "mp", Action: "identity:login:locked",
+		Result: audit.ResultDenied, IP: clientIP(req), UserAgent: req.UserAgent(),
+		RequestID: audit.RequestIDOf(req.Context()),
+	})
 }
 
 // auth 鉴权中间件：Bearer → 验签 → 比对 authz_ver（消除陈旧窗口）→ 账号状态。

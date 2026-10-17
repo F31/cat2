@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/obs"
 	circlecontract "catcube/internal/modules/circle/contract"
 	contentcontract "catcube/internal/modules/content/contract"
@@ -43,6 +44,7 @@ type Deps struct {
 	Cache ports.Cache
 	// ContactDailyLimit 单用户每日联系方式查看上限（0=不限）；防批量抓取（p6 §1.5）
 	ContactDailyLimit int
+	Audit             *audit.Recorder
 }
 
 // Aggregator 只读聚合器。
@@ -264,6 +266,7 @@ func (a *Aggregator) handleContact(w http.ResponseWriter, req *http.Request) {
 	if a.contactLimited(req, uid) {
 		obs.Default().Alert("contact_scrape_suspected", "联系方式查看超日限频")
 		writeErrCode(w, http.StatusTooManyRequests, 120008, "今日查看联系方式次数已达上限")
+		a.auditContact(req, uid, id, audit.ResultDenied, "daily_limit")
 		return
 	}
 	_, active, err := a.deps.Membership.Me(req.Context(), uid)
@@ -272,6 +275,7 @@ func (a *Aggregator) handleContact(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if !active {
+		a.auditContact(req, uid, id, audit.ResultDenied, "not_member")
 		writeErrCode(w, http.StatusForbidden, 120007, "查看联系方式需要会员权益")
 		return
 	}
@@ -282,7 +286,24 @@ func (a *Aggregator) handleContact(w http.ResponseWriter, req *http.Request) {
 	}
 	a.contactCount(req, uid)
 	obs.Default().Inc("catcube_contact_reveal_total")
+	a.auditContact(req, uid, id, audit.ResultOK, "")
 	writeData(w, ContactData{Ref: ref, Phone: phone})
+}
+
+// auditContact 联系方式查看审计（只记对象，不落手机号明文）。
+func (a *Aggregator) auditContact(req *http.Request, viewer, target int64, result audit.Result, reason string) {
+	if a.deps.Audit == nil {
+		return
+	}
+	detail := map[string]any{}
+	if reason != "" {
+		detail["reason"] = reason
+	}
+	_ = a.deps.Audit.Record(req.Context(), nil, audit.Entry{
+		ActorID: viewer, ActorType: audit.ActorUser, Channel: "mp", Action: "profile:contact:view",
+		TargetRef: `{"type":"user","id":"` + strconv.FormatInt(target, 10) + `"}`,
+		Detail:    detail, Result: result, IP: audit.ClientIP(req), RequestID: audit.RequestIDOf(req.Context()),
+	})
 }
 
 // contactLimited 是否已达当日查看上限（含本次）。

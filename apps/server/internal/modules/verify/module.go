@@ -30,6 +30,7 @@ type Deps struct {
 	Verify    ports.RealnameVerify
 	Identity  idcontract.Facade
 	Encryptor *sensitive.Encryptor
+	Audit     *audit.Recorder
 }
 
 // Module verify 模块。
@@ -85,6 +86,7 @@ func (m *Module) Register(r *module.Registry) error {
 		audit.Point{Action: "verify:org_admin:reset", Path: "/api/admin/v1/orgs/{id}/admins/reset", Required: true, LogFailed: true, Module: "verify"},
 		audit.Point{Action: "verify:badge:config", Path: "/api/admin/v1/badges/{code}", Required: true, LogFailed: true, Module: "verify"},
 		audit.Point{Action: "verify:badge:grant", Path: "/api/admin/v1/badges/grant", Required: true, LogFailed: true, Module: "verify"},
+		audit.Point{Action: "verify:cert:review", Path: "/api/mp/v1/certs/{id}/review", Required: true, LogFailed: true, Module: "verify"},
 	)
 	r.StateMachines = append(r.StateMachines, domain.RealnameMachine, domain.MachineCert, domain.MachineAffiliation)
 	r.CapProviders = append(r.CapProviders, capProvider{m})

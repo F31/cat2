@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -73,6 +74,9 @@ func (m *Module) Register(r *module.Registry) error {
 		audit.Point{Action: "membership:master:transfer", Path: "/api/admin/v1/memberships/{id}/transfer-master", Required: true, LogFailed: true, Module: "membership"},
 		audit.Point{Action: "membership:sub:remove", Path: "/api/admin/v1/memberships/sub-accounts/remove", Required: true, LogFailed: true, Module: "membership"},
 		audit.Point{Action: "membership:member:adjust", Path: "/api/admin/v1/memberships/{id}/adjust", Required: true, LogFailed: true, Module: "membership"},
+		audit.Point{Action: "membership:sub:invite", Path: "/api/mp/v1/membership/sub-accounts", Required: true, LogFailed: false, Module: "membership"},
+		audit.Point{Action: "membership:price:set", Path: "/api/admin/v1/settings/{key}", Required: true, LogFailed: true, Module: "membership"},
+		audit.Point{Action: "membership:enterprise:denied", Path: "/api/mp/v1/membership/orders", Required: true, LogFailed: true, Module: "membership"},
 	)
 	r.Settings = append(r.Settings, app.Schemas...)
 	r.StateMachines = append(r.StateMachines, domain.Machine)
@@ -253,9 +257,18 @@ func (m *Module) handleInvite(w http.ResponseWriter, req *http.Request) {
 		writeErr(w, codeParamInvalid, "参数错误")
 		return
 	}
-	if err := m.svc.InviteSub(req.Context(), userIDFrom(req.Context()), body.SubUserID); err != nil {
+	owner := userIDFrom(req.Context())
+	if err := m.svc.InviteSub(req.Context(), owner, body.SubUserID); err != nil {
 		writeMemErr(w, err)
 		return
+	}
+	if m.deps.Audit != nil {
+		_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+			ActorID: owner, ActorType: audit.ActorUser, Channel: "mp", Action: "membership:sub:invite",
+			TargetRef: fmt.Sprintf(`{"type":"membership","id":"%d"}`, owner),
+			Detail:    map[string]any{"sub_user_id": strconv.FormatInt(body.SubUserID, 10)},
+			Result:    audit.ResultOK, IP: audit.ClientIP(req), RequestID: audit.RequestIDOf(req.Context()),
+		})
 	}
 	writeData(w, map[string]any{"invited": true})
 }

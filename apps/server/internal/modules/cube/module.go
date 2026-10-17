@@ -147,7 +147,9 @@ func (m *Module) Register(r *module.Registry) error {
 	})
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "cube:dissolve", Path: "/api/mp/v1/cubes/{id}/dissolve", Required: true, LogFailed: true, Module: "cube"},
-		audit.Point{Action: "cube:transfer", Path: "/api/mp/v1/cubes/{id}/transfer", Required: true, LogFailed: true, Module: "cube"},
+		audit.Point{Action: "cube:leader:transfer", Path: "/api/mp/v1/cubes/{id}/transfer", Required: true, LogFailed: true, Module: "cube"},
+		audit.Point{Action: "cube:member:remove", Path: "/api/mp/v1/cubes/{id}/members/{uid}/remove", Required: true, LogFailed: true, Module: "cube"},
+		audit.Point{Action: "cube:plan:change", Path: "/api/mp/v1/cubes/{id}/plan", Required: true, LogFailed: false, Module: "cube"},
 	)
 	r.CapProviders = append(r.CapProviders, capProvider{m})
 	r.Jobs = append(r.Jobs, module.JobDef{Name: "cube.plan_expire", Interval: 30 * time.Minute, Run: m.svc.ExpireDue})

@@ -252,7 +252,7 @@ func (m *Module) handleAdminTakedown(w http.ResponseWriter, req *http.Request) {
 		writeContentErr(w, err)
 		return
 	}
-	m.auditAdmin(req, "content:content:takedown", fmt.Sprintf(`{"type":"content.%s","id":"%d"}`, item.Kind, item.ID), body.Reason)
+	m.auditAdmin(req, "content:takedown", fmt.Sprintf(`{"type":"content.%s","id":"%d"}`, item.Kind, item.ID), body.Reason)
 	writeData(w, item)
 }
 

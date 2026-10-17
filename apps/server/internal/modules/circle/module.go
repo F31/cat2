@@ -105,6 +105,7 @@ func (m *Module) Register(r *module.Registry) error {
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "circle:dissolve", Path: "/api/mp/v1/circles/{id}/dissolve", Required: true, LogFailed: true, Module: "circle"},
 		audit.Point{Action: "circle:admin:dissolve", Path: "/api/admin/v1/circles/{id}/dissolve", Required: true, LogFailed: true, Module: "circle"},
+		audit.Point{Action: "circle:convert", Path: "/api/mp/v1/circles/{id}/convert", Required: true, LogFailed: false, Module: "circle"},
 	)
 	r.StateMachines = append(r.StateMachines, domain.MachineCircle, domain.MachineDemand)
 	r.Jobs = append(r.Jobs,
@@ -355,9 +356,19 @@ func (m *Module) handleAdminDissolve(w http.ResponseWriter, req *http.Request) {
 }
 
 func (m *Module) handleConvert(w http.ResponseWriter, req *http.Request) {
-	if err := m.svc.ConvertToPermanent(req.Context(), pathID(req, "id"), userIDFrom(req.Context())); err != nil {
+	id := pathID(req, "id")
+	uid := userIDFrom(req.Context())
+	if err := m.svc.ConvertToPermanent(req.Context(), id, uid); err != nil {
 		writeCircleErr(w, err)
 		return
+	}
+	if m.deps.Audit != nil {
+		_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+			ActorID: uid, ActorType: audit.ActorUser, Channel: "mp", Action: "circle:convert",
+			TargetRef: fmt.Sprintf(`{"type":"circle","id":"%d"}`, id),
+			Detail:    audit.Change{Before: map[string]any{"type": "temporary"}, After: map[string]any{"type": "permanent"}}.Snapshot("转常设圈"),
+			Result:    audit.ResultOK, IP: audit.ClientIP(req), RequestID: audit.RequestIDOf(req.Context()),
+		})
 	}
 	writeData(w, map[string]any{"converted": true})
 }
