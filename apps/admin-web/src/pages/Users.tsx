@@ -33,6 +33,11 @@ export default function Users() {
   const [restrictTarget, setRestrictTarget] = useState<{ id: string; nickname?: string } | null>(null)
   const [reason, setReason] = useState('')
   const [days, setDays] = useState(7)
+  const [roleTarget, setRoleTarget] = useState<{ id: string; nickname?: string } | null>(null)
+  const [roleOptions, setRoleOptions] = useState<Array<{ code: string; name: string }>>([])
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([])
+  const [isSuper, setIsSuper] = useState(false)
+  const [rolesLoading, setRolesLoading] = useState(false)
   const nav = useNavigate()
 
   const load = useCallback(async () => {
@@ -89,6 +94,32 @@ export default function Users() {
     }
   }
 
+  const openRoles = async (u: { id: string; nickname?: string }) => {
+    setRoleTarget(u)
+    setRolesLoading(true)
+    try {
+      const [all, cur] = await Promise.all([adminApi.rbacRoles(), adminApi.rbacAdminRoles(u.id)])
+      setRoleOptions((all.items ?? []).filter((r) => !r.protected).map((r) => ({ code: r.code, name: r.name })))
+      setSelectedRoles(cur.roles ?? [])
+      setIsSuper(!!cur.super)
+    } catch (e) {
+      message.error(errText(e))
+    } finally {
+      setRolesLoading(false)
+    }
+  }
+
+  const saveRoles = async () => {
+    if (!roleTarget) return
+    try {
+      await adminApi.rbacAssignRoles(roleTarget.id, selectedRoles)
+      message.success('后台角色已更新（下次请求即生效）')
+      setRoleTarget(null)
+    } catch (e) {
+      message.error(errText(e))
+    }
+  }
+
   const columns: ColumnsType<(typeof rows)[number]> = [
     { title: 'ID', dataIndex: 'id' },
     { title: '昵称', dataIndex: 'nickname' },
@@ -118,6 +149,9 @@ export default function Users() {
         <Space>
           <Button size="small" onClick={() => nav(`/users/${r.id}/360`)}>
             360
+          </Button>
+          <Button size="small" onClick={() => void openRoles(r)}>
+            角色
           </Button>
           <Button
             size="small"
@@ -214,6 +248,36 @@ export default function Users() {
           <Input.TextArea rows={3} placeholder="限制原因（必填）" value={reason} onChange={(e) => setReason(e.target.value)} />
         </Space>
       </Modal>
+      <Modal
+        title={`后台角色 · ${roleTarget?.nickname ?? roleTarget?.id ?? ''}`}
+        open={!!roleTarget}
+        onOk={() => void saveRoles()}
+        onCancel={() => setRoleTarget(null)}
+        okText="保存"
+        confirmLoading={rolesLoading}
+        okButtonProps={{ disabled: isSuper }}
+      >
+        {isSuper ? (
+          <Space direction="vertical">
+            <Tag color="red">引导超管</Tag>
+            <span style={{ color: '#888' }}>该账号由运维 `catcube grant-admin` 授予平台超管，隐含全部权限；无需再分配 RBAC 角色。</span>
+          </Space>
+        ) : (
+          <>
+            <p style={{ color: '#888' }}>后台角色决定可访问的模块与操作权限；数据范围在「角色与权限」中按角色配置。</p>
+            <Select
+              mode="multiple"
+              style={{ width: '100%' }}
+              loading={rolesLoading}
+              value={selectedRoles}
+              onChange={setSelectedRoles}
+              options={roleOptions.map((r) => ({ label: `${r.name}（${r.code}）`, value: r.code }))}
+              placeholder="选择后台角色"
+            />
+          </>
+        )}
+      </Modal>
+
       <Modal
         title="封禁用户"
         open={!!banTarget}

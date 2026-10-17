@@ -559,7 +559,8 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 			adminJSON(w, 9, err.Error(), nil)
 			return
 		}
-		adminJSON(w, 0, "ok", map[string]any{"roles": roles})
+		super, _ := a.RBAC.IsSuper(req.Context(), uid)
+		adminJSON(w, 0, "ok", map[string]any{"roles": roles, "super": super})
 	}))
 	a.Mux.HandleFunc("PUT /api/admin/v1/admin-users/{id}/roles", rbacWrite(func(w http.ResponseWriter, req *http.Request) {
 		uid, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)

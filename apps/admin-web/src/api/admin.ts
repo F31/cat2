@@ -288,7 +288,7 @@ export const adminApi = {
     })
   },
   rbacAdminRoles(userId: string) {
-    return call<{ roles: string[] }>('GET', `/admin/v1/admin-users/${userId}/roles`)
+    return call<{ roles: string[]; super: boolean }>('GET', `/admin/v1/admin-users/${userId}/roles`)
   },
   rbacAssignRoles(userId: string, roles: string[]) {
     return call<{ ok: boolean }>('PUT', `/admin/v1/admin-users/${userId}/roles`, { roles })

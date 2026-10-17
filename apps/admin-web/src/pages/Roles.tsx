@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Checkbox, Form, Input, Modal, Select, Space, Switch, Table, Tag, message } from 'antd'
+import { Button, Checkbox, Form, Input, Modal, Space, Switch, Table, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { adminApi } from '../api/admin'
 
@@ -22,8 +22,6 @@ export default function Roles() {
   const [checked, setChecked] = useState<string[]>([])
   const [creating, setCreating] = useState(false)
   const [createForm] = Form.useForm()
-  const [assigning, setAssigning] = useState(false)
-  const [assignForm] = Form.useForm()
   const [scopeEditing, setScopeEditing] = useState<RoleRow | null>(null)
   const [scopeForm] = Form.useForm()
 
@@ -86,18 +84,6 @@ export default function Roles() {
       void load()
     } catch (e) {
       message.error(e instanceof Error ? e.message : '删除失败')
-    }
-  }
-
-  const assign = async () => {
-    const v = await assignForm.validateFields()
-    try {
-      await adminApi.rbacAssignRoles(String(v.user_id).trim(), v.roles ?? [])
-      message.success('已分配')
-      setAssigning(false)
-      assignForm.resetFields()
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : '分配失败')
     }
   }
 
@@ -167,7 +153,7 @@ export default function Roles() {
         <Button type="primary" onClick={() => setCreating(true)}>
           新建角色
         </Button>
-        <Button onClick={() => setAssigning(true)}>分配后台角色</Button>
+        <span style={{ color: '#888' }}>用户与后台角色在「用户管理 → 角色」中关联；超管由运维 grant-admin 授予。</span>
       </Space>
       <Table rowKey="code" loading={loading} columns={columns} dataSource={roles} size="small" />
 
@@ -187,21 +173,6 @@ export default function Roles() {
           </Form.Item>
           <Form.Item name="name" label="角色名称" rules={[{ required: true }]}>
             <Input placeholder="如 区域运营" />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      <Modal title="分配后台角色" open={assigning} onOk={() => void assign()} onCancel={() => setAssigning(false)} okText="分配">
-        <Form form={assignForm} layout="vertical">
-          <Form.Item name="user_id" label="用户 ID" rules={[{ required: true }]}>
-            <Input placeholder="平台用户 ID" />
-          </Form.Item>
-          <Form.Item name="roles" label="角色（可多选；替换式）">
-            <Select
-              mode="multiple"
-              placeholder="选择角色"
-              options={roles.map((r) => ({ label: `${r.name}（${r.code}）`, value: r.code }))}
-            />
           </Form.Item>
         </Form>
       </Modal>
