@@ -97,6 +97,6 @@
 
 ## 10. 退出标准
 
-- [ ] 10.1 对账结算闭环跑通（结算单生成→财务复核→对公打款→留凭证，复核≠执行机制生效）
-- [ ] 10.2 权限矩阵 + 审计覆盖面测试全绿
-- [ ] 10.3 认证全类型（五项）与身份核验链路走查通过
+- [x] 10.1 对账结算闭环跑通：`TestIntegrationChannelCommissionSettlement` 覆盖 计佣→月结生成→财务复核→另一管理员对公打款→凭证落库；同一人复核+打款被拒（复核≠执行）
+- [x] 10.2 权限矩阵 + 审计覆盖面测试全绿：`TestIntegrationAdminRBAC`（五角色矩阵/反提权/防锁死）、`TestIntegrationAdminDataScope`、`TestSensitiveRoutesHaveAuditPoints`、`TestIntegrationAuditCoverage`、`TestIntegrationAuditChecklist(+Runtime)` 全绿
+- [x] 10.3 认证全类型（五项）与身份核验链路走查：`TestIntegrationVerifyRealname`（1 实名）+ `TestIntegrationVerifyCertTypesAndOrgAdmin`（2 个人/3 个人企业身份/4 企业/5 机构，含平台/企业双审、首任组织管理员、邀请确认、平台重置、归属核验先到先处理、主单位）+ `TestIntegrationVerifyStateMachines`（驳回重提/重复处理）全绿

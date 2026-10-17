@@ -4945,6 +4945,39 @@ func TestIntegrationVerifyCertTypesAndOrgAdmin(t *testing.T) {
 	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/certs/%d/review", cert2.ID), applicantTok, map[string]any{"pass": true}); s != http.StatusOK || e.Code != 0 {
 		t.Fatalf("企业审失败: %d %+v", s, e)
 	}
+
+	// 6) 五类认证全覆盖走查（1 实名见 TestIntegrationVerifyRealname；3/4 已覆盖）：个人(2)/机构(5) 平台审。
+	for _, ct := range []int16{2, 5} {
+		_, env = h.do(http.MethodPost, "/api/mp/v1/certs", memberTok, map[string]any{
+			"cert_type": ct, "agreed": true, "material_file_ids": []int64{5},
+		})
+		var c struct {
+			ID     int64 `json:"id,string"`
+			Status int16 `json:"status"`
+		}
+		_ = json.Unmarshal(env.Data, &c)
+		if c.ID == 0 || c.Status != 0 {
+			t.Fatalf("认证类型 %d 应进入平台待审: %+v", ct, env)
+		}
+		if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/certs/%d/review", c.ID), admTok,
+			map[string]any{"pass": true}); s != http.StatusOK || e.Code != 0 {
+			t.Fatalf("认证类型 %d 平台通过失败: %d %+v", ct, s, e)
+		}
+		var st int16
+		_ = h.app.Pool.QueryRow(ctx, `SELECT status FROM vfy_certification WHERE id=$1`, c.ID).Scan(&st)
+		if st != 1 {
+			t.Fatalf("认证类型 %d 应已通过: %d", ct, st)
+		}
+		var badgeN int
+		subj := "user"
+		if ct == 5 {
+			subj = "org"
+		}
+		_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM vfy_badge_grant WHERE subject_type=$1 AND subject_id=$2 AND badge_code='verified' AND revoked_at IS NULL`, subj, member).Scan(&badgeN)
+		if badgeN == 0 {
+			t.Fatalf("认证类型 %d 通过后应授予 verified 徽标", ct)
+		}
+	}
 	_ = other
 }
 
