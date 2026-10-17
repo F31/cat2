@@ -1,0 +1,203 @@
+# 单机首上线形态（4C8G）：PostgreSQL + Redis + API + worker/scheduler + 备份边车。
+# - 无状态 API 单实例；worker/scheduler 同进程（PG 咨询锁单活）
+# - DB/Redis 不暴露公网；对外只经宿主机 Nginx（TLS + 静态后台）
+# - 资源上限适配 8G：合计约 6.5G，留系统/页缓存余量
+# 用法：
+#   cp deploy/compose/.env.single.example deploy/compose/.env.single
+#   docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-compose.single.yml up -d --build
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    command:
+      - postgres
+      - -c
+      - max_connections=100
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=2GB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_timeout=60
+      - -c
+      - archive_command=test ! -f /wal-archive/%f && cp %p /wal-archive/%f
+    environment:
+      POSTGRES_USER: catcube
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.single}
+      POSTGRES_DB: catcube
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - walarchive:/wal-archive
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catcube -d catcube"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    mem_limit: 2g
+    cpus: 2.0
+    shm_size: 256mb
+    logging: &logging
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --save
+      - "60"
+      - "1"
+      - --maxmemory
+      - 200mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --requirepass
+      - ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env.single}
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    mem_limit: 256m
+    cpus: 0.5
+    logging: *logging
+
+  api:
+    image: catcube-server:local
+    build:
+      context: ../../apps/server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["serve"]
+    environment:
+      CATCUBE_DATABASE_URL: postgres://catcube:${POSTGRES_PASSWORD}@db:5432/catcube?sslmode=disable
+      CATCUBE_HTTP_ADDR: ":8080"
+      CATCUBE_ROLES: api,admin
+      CATCUBE_REDIS_ADDR: redis:6379
+      CATCUBE_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      CATCUBE_WECHAT_APPID: ${WECHAT_APPID:-}
+      CATCUBE_WECHAT_SECRET: ${WECHAT_SECRET:-}
+      CATCUBE_IDENTITY_ENC_KEY: ${IDENTITY_ENC_KEY:?set IDENTITY_ENC_KEY}
+      CATCUBE_BLIND_KEY: ${BLIND_KEY:?set BLIND_KEY}
+      CATCUBE_SMS_DEV_CODE: ""
+      CATCUBE_MODERATION: ${MODERATION:-}
+      CATCUBE_OSS_ENDPOINT: ${OSS_ENDPOINT:-}
+      CATCUBE_OSS_BUCKET: ${OSS_BUCKET:-}
+      CATCUBE_OSS_AK: ${OSS_AK:-}
+      CATCUBE_OSS_SK: ${OSS_SK:-}
+      CATCUBE_CDN_HOST: ${CDN_HOST:-}
+      CATCUBE_OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      CATCUBE_OTEL_ENDPOINT: ${OTEL_ENDPOINT:-otel-collector:4317}
+      CATCUBE_OTEL_SERVICE: catcube-api
+      CATCUBE_DRAIN_SECONDS: ${DRAIN_SECONDS:-10}
+      CATCUBE_CONTACT_DAILY_LIMIT: ${CONTACT_DAILY_LIMIT:-200}
+      TZ: Asia/Shanghai
+    expose:
+      - "8080"
+    ports:
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "catcube", "probe"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
+    mem_limit: 1536m
+    cpus: 1.5
+    logging: *logging
+
+  worker:
+    image: catcube-server:local
+    build:
+      context: ../../apps/server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["serve"]
+    environment:
+      CATCUBE_DATABASE_URL: postgres://catcube:${POSTGRES_PASSWORD}@db:5432/catcube?sslmode=disable
+      CATCUBE_ROLES: worker,scheduler
+      CATCUBE_REDIS_ADDR: redis:6379
+      CATCUBE_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      CATCUBE_IDENTITY_ENC_KEY: ${IDENTITY_ENC_KEY:?set IDENTITY_ENC_KEY}
+      CATCUBE_BLIND_KEY: ${BLIND_KEY:?set BLIND_KEY}
+      CATCUBE_SMS_DEV_CODE: ""
+      CATCUBE_MODERATION: ${MODERATION:-}
+      CATCUBE_OSS_ENDPOINT: ${OSS_ENDPOINT:-}
+      CATCUBE_OSS_BUCKET: ${OSS_BUCKET:-}
+      CATCUBE_OSS_AK: ${OSS_AK:-}
+      CATCUBE_OSS_SK: ${OSS_SK:-}
+      CATCUBE_CDN_HOST: ${CDN_HOST:-}
+      CATCUBE_OTEL_ENABLED: ${OTEL_ENABLED:-false}
+      CATCUBE_OTEL_ENDPOINT: ${OTEL_ENDPOINT:-otel-collector:4317}
+      CATCUBE_OTEL_SERVICE: catcube-worker
+      TZ: Asia/Shanghai
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 1024m
+    cpus: 1.0
+    logging: *logging
+
+  backup:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: catcube
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_DIR: /backups
+      WAL_DIR: /wal-archive
+      RETAIN_DAYS: ${BACKUP_RETAIN_DAYS:-14}
+      INTERVAL_SECONDS: "86400"
+    volumes:
+      - ./backup.sh:/backup.sh:ro
+      - pgbackups:/backups
+      - walarchive:/wal-archive
+    entrypoint: ["bash", "/backup.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 128m
+    cpus: 0.2
+    logging: *logging
+
+  # 可选：监控栈 Collector（`--profile observability` 且 OTEL_ENABLED=true）
+  otel-collector:
+    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.111.0}
+    profiles: ["observability"]
+    restart: unless-stopped
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:8889:8889"
+    mem_limit: 256m
+    cpus: 0.3
+
+volumes:
+  pgdata:
+  walarchive:
+  pgbackups:
+  redisdata:

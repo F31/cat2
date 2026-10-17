@@ -23,7 +23,7 @@
 
 ## 3. 部署与可靠性
 
-- [x] S0 一键起（`make up`）；S1 编排（api×2 + worker/scheduler + PG 主从 + Redis）
+- [x] S0 一键起（`make up`）；S1 编排（api×2 + worker/scheduler + PG 主从 + Redis）；**单机首上线编排**（4C8G：PG+Redis+API+worker+备份）→ `docker-compose.single.yml` + `docs/ops/single-node-deploy.md`
 - [x] `/healthz`、`/readyz` 接入负载探针；停机流程（先摘流量再排空）文档化
 - [x] PITR 备份配置（WAL 归档 + 每日全备 + 保留清理）
 - [x] 备份恢复演练脚本与实测通过 → `deploy/scripts/pitr-drill.sh`（本机实测 PASS，分批写入 → 时间点恢复精确到基线）

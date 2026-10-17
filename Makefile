@@ -1,4 +1,4 @@
-.PHONY: gen lint test test-integration up down archcheck logscan install build-web typecheck dev-admin dev-miniapp perf-seed loadtest
+.PHONY: gen lint test test-integration up up-single down down-single archcheck logscan install build-web typecheck dev-admin dev-miniapp perf-seed loadtest
 
 SERVER_DIR := apps/server
 
@@ -49,6 +49,12 @@ dev-miniapp: ## 本地联调：小程序 watch 构建（微信开发者工具导
 
 up: ## S0 一键起（app 全角色 + PostgreSQL）
 	docker compose -f deploy/compose/docker-compose.s0.yml up -d --build
+
+up-single: ## 单机首上线（4C8G：PG+Redis+API+worker+备份；需 deploy/compose/.env.single）
+	docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-compose.single.yml up -d --build
+
+down-single:
+	docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-compose.single.yml down
 
 down:
 	docker compose -f deploy/compose/docker-compose.s0.yml down

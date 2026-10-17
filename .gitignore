@@ -20,3 +20,5 @@ dist/
 
 # TS
 *.tsbuildinfo
+
+deploy/compose/.env.single
