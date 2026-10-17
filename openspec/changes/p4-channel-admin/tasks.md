@@ -17,15 +17,15 @@
 
 ## 2. channel：佣金与结算（后台）
 
-- [ ] 2.1 开户审核：区域查重一地一家；代理费首年 3 万/次年 2 万收款登记（SettingsSchema **动态可配**，权限点 `channel:operator_fee:set`）；保证金 1 万可退台账（`chn_guarantee` 预收款，不与收入混记，退款走台账）
-- [ ] 2.2 佣金**规则配置（范围+比例）**：SettingsSchema `channel.commission.*` 初始值（首单 30%/续费 10%；含会员订阅、不含立方分摊与保证金），**运行期动态可配（热生效）**；权限点 `channel:commission_rule:set` 默认可授予运营管理员（`decision-checklist-13.md` D2）
-- [ ] 2.3 订阅 `OrderPaid`、`MemberActivated`：按**计佣时配置**生成 `chn_commission` 流水并写 `ratio_snapshot`（含范围与比例的配置版本，后续变更不影响历史流水）
-- [ ] 2.4 月结结算单状态机 #17（待结算→已结算→已打款，打款不可撤销）：生成→财务复核→对公打款→留凭证（`voucher_ref`→media）；**复核与执行不得同一人**（内核策略强制互斥，违反 denied 记审计）
-- [ ] 2.5 保底任务跟踪：12 个月 ≥50 付费会员或 ≥3 落地项目；进度与预警（`chn_annual_target`）
+- [◐] 2.1 开户审核：区域查重一地一家 ✅（局部唯一索引 + 开通校验）；代理费/保证金金额 SettingsSchema 动态可配 ✅（`channel.agency_fee.*`/`channel.guarantee.fen`）；**待办**：收款登记/保证金退款台账接口（`chn_guarantee` 表已建）
+- [x] 2.2 佣金规则配置：`channel.commission.first_ratio_bp/renew_ratio_bp/scope`（首单 30%/续费 10%；范围 `membership`，不含立方分摊/保证金）；运行期动态可配（热生效，`TestIntegrationChannelCommissionSettlement` 验证改比例即生效）；权限点 `channel:commission_rule:set`
+- [x] 2.3 计佣：订阅 `trade.OrderPaid.v1` → 按归属运营商 + 计佣时配置比例生成 `chn_commission` 流水并写 `ratio_snapshot`（首单/续费判定；保底任务计数累加）；`TestIntegrationChannelCommissionSettlement`
+- [x] 2.4 月结状态机 #17（待结算→已复核→已打款；驳回）：后台生成/复核/驳回/打款接口 + 运营商提现申请；凭证 `voucher_ref`；**复核≠执行**经内核 policy 强制（同人复核+打款 400；审计）
+- [◐] 2.5 保底任务：`chn_annual_target` 随计佣累加付费会员数；**待办**：落地项目计数、达/预警阈值与提醒（`warn_flags`）
 - [ ] 2.6 归属纠错审批留痕（`chn_attribution.correct_approval`）
 - [ ] 2.7 对账导出（按运营商/区域/时间）走导出中心
-- [ ] 2.8 事件：`CommissionAccrued`、`SettlementPaid`、`OperatorStatusChanged` Schema 与发布
-- [ ] 2.9 contract：`OperatorOf`、`CommissionOf`、`SettlementApprove/Pay`
+- [x] 2.8 事件：`channel.OperatorStatusChanged.v1`/`channel.CommissionAccrued.v1`/`channel.SettlementPaid.v1` Schema（contracts/events）+ 发布
+- [◐] 2.9 contract：`OperatorOf`/`Apply`/`OpenOperator`/`SuspendOperator`/`AttributionOf`/`BindAttribution`/`Overview`/`ListOperators` 已入 Facade；结算 `Approve/Pay` 为模块方法（后台直调）；**待办**：`CommissionOf` 跨模块查询开口
 
 ## 3. 后台 RBAC 与权限点
 

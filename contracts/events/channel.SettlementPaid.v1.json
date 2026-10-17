@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/channel.SettlementPaid.v1.json",
+  "title": "channel.SettlementPaid.v1",
+  "description": "渠道结算打款完成（复核≠执行）。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "channel.SettlementPaid.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["settlement_id", "paid_by"],
+      "properties": {
+        "settlement_id": { "type": "string" },
+        "paid_by": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

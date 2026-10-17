@@ -18,11 +18,17 @@ const TABS: Array<{ key: string; label: string; prefixes: string[]; hint: string
     prefixes: ['policy.'],
     hint: '强制双人复核（复核≠执行）的操作清单，逗号分隔；off=关闭（资金类不建议关闭）。',
   },
+  {
+    key: 'channel',
+    label: '渠道与佣金',
+    prefixes: ['channel.'],
+    hint: '计佣范围/比例（万分比）与代理费/保证金金额；运行期动态可配、计佣写快照。',
+  },
 ]
 
 function typeOf(key: string) {
   if (key.endsWith('_enabled') || key.endsWith('enabled')) return 'bool'
-  if (key.includes('threshold') || key.includes('len')) return 'int'
+  if (key.includes('threshold') || key.includes('len') || key.endsWith('_fen') || key.endsWith('_bp')) return 'int'
   return 'string'
 }
 

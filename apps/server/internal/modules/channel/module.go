@@ -15,6 +15,8 @@ import (
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
+	"catcube/internal/kernel/policy"
+	"catcube/internal/kernel/settings"
 	"catcube/internal/kernel/statemachine"
 	"catcube/internal/modules/channel/contract"
 	"catcube/internal/modules/channel/domain"
@@ -41,11 +43,13 @@ type AuthFunc func(ctx context.Context, accessToken string) (userID int64, err e
 
 // Deps 装配依赖。
 type Deps struct {
-	Pool  *db.Pool
-	Bus   *eventbus.Bus
-	Auth  AuthFunc
-	Audit *audit.Recorder
-	Dict  dictcontract.Facade
+	Pool     *db.Pool
+	Bus      *eventbus.Bus
+	Auth     AuthFunc
+	Audit    *audit.Recorder
+	Dict     dictcontract.Facade
+	Settings *settings.Registry
+	Policy   *policy.Engine
 }
 
 // Module channel 模块。
@@ -118,6 +122,7 @@ CREATE TABLE IF NOT EXISTS chn_settlement (
 	paid_by bigint NOT NULL DEFAULT 0,
 	paid_at timestamptz,
 	voucher_ref text,
+	reason varchar(200),
 	UNIQUE(operator_id, month)
 );
 
@@ -171,13 +176,29 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/channel/operators", Handler: m.auth(m.handleListOperators), Admin: true, Perm: "channel:operator:review"},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/channel/operators/{id}/open", Handler: m.auth(m.handleOpen), Admin: true, Perm: "channel:operator:review"},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/channel/operators/{id}/suspend", Handler: m.auth(m.handleSuspend), Admin: true, Perm: "channel:operator:review"},
-	)
+		// 提现申请（运营商）/ 结算（后台，复核≠执行）
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/channel/withdraw", Handler: m.auth(m.handleWithdraw)},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/channel/settlements", Handler: m.auth(m.handleListSettlements), Admin: true, Perm: "channel:settlement:review"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/channel/settlements/generate", Handler: m.auth(m.handleGenerateSettlement), Admin: true, Perm: "channel:settlement:create"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/channel/settlements/{id}/review", Handler: m.auth(m.handleReviewSettlement), Admin: true, Perm: "channel:settlement:review"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/channel/settlements/{id}/reject", Handler: m.auth(m.handleRejectSettlement), Admin: true, Perm: "channel:settlement:review"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/channel/settlements/{id}/pay", Handler: m.auth(m.handlePaySettlement), Admin: true, Perm: "channel:settlement:pay"})
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "channel:operator:open", Path: "/api/admin/v1/channel/operators/{id}/open", Required: true, LogFailed: true, Module: "channel"},
 		audit.Point{Action: "channel:operator:suspend", Path: "/api/admin/v1/channel/operators/{id}/suspend", Required: true, LogFailed: true, Module: "channel"},
+		audit.Point{Action: "channel:settlement:review", Path: "/api/admin/v1/channel/settlements/{id}/review", Required: true, LogFailed: true, Module: "channel"},
+		audit.Point{Action: "channel:settlement:reject", Path: "/api/admin/v1/channel/settlements/{id}/reject", Required: true, LogFailed: true, Module: "channel"},
+		audit.Point{Action: "channel:settlement:pay", Path: "/api/admin/v1/channel/settlements/{id}/pay", Required: true, LogFailed: true, Module: "channel"},
 	)
 	r.AdminSections = append(r.AdminSections,
-		module.AdminSection{Key: "channel.operators", Label: "运营商", Path: "/channel-operators", Module: "channel"})
+		module.AdminSection{Key: "channel.operators", Label: "运营商", Path: "/channel-operators", Module: "channel"},
+		module.AdminSection{Key: "channel.settlements", Label: "渠道结算", Path: "/channel-settlements", Module: "channel"})
+	r.StateMachines = append(r.StateMachines, domain.MachineOperator, domain.MachineSettlement)
+	r.Settings = append(r.Settings, Schemas...)
+	// 计佣：订阅订阅制订单支付成功（首单/续费按配置比例，写快照）
+	r.EventSubs = append(r.EventSubs, eventbus.Subscription{
+		Topic: "trade.OrderPaid.v1", Handler: m.accrueOnOrderPaid,
+	})
 	return nil
 }
 
@@ -649,6 +670,8 @@ func writeChannelErr(w http.ResponseWriter, err error) {
 		writeErr(w, codeAlreadyAttributed, "已绑定其它运营商归属")
 	case errors.Is(err, errNoOperator):
 		writeErr(w, codeNoOperator, "非运营商或不存在")
+	case errors.Is(err, errDualControl):
+		writeErr(w, codeBadInput, "复核≠执行：同一人不得复核并打款")
 	default:
 		writeErr(w, codeInternal, "服务错误")
 	}

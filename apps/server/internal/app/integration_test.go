@@ -1866,7 +1866,7 @@ func TestIntegrationMessageModeration(t *testing.T) {
 
 	// 会员激活会使旧 access token 的 authz_ver 失效，用新登录的令牌查审核队列。
 	_, adminTok := loginAdmin(t, h)
-	qstatus, env := h.do(http.MethodGet, "/api/admin/v1/review-tasks", adminTok, nil)
+	qstatus, env := h.do(http.MethodGet, "/api/admin/v1/review-tasks?limit=200", adminTok, nil)
 	if qstatus != http.StatusOK || env.Code != 0 {
 		t.Fatalf("审核队列接口异常: %d %+v", qstatus, env)
 	}
@@ -6011,11 +6011,115 @@ func TestIntegrationAdminRBAC(t *testing.T) {
 	}
 }
 
+// 渠道佣金与结算（p4 §2）：OrderPaid 计佣快照、比例可配、月结状态机、复核≠执行。
+func TestIntegrationChannelCommissionSettlement(t *testing.T) {
+	h := newTestApp(t)
+	ctx := context.Background()
+	_, admTok := loginAdmin(t, h)
+	// 清理历史运行占用的区域（集成库共享）
+	_, _ = h.app.Pool.Exec(ctx, `UPDATE chn_operator SET status=2 WHERE region_code='310000' AND status=1`)
+
+	// 运营商 A：申请 + 开通
+	_, aTok := loginUser(t, h)
+	_, env := h.do(http.MethodPost, "/api/mp/v1/channel/operator/apply", aTok, map[string]any{"region_code": "310000", "name": "沪东运营"})
+	var op struct {
+		Operator struct {
+			ID int64 `json:"id,string"`
+		} `json:"operator"`
+	}
+	_ = json.Unmarshal(env.Data, &op)
+	opID := op.Operator.ID
+	if opID == 0 {
+		t.Fatalf("申请失败: %+v", env)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/channel/operators/%d/open", opID), admTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("开通失败: %d %+v", s, e)
+	}
+
+	// 用户 C 归属 A
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO chn_link (id, operator_id, channel, code, region_code, status)
+		VALUES ($1,$2,'invite_code',$3,'310000',0) ON CONFLICT (code) DO NOTHING`,
+		time.Now().UnixNano(), opID, fmt.Sprintf("cm-%d", opID)); err != nil {
+		t.Fatal(err)
+	}
+	cuid, cTok := loginUser(t, h)
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/channel/attribution", cTok, map[string]any{"code": fmt.Sprintf("cm-%d", opID)}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("归属绑定失败: %d %+v", s, e)
+	}
+
+	publishPaid := func(orderID, amountFen int64) {
+		payload, _ := json.Marshal(map[string]any{"order_id": fmt.Sprintf("%d", orderID), "biz_type": "membership", "buyer_id": fmt.Sprintf("%d", cuid), "amount_fen": amountFen})
+		if err := h.app.Bus.Publish(ctx, nil, eventbus.Event{ID: fmt.Sprintf("evt-%d-%d", orderID, time.Now().UnixNano()), Topic: "trade.OrderPaid.v1", Payload: payload, SpaceID: 1}); err != nil {
+			t.Fatal(err)
+		}
+		relayAll(t, h)
+	}
+
+	// 首单 → 30%（100000 × 30% = 30000）；续费比例可配
+	publishPaid(900001, 100000)
+	var amount, base int64
+	var ratio int
+	if err := h.app.Pool.QueryRow(ctx, `SELECT amount_fen, base_fen, ratio_bp FROM chn_commission WHERE operator_id=$1 ORDER BY created_at ASC LIMIT 1`, opID).Scan(&amount, &base, &ratio); err != nil {
+		t.Fatalf("首单未计佣: %v", err)
+	}
+	if amount != 30000 || base != 100000 || ratio != 3000 {
+		t.Fatalf("首单计佣不符: amount=%d base=%d ratio=%d", amount, base, ratio)
+	}
+	// 调整续费比例（动态可配）→ 10% → 5%
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO sys_settings (scope,key,value,type,version,updated_at)
+		VALUES ('platform','channel.commission.renew_ratio_bp','500','int',1,now())
+		ON CONFLICT (scope,key) DO UPDATE SET value='500', updated_at=now()`); err != nil {
+		t.Fatal(err)
+	}
+	defer h.app.Pool.Exec(ctx, `DELETE FROM sys_settings WHERE scope='platform' AND key='channel.commission.renew_ratio_bp'`)
+	publishPaid(900002, 100000)
+	var renewAmount int64
+	var renewRatio int
+	if err := h.app.Pool.QueryRow(ctx, `SELECT amount_fen, ratio_bp FROM chn_commission WHERE operator_id=$1 ORDER BY created_at DESC LIMIT 1`, opID).Scan(&renewAmount, &renewRatio); err != nil {
+		t.Fatal(err)
+	}
+	if renewAmount != 5000 || renewRatio != 500 {
+		t.Fatalf("续费计佣未按配置: amount=%d ratio=%d", renewAmount, renewRatio)
+	}
+
+	// 月结：生成 → 复核 → 打款（复核≠执行）
+	_, env = h.do(http.MethodPost, "/api/admin/v1/channel/settlements/generate", admTok, map[string]any{"operator_id": fmt.Sprintf("%d", opID)})
+	var sid struct {
+		SettlementID int64 `json:"settlement_id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &sid)
+	if sid.SettlementID == 0 {
+		t.Fatalf("生成结算单失败: %+v", env)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/channel/settlements/%d/review", sid.SettlementID), admTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("复核失败: %d %+v", s, e)
+	}
+	// 同一人复核并打款 → 拒绝（复核≠执行）
+	if s, _ := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/channel/settlements/%d/pay", sid.SettlementID), admTok, map[string]any{"voucher_ref": "media://voucher"}); s != http.StatusBadRequest {
+		t.Fatalf("同一人复核+打款应拒绝: %d", s)
+	}
+	// 另一管理员打款 → 成功
+	_, adm2 := loginAdmin(t, h)
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/channel/settlements/%d/pay", sid.SettlementID), adm2, map[string]any{"voucher_ref": "media://voucher"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("打款失败: %d %+v", s, e)
+	}
+	var st int16
+	var voucher string
+	_ = h.app.Pool.QueryRow(ctx, `SELECT status, COALESCE(voucher_ref,'') FROM chn_settlement WHERE id=$1`, sid.SettlementID).Scan(&st, &voucher)
+	if st != 2 || voucher != "media://voucher" {
+		t.Fatalf("结算单状态/凭证不符: st=%d voucher=%s", st, voucher)
+	}
+}
+
 // 渠道运营商（p4 §1）：申请/开通/停用状态机、一地一家、归属绑定、红线单层。
 func TestIntegrationChannelOperator(t *testing.T) {
 	h := newTestApp(t)
 	ctx := context.Background()
 	_, admTok := loginAdmin(t, h)
+	// 清理历史运行占用的区域（集成库共享）
+	_, _ = h.app.Pool.Exec(ctx, `UPDATE chn_operator SET status=2 WHERE region_code='310000' AND status=1`)
 
 	type operatorResp struct {
 		Operator struct {

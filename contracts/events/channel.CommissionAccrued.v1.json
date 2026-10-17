@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/channel.CommissionAccrued.v1.json",
+  "title": "channel.CommissionAccrued.v1",
+  "description": "渠道佣金入账（计佣快照已入流水）。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "channel.CommissionAccrued.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["operator_id", "user_id", "order_id", "amount_fen", "month"],
+      "properties": {
+        "operator_id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "order_id": { "type": "string" },
+        "amount_fen": { "type": "integer" },
+        "month": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

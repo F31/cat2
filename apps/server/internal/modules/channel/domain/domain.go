@@ -20,3 +20,23 @@ var MachineOperator = statemachine.Def{
 		{From: StateSuspended, Event: "reapply", To: StateApplying, Actor: "*"},
 	},
 }
+
+// 结算单状态：#17 待结算→已复核→已打款（打款不可撤销）；驳回回待结算。
+const (
+	SettlePending  = "0" // 待结算
+	SettleReviewed = "1" // 已复核
+	SettlePaid     = "2" // 已打款
+	SettleRejected = "3" // 已驳回
+)
+
+// MachineSettlement 月结结算单状态机（#17）：复核≠执行由内核 policy 强制。
+var MachineSettlement = statemachine.Def{
+	Name:   "channel.settlement",
+	States: []string{SettlePending, SettleReviewed, SettlePaid, SettleRejected},
+	Transitions: []statemachine.Transition{
+		{From: SettlePending, Event: "review", To: SettleReviewed, Actor: "*"},
+		{From: SettleReviewed, Event: "pay", To: SettlePaid, Actor: "*"},
+		{From: SettlePending, Event: "reject", To: SettleRejected, Actor: "*"},
+		{From: SettleRejected, Event: "reopen", To: SettlePending, Actor: "*"},
+	},
+}

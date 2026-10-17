@@ -239,7 +239,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		Flags: flagStore, Settings: settingsReg, Storage: storage, Audit: auditRec, Runner: schedRunner})
 	aiMod := ai.New(ai.Deps{Pool: pool, Flags: flagStore, LLM: llm.NewDevClient(), Auth: authFunc,
 		Settings: settingsReg, Dict: dictMod.Facade(), Audit: auditRec})
-	channelMod := channel.New(channel.Deps{Pool: pool, Bus: bus, Auth: authFunc, Audit: auditRec, Dict: dictMod.Facade()})
+	channelMod := channel.New(channel.Deps{Pool: pool, Bus: bus, Auth: authFunc, Audit: auditRec, Dict: dictMod.Facade(), Settings: settingsReg, Policy: policyEngine})
 	// 审核辅助（AI 预分类/摘要）：装配根桥接同阶模块（trust ← ai）
 	trustMod.SetSuggester(aiSuggester{ai: aiMod.Facade()})
 	mods := []module.Module{
