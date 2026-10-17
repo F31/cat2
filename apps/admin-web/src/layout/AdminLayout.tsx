@@ -107,7 +107,7 @@ export default function AdminLayout() {
         setGroupItems(items)
         setActiveGroup(key)
         const leaf = firstLeaf(items)
-        setOpenGroups(leaf?.parent_key ? [leaf.parent_key] : [])
+        setOpenGroups([]) // 三级菜单默认折叠
         if (goFirst && leaf) navigate(leaf.path)
       } catch {
         /* 保持当前菜单 */
@@ -145,12 +145,7 @@ export default function AdminLayout() {
   const activeItem = useMemo(() => matchIn(groupItems, location.pathname), [groupItems, location.pathname])
 
   useEffect(() => {
-    if (activeItem) {
-      if (activeItem.parent_key) {
-        setOpenGroups((prev) => (prev.includes(activeItem.parent_key!) ? prev : [...prev, activeItem.parent_key!]))
-      }
-      return
-    }
+    if (activeItem) return
     const g = groupForPath(allItems, location.pathname)
     if (g && g.key !== activeGroup) void loadGroup(g.key, false)
   }, [location.pathname, activeItem, allItems, activeGroup, loadGroup])
