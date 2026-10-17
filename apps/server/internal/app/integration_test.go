@@ -5979,7 +5979,7 @@ func TestIntegrationAdminRBAC(t *testing.T) {
 	_, env = h.do(http.MethodGet, "/api/admin/v1/menus", atok, nil)
 	var menus struct {
 		Items []struct {
-			Module string `json:"Module"`
+			Module string `json:"module"`
 		} `json:"items"`
 	}
 	_ = json.Unmarshal(env.Data, &menus)

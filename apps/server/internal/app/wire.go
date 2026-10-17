@@ -11,6 +11,7 @@ import (
 	"hash/crc32"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -420,7 +421,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 				if s.Key == "ops.rbac" && !canRBAC {
 					continue
 				}
-				if s.Key == "ops.system_settings" && !canSettings {
+				if (s.Key == "ops.system_settings" || s.Key == "ops.settings" || s.Key == "ops.feature_flags") && !canSettings {
 					continue
 				}
 				if s.Key == "system.miniapp" && !isSuper {
@@ -835,17 +836,43 @@ func adminSectionsFor(mods []module.Module) []module.AdminSection {
 		"membership": {{Key: "membership.members", Label: "会员管理", Path: "/members", Module: "membership"}},
 		"cube":       {{Key: "cube.cubes", Label: "猫立方管理", Path: "/cubes", Module: "cube"}},
 		"circle":     {{Key: "circle.circles", Label: "圈子管理", Path: "/circles", Module: "circle"}},
-		"verify":     {{Key: "verify.certs", Label: "认证审核", Path: "/verify-certs", Module: "verify"}},
+		"verify":     {{Key: "verify.certs", Label: "认证审核", Path: "/verify-certs", Module: "verify"}, {Key: "verify.badges", Label: "认证标识", Path: "/badges", Module: "verify"}},
+		"ai":         {{Key: "ai.prompts", Label: "AI 提示词与用量", Path: "/ai-prompts", Module: "ai"}},
 		"profile":    {{Key: "profile.templates", Label: "画像字段模板", Path: "/profile-templates", Module: "profile"}},
 		"notice":     {{Key: "notice.templates", Label: "通知模板", Path: "/templates", Module: "notice"}},
-		"ops":        {{Key: "ops.dead_letters", Label: "死信队列", Path: "/dead-letters", Module: "ops"}, {Key: "ops.rbac", Label: "角色与权限", Path: "/roles", Module: "ops"}, {Key: "ops.system_settings", Label: "系统设置", Path: "/system-settings", Module: "ops"}, {Key: "system.miniapp", Label: "小程序设置", Path: "/miniapp-settings", Module: "ops"}},
-		"dict":       {{Key: "dict.taxonomy", Label: "主体类型与选项", Path: "/dict", Module: "dict"}},
-		"channel":    {{Key: "channel.operators", Label: "运营商", Path: "/channel-operators", Module: "channel"}, {Key: "channel.settlements", Label: "渠道结算", Path: "/channel-settlements", Module: "channel"}},
+		"ops": {{Key: "ops.settings", Label: "业务配置", Path: "/settings", Module: "ops"},
+			{Key: "ops.feature_flags", Label: "特性开关", Path: "/feature-flags", Module: "ops"},
+			{Key: "ops.audits", Label: "审计轨迹", Path: "/audits", Module: "ops"},
+			{Key: "ops.exports", Label: "导出中心", Path: "/exports", Module: "ops"},
+			{Key: "ops.governance", Label: "代操作", Path: "/governance", Module: "ops"},
+			{Key: "ops.dead_letters", Label: "死信队列", Path: "/dead-letters", Module: "ops"},
+			{Key: "ops.rbac", Label: "角色与权限", Path: "/roles", Module: "ops"},
+			{Key: "ops.system_settings", Label: "系统设置", Path: "/system-settings", Module: "ops"},
+			{Key: "system.miniapp", Label: "小程序设置", Path: "/miniapp-settings", Module: "ops"}},
+		"dict":    {{Key: "dict.taxonomy", Label: "主体类型与选项", Path: "/dict", Module: "dict"}},
+		"channel": {{Key: "channel.operators", Label: "运营商", Path: "/channel-operators", Module: "channel"}, {Key: "channel.settlements", Label: "渠道结算", Path: "/channel-settlements", Module: "channel"}},
 	}
 	var out []module.AdminSection
 	for _, m := range mods {
 		out = append(out, decl[m.Name()]...)
 	}
+	rank := map[string]int{
+		"/users": 1, "/contents": 2, "/reviews": 3, "/verify-certs": 4, "/orders": 5, "/members": 6,
+		"/cubes": 7, "/circles": 8, "/templates": 9, "/channel-operators": 10, "/channel-settlements": 11,
+		"/dict": 12, "/profile-templates": 13, "/badges": 14, "/ai-prompts": 15,
+		"/settings": 20, "/feature-flags": 21, "/audits": 22, "/exports": 23, "/governance": 24,
+		"/dead-letters": 25, "/roles": 26, "/system-settings": 27, "/miniapp-settings": 28,
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		ri, rj := rank[out[i].Path], rank[out[j].Path]
+		if ri == 0 {
+			ri = 99
+		}
+		if rj == 0 {
+			rj = 99
+		}
+		return ri < rj
+	})
 	return out
 }
 
