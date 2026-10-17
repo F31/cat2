@@ -3609,6 +3609,9 @@ func TestIntegrationAdminMenus(t *testing.T) {
 		if it.Group == "" || it.GroupLabel == "" {
 			t.Fatalf("菜单缺少分组: %+v", it)
 		}
+		if (it.Key == "identity.users" || it.Key == "ops.rbac") && it.Group != "system" {
+			t.Fatalf("权限菜单应合并到系统管理: %+v", it)
+		}
 	}
 	if len(want) != 0 {
 		t.Fatalf("菜单声明缺失: %+v", want)

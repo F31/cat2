@@ -27,15 +27,15 @@ const FALLBACK: AdminMenu[] = [
   { key: 'operation.settlements', label: '渠道结算', path: '/channel-settlements', module: 'channel', group: 'operation', group_label: '运营管理', group_order: 5, order: 2 },
   { key: 'operation.governance', label: '代操作', path: '/governance', module: 'ops', group: 'operation', group_label: '运营管理', group_order: 5, order: 3 },
   { key: 'operation.ai', label: 'AI 提示词与用量', path: '/ai-prompts', module: 'ai', group: 'operation', group_label: '运营管理', group_order: 5, order: 4 },
-  { key: 'authority.users', label: '用户管理', path: '/users', module: 'identity', group: 'authority', group_label: '权限管理', group_order: 6, order: 1 },
-  { key: 'authority.roles', label: '角色管理', path: '/roles', module: 'ops', group: 'authority', group_label: '权限管理', group_order: 6, order: 2 },
-  { key: 'system.settings', label: '系统设置', path: '/system-settings', module: 'ops', group: 'system', group_label: '系统管理', group_order: 7, order: 1 },
-  { key: 'system.audits', label: '日志审计', path: '/audits', module: 'ops', group: 'system', group_label: '系统管理', group_order: 7, order: 2 },
-  { key: 'system.flags', label: '特性开关', path: '/feature-flags', module: 'ops', group: 'system', group_label: '系统管理', group_order: 7, order: 3 },
-  { key: 'system.dead', label: '死信队列', path: '/dead-letters', module: 'ops', group: 'system', group_label: '系统管理', group_order: 7, order: 4 },
-  { key: 'system.notice', label: '通知模板', path: '/templates', module: 'notice', group: 'system', group_label: '系统管理', group_order: 7, order: 5 },
-  { key: 'system.business', label: '业务配置', path: '/settings', module: 'ops', group: 'system', group_label: '系统管理', group_order: 7, order: 6 },
-  { key: 'system.miniapp', label: '小程序设置', path: '/miniapp-settings', module: 'ops', group: 'system', group_label: '系统管理', group_order: 7, order: 7 },
+  { key: 'system.users', label: '用户管理', path: '/users', module: 'identity', group: 'system', group_label: '系统管理', group_order: 6, order: 1 },
+  { key: 'system.roles', label: '角色管理', path: '/roles', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 2 },
+  { key: 'system.settings', label: '系统设置', path: '/system-settings', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 3 },
+  { key: 'system.audits', label: '日志审计', path: '/audits', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 4 },
+  { key: 'system.flags', label: '特性开关', path: '/feature-flags', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 5 },
+  { key: 'system.dead', label: '死信队列', path: '/dead-letters', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 6 },
+  { key: 'system.notice', label: '通知模板', path: '/templates', module: 'notice', group: 'system', group_label: '系统管理', group_order: 6, order: 7 },
+  { key: 'system.business', label: '业务配置', path: '/settings', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 8 },
+  { key: 'system.miniapp', label: '小程序设置', path: '/miniapp-settings', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 9 },
 ]
 
 function buildGroups(items: AdminMenu[]): Group[] {
@@ -68,6 +68,7 @@ export default function AdminLayout() {
   const [me, setMe] = useState<Me | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [openGroups, setOpenGroups] = useState<string[]>([])
 
   useEffect(() => {
     void (async () => {
@@ -90,7 +91,12 @@ export default function AdminLayout() {
   const groups = useMemo(() => buildGroups(menus), [menus])
   const active = useMemo(() => matchItem(groups, location.pathname), [groups, location.pathname])
   const topItems: MenuProps['items'] = groups.map((g) => ({ key: g.key, label: g.label }))
-  const sideItems: MenuProps['items'] = active.group?.items.map((i) => ({ key: i.path, label: i.label })) ?? []
+  // 左侧菜单树：一级分组 → 二级页面；默认全部收起，点击顶部一级时展开对应分组。
+  const treeItems: MenuProps['items'] = groups.map((g) => ({
+    key: g.key,
+    label: g.label,
+    children: g.items.map((i) => ({ key: i.path, label: i.label })),
+  }))
 
   const logout = () => {
     clearToken()
@@ -132,7 +138,10 @@ export default function AdminLayout() {
           items={topItems}
           onClick={(e) => {
             const g = groups.find((x) => x.key === e.key)
-            if (g?.items[0]) navigate(g.items[0].path)
+            if (g?.items[0]) {
+              setOpenGroups([g.key])
+              navigate(g.items[0].path)
+            }
           }}
           style={{ flex: 1, minWidth: 0, background: 'transparent', borderBottom: 'none' }}
         />
@@ -159,13 +168,17 @@ export default function AdminLayout() {
       </Header>
       <Layout>
         {active.group ? (
-          <Sider theme="dark" width={208}>
+          <Sider theme="dark" width={220}>
             <Menu
               theme="dark"
               mode="inline"
-              selectedKeys={[active.item?.path ?? active.group.items[0]?.path ?? '']}
-              items={sideItems}
-              onClick={(e) => navigate(e.key)}
+              selectedKeys={[active.item?.path ?? '']}
+              openKeys={openGroups}
+              onOpenChange={(keys) => setOpenGroups(keys.map(String))}
+              items={treeItems}
+              onClick={(e) => {
+                if (String(e.key).startsWith('/')) navigate(e.key)
+              }}
             />
           </Sider>
         ) : null}

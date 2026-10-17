@@ -24,11 +24,8 @@ func defaultAdminMenus() []menu.Item {
 	operation := func(key, label, path, module string, order int) menu.Item {
 		return m(key, label, path, module, "operation", "运营管理", 5, order)
 	}
-	authority := func(key, label, path, module string, order int) menu.Item {
-		return m(key, label, path, module, "authority", "权限管理", 6, order)
-	}
 	system := func(key, label, path, module string, order int) menu.Item {
-		return m(key, label, path, module, "system", "系统管理", 7, order)
+		return m(key, label, path, module, "system", "系统管理", 6, order)
 	}
 	items := []menu.Item{
 		content("content.contents", "内容列表", "/contents", "content", 1),
@@ -50,16 +47,15 @@ func defaultAdminMenus() []menu.Item {
 		operation("ops.governance", "代操作", "/governance", "ops", 3),
 		operation("ai.prompts", "AI 提示词与用量", "/ai-prompts", "ai", 4),
 
-		authority("identity.users", "用户管理", "/users", "identity", 1),
-		authority("ops.rbac", "角色管理", "/roles", "ops", 2),
-
-		system("ops.system_settings", "系统设置", "/system-settings", "ops", 1),
-		system("ops.audits", "日志审计", "/audits", "ops", 2),
-		system("ops.feature_flags", "特性开关", "/feature-flags", "ops", 3),
-		system("ops.dead_letters", "死信队列", "/dead-letters", "ops", 4),
-		system("notice.templates", "通知模板", "/templates", "notice", 5),
-		system("ops.settings", "业务配置", "/settings", "ops", 6),
-		system("system.miniapp", "小程序设置", "/miniapp-settings", "ops", 7),
+		system("identity.users", "用户管理", "/users", "identity", 1),
+		system("ops.rbac", "角色管理", "/roles", "ops", 2),
+		system("ops.system_settings", "系统设置", "/system-settings", "ops", 3),
+		system("ops.audits", "日志审计", "/audits", "ops", 4),
+		system("ops.feature_flags", "特性开关", "/feature-flags", "ops", 5),
+		system("ops.dead_letters", "死信队列", "/dead-letters", "ops", 6),
+		system("notice.templates", "通知模板", "/templates", "notice", 7),
+		system("ops.settings", "业务配置", "/settings", "ops", 8),
+		system("system.miniapp", "小程序设置", "/miniapp-settings", "ops", 9),
 	}
 	// 权限点/超管限制（与旧菜单过滤规则一致；其余按模块可见性过滤）
 	for i := range items {
@@ -81,6 +77,27 @@ func seedAdminMenus(ctx context.Context, pool *db.Pool) error {
 	}
 	// 首页固定为登录后默认页，不占菜单项（清理历史种子）。
 	if _, err := pool.Exec(ctx, `DELETE FROM sys_admin_menu WHERE key='ops.dashboard'`); err != nil {
+		return err
+	}
+	// 历史版本：权限管理为独立一级菜单 → 合并到系统管理（仅迁移一次）。
+	var legacy bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM sys_admin_menu WHERE group_key='authority')`).Scan(&legacy); err != nil {
+		return err
+	}
+	if legacy {
+		if _, err := pool.Exec(ctx, `UPDATE sys_admin_menu SET item_order=item_order+2 WHERE group_key='system'`); err != nil {
+			return err
+		}
+		if _, err := pool.Exec(ctx, `
+			UPDATE sys_admin_menu
+			SET group_key='system', group_label='系统管理', group_order=6,
+				item_order=CASE key WHEN 'identity.users' THEN 1 WHEN 'ops.rbac' THEN 2 ELSE item_order END
+			WHERE group_key='authority'`); err != nil {
+			return err
+		}
+	}
+	// 系统管理固定为第 6 个一级分组（兼容旧库遗留的 7）。
+	if _, err := pool.Exec(ctx, `UPDATE sys_admin_menu SET group_order=6 WHERE group_key='system'`); err != nil {
 		return err
 	}
 	return menu.New(pool).Seed(ctx, defaultAdminMenus())
