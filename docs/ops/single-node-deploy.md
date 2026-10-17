@@ -45,6 +45,9 @@ curl -s --noproxy '*' http://127.0.0.1:8080/readyz
 ```bash
 docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-compose.single.yml \
   exec api catcube migrate
+# 首次导入字典/敏感词种子（幂等）
+docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-compose.single.yml \
+  exec api catcube seed
 ```
 
 ## 4. 后台前端与 Nginx
