@@ -294,6 +294,10 @@ func userIDFrom(ctx context.Context) int64 {
 }
 
 func bearer(req *http.Request) string {
+	// 后台经 Nginx Basic Auth 时 Authorization 被占用，令牌可由 X-Admin-Token 传入
+	if t := strings.TrimSpace(req.Header.Get("X-Admin-Token")); t != "" {
+		return t
+	}
 	if h := req.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 		return strings.TrimPrefix(h, "Bearer ")
 	}

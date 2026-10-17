@@ -453,6 +453,9 @@ func userIDFrom(ctx context.Context) int64 {
 }
 
 func bearer(req *http.Request) string {
+	if t := strings.TrimSpace(req.Header.Get("X-Admin-Token")); t != "" {
+		return t
+	}
 	h := req.Header.Get("Authorization")
 	if strings.HasPrefix(h, "Bearer ") {
 		return strings.TrimPrefix(h, "Bearer ")

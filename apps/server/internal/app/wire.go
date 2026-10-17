@@ -585,10 +585,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	// 后台短信二次验证（p4 §3.4）：仅需已登录（令牌有效），不经后台准入/权限门禁
 	adminTokenAuth := func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, req *http.Request) {
-			token := ""
-			if h := req.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-				token = strings.TrimPrefix(h, "Bearer ")
-			}
+			token := adminToken(req)
 			if token == "" {
 				http.Error(w, `{"code":2,"message":"未登录"}`, http.StatusUnauthorized)
 				return
@@ -663,14 +660,23 @@ func toSchedulerJobs(jobs []module.JobDef) []scheduler.Job {
 	return out
 }
 
+// adminToken 后台令牌：优先 X-Admin-Token（便于 Nginx Basic Auth 占用 Authorization），
+// 兼容标准 Authorization: Bearer（脚本/测试）。
+func adminToken(req *http.Request) string {
+	if t := strings.TrimSpace(req.Header.Get("X-Admin-Token")); t != "" {
+		return t
+	}
+	if h := req.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
+		return strings.TrimPrefix(h, "Bearer ")
+	}
+	return ""
+}
+
 // requireAdmin 后台路由守卫：先认证令牌，再校验后台准入（超管或任一 RBAC 角色），
 // 再校验 IP 白名单与短信二次验证（登录失败达阈值，p4 §3.4）。未登录→401；不允许→403 并记 denied 审计。
 func requireAdmin(id idcontract.Facade, rbacStore *rbac.Store, settingsReg *settings.Registry, rec *audit.Recorder, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		token := ""
-		if h := req.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-			token = strings.TrimPrefix(h, "Bearer ")
-		}
+		token := adminToken(req)
 		if token == "" {
 			http.Error(w, `{"code":2,"message":"未登录"}`, http.StatusUnauthorized)
 			return

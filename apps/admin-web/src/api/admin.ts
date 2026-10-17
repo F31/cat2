@@ -24,7 +24,8 @@ export class ApiError extends Error {
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   const token = getToken()
-  if (token) headers['Authorization'] = `Bearer ${token}`
+  // 后台经 Nginx Basic Auth 时 Authorization 被占用，令牌走独立头；后端兼容两者
+  if (token) headers['X-Admin-Token'] = token
   const res = await fetch('/api' + path, {
     method,
     headers,

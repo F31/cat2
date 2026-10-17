@@ -374,9 +374,11 @@ func nextDay() time.Time {
 // adminAuth 后台只读聚合的硬门槛：登录 + 平台管理员（非管理员 403）。
 func (a *Aggregator) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		token := ""
-		if h := req.Header.Get("Authorization"); len(h) > 7 && h[:7] == "Bearer " {
-			token = h[7:]
+		token := strings.TrimSpace(req.Header.Get("X-Admin-Token"))
+		if token == "" {
+			if h := req.Header.Get("Authorization"); len(h) > 7 && h[:7] == "Bearer " {
+				token = h[7:]
+			}
 		}
 		if token == "" {
 			writeErrCode(w, http.StatusUnauthorized, 2, "未登录")
@@ -449,6 +451,9 @@ func userIDFrom(ctx context.Context) int64 {
 }
 
 func bearer(req *http.Request) string {
+	if t := strings.TrimSpace(req.Header.Get("X-Admin-Token")); t != "" {
+		return t
+	}
 	if h := req.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 		return strings.TrimPrefix(h, "Bearer ")
 	}
