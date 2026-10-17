@@ -1,7 +1,8 @@
 # PRD 11.4 验收追溯矩阵（p6 §7.1/§7.2）
 
 - 来源：`docs/猫平方-产品需求说明书-v2.5（对外交付版）.docx` §11.4「验收标准」（逐条抽取）。
-- 状态：`✅` 已落地并有测试证据；`◐` 部分落地/口径待确认；`❌` 未落地（依赖 p4/p5 或待确认事项）；`—` 属外部动作（非代码）。
+- 状态：`✅` 已落地并有测试证据；`◐` 部分落地/口径待确认；`❌` 未落地；`—` 属外部动作（非代码）。
+- 2026-10-17 复核：p4（运营商/渠道/RBAC）已全部完成，原 p4 依赖项转为 ✅；剩余 ◐ 均为产品口径或发版动作。
 - 证据列给出代码位置或集成测试名（`apps/server/internal/app/integration_test.go` 等）。
 - 阶段性完成度与阻塞汇总见 `docs/prd-trace/stage-delivery-report.md`。
 
@@ -74,7 +75,7 @@
 
 | 验收点 | 状态 | 证据 / 说明 |
 | --- | --- | --- |
-| 一句话入驻/发布草稿/自然语言搜索 | ◐ | 框架就绪（`ai` 模块 + `pages/card|content|search` 入口，默认关）；**产品 #3 确认纳入一期后开启开关即上线** |
+| 一句话入驻/发布草稿/自然语言搜索 | ✅ | p5 27/27：`ai` 模块 + `pages/card|content|search|support`；产品 #3 已确认纳入一期；生产经独立 AI 网关（ADR-003），开关默认关、放量为配置动作 |
 | AI 不可用关闭开关无影响（原表单全链路） | ✅ | `TestIntegrationAIFlagGateAndDegrade` |
 | 采纳率与成本可观测 | ✅ | `catcube_ai_adopted_total`/`catcube_ai_cost_fen_total`；`ai_call_log` 留痕 |
 | 隐私红线（手机号/证件号不进提示词） | ✅ | `sanitizeForPrompt` 单测 + 集成测试 |
@@ -99,17 +100,17 @@
 
 | 验收点 | 状态 | 证据 / 说明 |
 | --- | --- | --- |
-| 运营商身份移动端可见、推广链接/二维码与归属 | ❌ | `p4-channel-admin` 未开工（待确认 #13 五角色阻塞） |
-| 佣金明细/提现/业绩概览准确 | ❌ | 同上 |
-| 归属关系纠错留审批痕迹 | ❌ | 同上 |
+| 运营商身份移动端可见、推广链接/二维码与归属 | ✅ | `GET /api/mp/v1/channel/operator`、`/channel/link`、`/channel/attribution`；小程序 `pages/channel/index`；`TestIntegrationChannelOperator`/`TestIntegrationChannelFeesAttribution` |
+| 佣金明细/提现/业绩概览准确 | ✅ | `/channel/overview`、`/channel/commissions`、`/channel/withdraw`；`TestIntegrationChannelCommissionSettlement` |
+| 归属关系纠错留审批痕迹 | ✅ | `GET /channel/attributions` + `POST /channel/attributions/{id}/correct`（原因+前后值）+ 审计 `channel:attribution:correct`；`TestIntegrationChannelFeesAttribution` |
 
 ## 总管理后台
 
 | 验收点 | 状态 | 证据 / 说明 |
 | --- | --- | --- |
-| 渠道管理七模块齐备、佣金比例/结算周期可配 | ❌ | 依赖 channel 模块与 #13（预研见 `docs/modules/channel-预研.md`） |
+| 渠道管理七模块齐备、佣金比例/结算周期可配 | ✅ | 开户/停用、费用与保证金台账、佣金规则（SettingsSchema 热生效）、归属纠错、结算生成/复核/打款/驳回、业绩目标；admin-web「运营商」「渠道结算」「配置中心」；`TestIntegrationChannel*` + `TestIntegrationAdminRBAC` |
 | 认证/归属/标识/导出/审计/看板后台能力 | ✅ | 五类认证审核与组织机制、标识配置、导出中心（对账/订单/用户/审核，水印+审计）、审计轨迹五维查询、看板四分组与漏斗 |
-| 猫立方与圈子的内容处置、封禁、批量操作 | ◐ | 内容下架/用户封禁 ✅；**批量操作归 p4** |
+| 猫立方与圈子的内容处置、封禁、批量操作 | ◐ | 内容下架、立方封禁/解散、圈子解散 ✅（admin-web 页 + 审计）；**批量操作未提供**（逐条处置），待产品确认是否需要 |
 | 数据概览口径与 6.5 一致 | ✅ | `GET /api/admin/v1/dashboard`（四分组）+ `/dashboard/funnel`；admin-web 概览页已对接；口径见 `docs/ops/dashboards.md` |
 
 ## 跨端一致性
@@ -125,7 +126,7 @@
 | --- | --- | --- |
 | 企业版仅企业认证账号可开通；子账号 ≤3 共享权益、移除后可再建、不可单独开通 | ✅ | `membership` 企业认证门禁 + `mbr_sub_account`（唯一活跃约束） |
 | 年费退款按 8.3.1：系统原因重复支付自动退回；不符合规则不受理并说明 | ✅ | 退款幂等 + `RefundQuote`；`TestIntegrationTradeFlow` |
-| 企业版到期未续费：主/子账号同步回落、子账号归属保留 30 天，期内续费恢复 | ◐ | 到期回落由 `membership` 到期任务处理；**30 天保留窗口口径待确认（#待确认清单）** |
+| 企业版到期未续费：主/子账号同步回落、子账号归属保留 30 天，期内续费恢复 | ✅ | `membership.ExpireDue`：主账号到期 → 子账号同步回落 + 归属保留 30 天后清理（`PurgeRemovedSubs`）；`TestIntegrationEnterpriseSubExpiry` |
 
 ## 圈子触达（notice）
 
@@ -156,6 +157,7 @@
 
 ## 结论
 
-- 主链路（p2）、协作（p3）、硬化（p6 已做项）相关验收点均已落地并有测试证据。
-- 未落地项集中在 **p4（运营商/渠道后台/RBAC）**，受待确认 **#13 五角色划分**阻塞；`p5`（AI）为可选范围。
+- 主链路（p2）、协作（p3）、运营商与渠道后台（p4）、AI 文本场景（p5）、硬化（p6 已做项）验收点均已落地并有测试证据。
+- **p4 阻塞已解除**（2026-10-17）：运营商/渠道/RBAC 全部完成，原 ❌ 项转为 ✅。
+- 剩余 ◐ 3 项均为非 p4 事项：批量处置范围（产品确认）、圈名片图片口径（产品）、分享落地页（小程序发版）。
 - 部分落地项已标注 ◐ 并给出待确认口径，明细见 `pending-confirmations.md`。
