@@ -239,7 +239,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		Flags: flagStore, Settings: settingsReg, Storage: storage, Audit: auditRec, Runner: schedRunner})
 	aiMod := ai.New(ai.Deps{Pool: pool, Flags: flagStore, LLM: llm.NewDevClient(), Auth: authFunc,
 		Settings: settingsReg, Dict: dictMod.Facade(), Audit: auditRec})
-	channelMod := channel.New(channel.Deps{Pool: pool, Bus: bus, Auth: authFunc, Audit: auditRec, Dict: dictMod.Facade(), Settings: settingsReg, Policy: policyEngine})
+	channelMod := channel.New(channel.Deps{Pool: pool, Bus: bus, Auth: authFunc, Audit: auditRec, Dict: dictMod.Facade(), Cube: cubeMod.Facade(), Settings: settingsReg, Policy: policyEngine})
 	// 审核辅助（AI 预分类/摘要）：装配根桥接同阶模块（trust ← ai）
 	trustMod.SetSuggester(aiSuggester{ai: aiMod.Facade()})
 	mods := []module.Module{
@@ -819,6 +819,7 @@ func adminSectionsFor(mods []module.Module) []module.AdminSection {
 		"notice":     {{Key: "notice.templates", Label: "通知模板", Path: "/templates", Module: "notice"}},
 		"ops":        {{Key: "ops.dead_letters", Label: "死信队列", Path: "/dead-letters", Module: "ops"}, {Key: "ops.rbac", Label: "角色与权限", Path: "/roles", Module: "ops"}, {Key: "ops.system_settings", Label: "系统设置", Path: "/system-settings", Module: "ops"}},
 		"dict":       {{Key: "dict.taxonomy", Label: "主体类型与选项", Path: "/dict", Module: "dict"}},
+		"channel":    {{Key: "channel.operators", Label: "运营商", Path: "/channel-operators", Module: "channel"}, {Key: "channel.settlements", Label: "渠道结算", Path: "/channel-settlements", Module: "channel"}},
 	}
 	var out []module.AdminSection
 	for _, m := range mods {

@@ -19,6 +19,8 @@ import AiPrompts from './pages/AiPrompts'
 import Badges from './pages/Badges'
 import Roles from './pages/Roles'
 import SystemSettings from './pages/SystemSettings'
+import ChannelOperators from './pages/ChannelOperators'
+import ChannelSettlements from './pages/ChannelSettlements'
 import User360 from './pages/User360'
 import Dashboard from './pages/Dashboard'
 
@@ -56,6 +58,8 @@ export default function App() {
         <Route path="badges" element={<Badges />} />
         <Route path="roles" element={<Roles />} />
         <Route path="system-settings" element={<SystemSettings />} />
+        <Route path="channel-operators" element={<ChannelOperators />} />
+        <Route path="channel-settlements" element={<ChannelSettlements />} />
         <Route path="users/:id/360" element={<User360 />} />
       </Route>
     </Routes>

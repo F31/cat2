@@ -293,6 +293,50 @@ export const adminApi = {
     return call<{ dissolved: boolean }>('POST', `/admin/v1/circles/${id}/dissolve`, { reason })
   },
 
+  // ---- 渠道（运营商/结算）----
+  channelOperators(status?: number) {
+    return call<{ items: ChannelOperatorRow[] }>(
+      'GET',
+      `/admin/v1/channel/operators${status != null ? `?status=${status}` : ''}`,
+    )
+  },
+  channelOpenOperator(id: string) {
+    return call<{ ok: boolean }>('POST', `/admin/v1/channel/operators/${id}/open`)
+  },
+  channelSuspendOperator(id: string) {
+    return call<{ ok: boolean }>('POST', `/admin/v1/channel/operators/${id}/suspend`)
+  },
+  channelOperatorFees(id: string) {
+    return call<ChannelFees>('GET', `/admin/v1/channel/operators/${id}/fees`)
+  },
+  channelRecordFees(id: string, body: { agency_fee_fen: number; agency_fee_year: number; guarantee_fen: number }) {
+    return call<{ ok: boolean }>('POST', `/admin/v1/channel/operators/${id}/fees`, body)
+  },
+  channelRefundGuarantee(id: string, reason: string) {
+    return call<{ ok: boolean }>('POST', `/admin/v1/channel/operators/${id}/guarantee/refund`, { reason })
+  },
+  channelSettlements(status?: number) {
+    return call<{ items: ChannelSettlementRow[] }>(
+      'GET',
+      `/admin/v1/channel/settlements${status != null ? `?status=${status}` : ''}`,
+    )
+  },
+  channelGenerateSettlement(operatorId: string, month?: string) {
+    return call<{ settlement_id: string }>('POST', '/admin/v1/channel/settlements/generate', {
+      operator_id: operatorId,
+      month,
+    })
+  },
+  channelReviewSettlement(id: string) {
+    return call<{ ok: boolean }>('POST', `/admin/v1/channel/settlements/${id}/review`)
+  },
+  channelRejectSettlement(id: string, reason: string) {
+    return call<{ ok: boolean }>('POST', `/admin/v1/channel/settlements/${id}/reject`, { reason })
+  },
+  channelPaySettlement(id: string, voucherRef: string) {
+    return call<{ ok: boolean }>('POST', `/admin/v1/channel/settlements/${id}/pay`, { voucher_ref: voucherRef })
+  },
+
   governanceUsers(f: {
     q?: string
     phone?: string
@@ -409,4 +453,43 @@ export interface AiUsage {
   adopt_rate: number
   tokens: number
   cost_fen: number
+}
+
+export interface ChannelOperatorRow {
+  id: string
+  user_id: string
+  region_code: string
+  region_name?: string
+  name: string
+  status: number
+  referrer_operator_id: string
+  opened_at?: number
+}
+
+export interface ChannelGuaranteeRow {
+  id: number
+  amount_fen: number
+  paid_at: number
+  refunded_at: number
+  refund_reason: string
+}
+
+export interface ChannelFees {
+  agency_fee_paid_fen: number
+  agency_fee_year: number
+  guarantee_fen: number
+  guarantees: ChannelGuaranteeRow[]
+}
+
+export interface ChannelSettlementRow {
+  id: number
+  operator_id: number
+  month: string
+  commission_fen: number
+  adjust_fen: number
+  payable_fen: number
+  status: number
+  reviewed_by: number
+  paid_by: number
+  voucher_ref: string
 }

@@ -6212,6 +6212,28 @@ func TestIntegrationChannelCommissionSettlement(t *testing.T) {
 		t.Fatalf("续费计佣未按配置: amount=%d ratio=%d", renewAmount, renewRatio)
 	}
 
+	// 保底任务：立方项目落地（按立方猫王归属运营商）计数（p4 §2.5）
+	cubeID := time.Now().UnixNano()
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO cub_cube (id, name, leader_id, honey_id, region_code, status)
+		VALUES ($1,'落地项目立方',$2,$2,'310000',0)`, cubeID, cuid); err != nil {
+		t.Fatal(err)
+	}
+	pp, _ := json.Marshal(map[string]any{"cube_id": fmt.Sprintf("%d", cubeID), "project_id": "1", "name": "落地项目"})
+	if err := h.app.Bus.Publish(ctx, nil, eventbus.Event{ID: fmt.Sprintf("proj-%d", cubeID), Topic: "cube.ProjectCreated.v1", Payload: pp, SpaceID: 1}); err != nil {
+		t.Fatal(err)
+	}
+	relayAll(t, h)
+	var landing int
+	if err := h.app.Pool.QueryRow(ctx, `
+		SELECT landing_project_count FROM chn_annual_target WHERE operator_id=$1 AND year=$2`,
+		opID, time.Now().Year()).Scan(&landing); err != nil {
+		t.Fatalf("落地项目计数缺失: %v", err)
+	}
+	if landing < 1 {
+		t.Fatalf("落地项目计数应≥1: %d", landing)
+	}
+
 	// 月结：生成 → 复核 → 打款（复核≠执行）
 	_, env = h.do(http.MethodPost, "/api/admin/v1/channel/settlements/generate", admTok, map[string]any{"operator_id": fmt.Sprintf("%d", opID)})
 	var sid struct {

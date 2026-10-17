@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"catcube/internal/kernel/audit"
+	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/obs"
 	"catcube/pkg/ids"
 )
@@ -185,6 +186,38 @@ func (m *Module) handleCorrectAttribution(w http.ResponseWriter, req *http.Reque
 	}
 	m.auditAdmin(req, "channel:attribution:correct", id, nil, audit.ResultOK)
 	writeData(w, map[string]any{"ok": true})
+}
+
+// countLandingProject 立方项目创建 → 按立方猫王归属运营商累加落地项目数（保底任务）。
+func (m *Module) countLandingProject(ctx context.Context, e eventbus.Event) error {
+	var p struct {
+		CubeID int64 `json:"cube_id,string"`
+	}
+	if err := json.Unmarshal(e.Payload, &p); err != nil || p.CubeID == 0 {
+		return nil
+	}
+	var leaderID int64
+	if m.deps.Cube != nil {
+		b, err := m.deps.Cube.Brief(ctx, p.CubeID)
+		if err != nil {
+			return nil
+		}
+		leaderID = b.LeaderID
+	}
+	if leaderID == 0 {
+		return nil
+	}
+	var operatorID int64
+	if err := m.deps.Pool.QueryRow(ctx,
+		`SELECT operator_id FROM chn_attribution WHERE user_id=$1 AND unbind_at IS NULL`, leaderID).Scan(&operatorID); err != nil {
+		return nil
+	}
+	_, err := m.deps.Pool.Exec(ctx, `
+		INSERT INTO chn_annual_target (operator_id, year, landing_project_count)
+		VALUES ($1,$2,1)
+		ON CONFLICT (operator_id, year) DO UPDATE SET landing_project_count = chn_annual_target.landing_project_count + 1, updated_at=now()`,
+		operatorID, time.Now().Year())
+	return err
 }
 
 // monitorTargets 保底任务监控：更新 warn_flags 与指标（每日）。

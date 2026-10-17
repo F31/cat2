@@ -20,6 +20,7 @@ import (
 	"catcube/internal/kernel/statemachine"
 	"catcube/internal/modules/channel/contract"
 	"catcube/internal/modules/channel/domain"
+	cubecontract "catcube/internal/modules/cube/contract"
 	dictcontract "catcube/internal/shared/dict/contract"
 	"catcube/pkg/ids"
 )
@@ -48,6 +49,7 @@ type Deps struct {
 	Auth     AuthFunc
 	Audit    *audit.Recorder
 	Dict     dictcontract.Facade
+	Cube     cubecontract.Facade
 	Settings *settings.Registry
 	Policy   *policy.Engine
 }
@@ -62,7 +64,7 @@ func New(deps Deps) *Module { return &Module{deps: deps, dict: deps.Dict} }
 
 func (m *Module) Name() string        { return "channel" }
 func (m *Module) Rank() module.Rank   { return module.RankR4 }
-func (m *Module) DependsOn() []string { return []string{"identity"} }
+func (m *Module) DependsOn() []string { return []string{"identity", "cube"} }
 
 const migrations = `
 CREATE TABLE IF NOT EXISTS chn_operator (
@@ -213,6 +215,10 @@ func (m *Module) Register(r *module.Registry) error {
 	// 计佣：订阅订阅制订单支付成功（首单/续费按配置比例，写快照）
 	r.EventSubs = append(r.EventSubs, eventbus.Subscription{
 		Topic: "trade.OrderPaid.v1", Handler: m.accrueOnOrderPaid,
+	})
+	// 保底任务：立方项目落地（按立方猫王归属运营商）计数
+	r.EventSubs = append(r.EventSubs, eventbus.Subscription{
+		Topic: "cube.ProjectCreated.v1", Handler: m.countLandingProject,
 	})
 	return nil
 }
