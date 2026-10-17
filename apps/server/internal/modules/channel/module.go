@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS chn_settlement (
 	paid_at timestamptz,
 	voucher_ref text,
 	reason varchar(200),
+	created_at timestamptz NOT NULL DEFAULT now(),
 	UNIQUE(operator_id, month)
 );
 
@@ -182,19 +183,32 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/channel/settlements/generate", Handler: m.auth(m.handleGenerateSettlement), Admin: true, Perm: "channel:settlement:create"},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/channel/settlements/{id}/review", Handler: m.auth(m.handleReviewSettlement), Admin: true, Perm: "channel:settlement:review"},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/channel/settlements/{id}/reject", Handler: m.auth(m.handleRejectSettlement), Admin: true, Perm: "channel:settlement:review"},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/channel/settlements/{id}/pay", Handler: m.auth(m.handlePaySettlement), Admin: true, Perm: "channel:settlement:pay"})
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/channel/settlements/{id}/pay", Handler: m.auth(m.handlePaySettlement), Admin: true, Perm: "channel:settlement:pay"},
+		// 代理费/保证金台账（2.1）与归属纠错（2.6）
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/channel/operators/{id}/fees", Handler: m.auth(m.handleOperatorFees), Admin: true, Perm: "channel:operator_fee:set"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/channel/operators/{id}/fees", Handler: m.auth(m.handleRecordFees), Admin: true, Perm: "channel:operator_fee:set"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/channel/operators/{id}/guarantee/refund", Handler: m.auth(m.handleRefundGuarantee), Admin: true, Perm: "channel:operator_fee:set"},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/channel/attributions", Handler: m.auth(m.handleListAttributions), Admin: true, Perm: "governance:user:read"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/channel/attributions/{id}/correct", Handler: m.auth(m.handleCorrectAttribution), Admin: true, Perm: "channel:operator:review"},
+	)
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "channel:operator:open", Path: "/api/admin/v1/channel/operators/{id}/open", Required: true, LogFailed: true, Module: "channel"},
 		audit.Point{Action: "channel:operator:suspend", Path: "/api/admin/v1/channel/operators/{id}/suspend", Required: true, LogFailed: true, Module: "channel"},
 		audit.Point{Action: "channel:settlement:review", Path: "/api/admin/v1/channel/settlements/{id}/review", Required: true, LogFailed: true, Module: "channel"},
 		audit.Point{Action: "channel:settlement:reject", Path: "/api/admin/v1/channel/settlements/{id}/reject", Required: true, LogFailed: true, Module: "channel"},
 		audit.Point{Action: "channel:settlement:pay", Path: "/api/admin/v1/channel/settlements/{id}/pay", Required: true, LogFailed: true, Module: "channel"},
+		audit.Point{Action: "channel:operator_fee:record", Path: "/api/admin/v1/channel/operators/{id}/fees", Required: true, LogFailed: true, Module: "channel"},
+		audit.Point{Action: "channel:guarantee:refund", Path: "/api/admin/v1/channel/operators/{id}/guarantee/refund", Required: true, LogFailed: true, Module: "channel"},
+		audit.Point{Action: "channel:attribution:correct", Path: "/api/admin/v1/channel/attributions/{id}/correct", Required: true, LogFailed: true, Module: "channel"},
 	)
 	r.AdminSections = append(r.AdminSections,
 		module.AdminSection{Key: "channel.operators", Label: "运营商", Path: "/channel-operators", Module: "channel"},
 		module.AdminSection{Key: "channel.settlements", Label: "渠道结算", Path: "/channel-settlements", Module: "channel"})
 	r.StateMachines = append(r.StateMachines, domain.MachineOperator, domain.MachineSettlement)
 	r.Settings = append(r.Settings, Schemas...)
+	r.Jobs = append(r.Jobs,
+		module.JobDef{Name: "channel.target_monitor", Interval: 24 * time.Hour, Run: m.monitorTargets},
+	)
 	// 计佣：订阅订阅制订单支付成功（首单/续费按配置比例，写快照）
 	r.EventSubs = append(r.EventSubs, eventbus.Subscription{
 		Topic: "trade.OrderPaid.v1", Handler: m.accrueOnOrderPaid,
@@ -431,6 +445,11 @@ func (m *Module) commissions(ctx context.Context, operatorID int64, month string
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// Commissions 佣金明细（契约开放）。
+func (m *Module) Commissions(ctx context.Context, operatorID int64, month string, limit int) ([]contract.Commission, error) {
+	return m.commissions(ctx, operatorID, month, limit)
 }
 
 // ListOperators 后台列表。

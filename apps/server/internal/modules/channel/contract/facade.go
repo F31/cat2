@@ -77,6 +77,8 @@ type Facade interface {
 	BindAttribution(ctx context.Context, userID int64, code string) (Attribution, error)
 	// Overview 业绩概览（佣金合计 + 保底任务）。
 	Overview(ctx context.Context, userID int64, month string) (Overview, error)
+	// Commissions 佣金明细（跨模块/后台查询）。
+	Commissions(ctx context.Context, operatorID int64, month string, limit int) ([]Commission, error)
 	// ListOperators 后台运营商列表（可按状态/区域过滤）。
 	ListOperators(ctx context.Context, status int16, regionCode string, limit int) ([]Operator, error)
 }

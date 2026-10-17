@@ -17,15 +17,15 @@
 
 ## 2. channel：佣金与结算（后台）
 
-- [◐] 2.1 开户审核：区域查重一地一家 ✅（局部唯一索引 + 开通校验）；代理费/保证金金额 SettingsSchema 动态可配 ✅（`channel.agency_fee.*`/`channel.guarantee.fen`）；**待办**：收款登记/保证金退款台账接口（`chn_guarantee` 表已建）
+- [x] 2.1 开户审核：区域查重一地一家 ✅；代理费/保证金金额 SettingsSchema 动态可配 ✅；收款登记 `POST /admin/v1/channel/operators/{id}/fees` + 保证金退款 `.../guarantee/refund`（`chn_guarantee` 预收台账，退款走台账）+ 台账查询；审计 `channel:operator_fee:record`/`channel:guarantee:refund`
 - [x] 2.2 佣金规则配置：`channel.commission.first_ratio_bp/renew_ratio_bp/scope`（首单 30%/续费 10%；范围 `membership`，不含立方分摊/保证金）；运行期动态可配（热生效，`TestIntegrationChannelCommissionSettlement` 验证改比例即生效）；权限点 `channel:commission_rule:set`
 - [x] 2.3 计佣：订阅 `trade.OrderPaid.v1` → 按归属运营商 + 计佣时配置比例生成 `chn_commission` 流水并写 `ratio_snapshot`（首单/续费判定；保底任务计数累加）；`TestIntegrationChannelCommissionSettlement`
 - [x] 2.4 月结状态机 #17（待结算→已复核→已打款；驳回）：后台生成/复核/驳回/打款接口 + 运营商提现申请；凭证 `voucher_ref`；**复核≠执行**经内核 policy 强制（同人复核+打款 400；审计）
-- [◐] 2.5 保底任务：`chn_annual_target` 随计佣累加付费会员数；**待办**：落地项目计数、达/预警阈值与提醒（`warn_flags`）
-- [ ] 2.6 归属纠错审批留痕（`chn_attribution.correct_approval`）
-- [ ] 2.7 对账导出（按运营商/区域/时间）走导出中心
+- [◐] 2.5 保底任务：`chn_annual_target` 随计佣累加付费会员数；每日任务 `channel.target_monitor` 计算 `warn_flags`（members_low/projects_low）+ 指标 `catcube_channel_target_warn`；**待办**：落地项目计数接入（cube 事件）
+- [x] 2.6 归属纠错：后台 `GET /channel/attributions` + `POST /channel/attributions/{id}/correct`（旧归属 `unbind_at`、新归属写入、`correct_approval` 留痕、审计 `channel:attribution:correct`）
+- [x] 2.7 对账导出：导出中心新增 `settlements` 模板（结算单：运营商/区域/月份/佣金/复核/打款/凭证，按创建时间范围）
 - [x] 2.8 事件：`channel.OperatorStatusChanged.v1`/`channel.CommissionAccrued.v1`/`channel.SettlementPaid.v1` Schema（contracts/events）+ 发布
-- [◐] 2.9 contract：`OperatorOf`/`Apply`/`OpenOperator`/`SuspendOperator`/`AttributionOf`/`BindAttribution`/`Overview`/`ListOperators` 已入 Facade；结算 `Approve/Pay` 为模块方法（后台直调）；**待办**：`CommissionOf` 跨模块查询开口
+- [x] 2.9 contract：`OperatorOf`/`Apply`/`OpenOperator`/`SuspendOperator`/`AttributionOf`/`BindAttribution`/`Overview`/`Commissions`/`ListOperators` 已入 Facade；结算复核/打款为模块方法（后台直调 + 权限点）
 
 ## 3. 后台 RBAC 与权限点
 

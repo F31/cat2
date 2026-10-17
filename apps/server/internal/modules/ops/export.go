@@ -22,7 +22,7 @@ var exportTemplates = map[string]string{
 	"orders":         "订单明细",
 	"users":          "用户列表（脱敏）",
 	"reviews":        "审核记录",
-	"settlements":    "结算明细（渠道开通后启用）",
+	"settlements":    "渠道结算明细（运营商/区域/时间）",
 }
 
 // exportParams 允许的时间范围参数。
@@ -281,7 +281,36 @@ func (m *Module) renderExport(ctx context.Context, template string, from, to, re
 			n++
 		}
 	case "settlements":
-		return nil, 0, fmt.Errorf("导出模板 settlements 待渠道模块开通后启用")
+		cw.Write([]string{"settlement_id", "operator_id", "region_code", "month", "commission_fen", "adjust_fen", "payable_fen", "status", "reviewed_by", "paid_by", "paid_at", "voucher_ref"})
+		rows, err := m.deps.Pool.Query(ctx, `
+			SELECT s.id, s.operator_id, COALESCE(o.region_code,''), s.month, s.commission_fen, s.adjust_fen,
+			       s.payable_fen, s.status, s.reviewed_by, s.paid_by, s.paid_at, COALESCE(s.voucher_ref,'')
+			FROM chn_settlement s LEFT JOIN chn_operator o ON o.id=s.operator_id
+			WHERE s.created_at >= to_timestamp($1) AND s.created_at < to_timestamp($2)
+			ORDER BY s.created_at`, from, to)
+		if err != nil {
+			return nil, 0, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id, opID, commission, adjust, payable, reviewedBy, paidBy int64
+			var month, region, voucher string
+			var status int16
+			var paidAt *time.Time
+			if err := rows.Scan(&id, &opID, &region, &month, &commission, &adjust, &payable, &status, &reviewedBy, &paidBy, &paidAt, &voucher); err != nil {
+				return nil, 0, err
+			}
+			var paidStr string
+			if paidAt != nil {
+				paidStr = paidAt.Format(time.RFC3339)
+			}
+			cw.Write([]string{
+				strconv.FormatInt(id, 10), strconv.FormatInt(opID, 10), region, month,
+				strconv.FormatInt(commission, 10), strconv.FormatInt(adjust, 10), strconv.FormatInt(payable, 10),
+				strconv.Itoa(int(status)), strconv.FormatInt(reviewedBy, 10), strconv.FormatInt(paidBy, 10), paidStr, voucher,
+			})
+			n++
+		}
 	}
 	cw.Flush()
 	if err := cw.Error(); err != nil {

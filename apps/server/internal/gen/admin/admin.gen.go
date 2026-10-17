@@ -401,6 +401,40 @@ type AdminReviewCertJSONBody struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
+// AdminChannelCorrectAttributionJSONBody defines parameters for AdminChannelCorrectAttribution.
+type AdminChannelCorrectAttributionJSONBody struct {
+	OperatorId int     `json:"operator_id"`
+	Reason     *string `json:"reason,omitempty"`
+}
+
+// AdminChannelRecordFeesJSONBody defines parameters for AdminChannelRecordFees.
+type AdminChannelRecordFeesJSONBody struct {
+	AgencyFeeFen  *int `json:"agency_fee_fen,omitempty"`
+	AgencyFeeYear *int `json:"agency_fee_year,omitempty"`
+	GuaranteeFen  *int `json:"guarantee_fen,omitempty"`
+}
+
+// AdminChannelRefundGuaranteeJSONBody defines parameters for AdminChannelRefundGuarantee.
+type AdminChannelRefundGuaranteeJSONBody struct {
+	Reason *string `json:"reason,omitempty"`
+}
+
+// AdminChannelGenerateSettlementJSONBody defines parameters for AdminChannelGenerateSettlement.
+type AdminChannelGenerateSettlementJSONBody struct {
+	Month      *string `json:"month,omitempty"`
+	OperatorId string  `json:"operator_id"`
+}
+
+// AdminChannelPaySettlementJSONBody defines parameters for AdminChannelPaySettlement.
+type AdminChannelPaySettlementJSONBody struct {
+	VoucherRef *string `json:"voucher_ref,omitempty"`
+}
+
+// AdminChannelRejectSettlementJSONBody defines parameters for AdminChannelRejectSettlement.
+type AdminChannelRejectSettlementJSONBody struct {
+	Reason *string `json:"reason,omitempty"`
+}
+
 // AdminDissolveCircleJSONBody defines parameters for AdminDissolveCircle.
 type AdminDissolveCircleJSONBody struct {
 	Reason string `json:"reason"`
@@ -601,6 +635,24 @@ type AdminUpsertBadgeJSONRequestBody AdminUpsertBadgeJSONBody
 // AdminReviewCertJSONRequestBody defines body for AdminReviewCert for application/json ContentType.
 type AdminReviewCertJSONRequestBody AdminReviewCertJSONBody
 
+// AdminChannelCorrectAttributionJSONRequestBody defines body for AdminChannelCorrectAttribution for application/json ContentType.
+type AdminChannelCorrectAttributionJSONRequestBody AdminChannelCorrectAttributionJSONBody
+
+// AdminChannelRecordFeesJSONRequestBody defines body for AdminChannelRecordFees for application/json ContentType.
+type AdminChannelRecordFeesJSONRequestBody AdminChannelRecordFeesJSONBody
+
+// AdminChannelRefundGuaranteeJSONRequestBody defines body for AdminChannelRefundGuarantee for application/json ContentType.
+type AdminChannelRefundGuaranteeJSONRequestBody AdminChannelRefundGuaranteeJSONBody
+
+// AdminChannelGenerateSettlementJSONRequestBody defines body for AdminChannelGenerateSettlement for application/json ContentType.
+type AdminChannelGenerateSettlementJSONRequestBody AdminChannelGenerateSettlementJSONBody
+
+// AdminChannelPaySettlementJSONRequestBody defines body for AdminChannelPaySettlement for application/json ContentType.
+type AdminChannelPaySettlementJSONRequestBody AdminChannelPaySettlementJSONBody
+
+// AdminChannelRejectSettlementJSONRequestBody defines body for AdminChannelRejectSettlement for application/json ContentType.
+type AdminChannelRejectSettlementJSONRequestBody AdminChannelRejectSettlementJSONBody
+
 // AdminDissolveCircleJSONRequestBody defines body for AdminDissolveCircle for application/json ContentType.
 type AdminDissolveCircleJSONRequestBody AdminDissolveCircleJSONBody
 
@@ -708,6 +760,45 @@ type ServerInterface interface {
 	// AdminReviewCert 平台审核认证（全类型）
 	// (POST /certs/{id}/review)
 	AdminReviewCert(w http.ResponseWriter, r *http.Request, id string)
+	// AdminChannelAttributions 归属关系列表（有效）
+	// (GET /channel/attributions)
+	AdminChannelAttributions(w http.ResponseWriter, r *http.Request)
+	// AdminChannelCorrectAttribution 归属纠错（审批留痕；单一有效）
+	// (POST /channel/attributions/{id}/correct)
+	AdminChannelCorrectAttribution(w http.ResponseWriter, r *http.Request, id string)
+	// AdminChannelOperators 运营商列表（状态/区域过滤）
+	// (GET /channel/operators)
+	AdminChannelOperators(w http.ResponseWriter, r *http.Request)
+	// AdminChannelOperatorFees 代理费/保证金台账
+	// (GET /channel/operators/{id}/fees)
+	AdminChannelOperatorFees(w http.ResponseWriter, r *http.Request, id string)
+	// AdminChannelRecordFees 代理费/保证金收款登记（审计）
+	// (POST /channel/operators/{id}/fees)
+	AdminChannelRecordFees(w http.ResponseWriter, r *http.Request, id string)
+	// AdminChannelRefundGuarantee 保证金退款（走台账；审计）
+	// (POST /channel/operators/{id}/guarantee/refund)
+	AdminChannelRefundGuarantee(w http.ResponseWriter, r *http.Request, id string)
+	// AdminChannelOpenOperator 开通运营商（一地一家；审计）
+	// (POST /channel/operators/{id}/open)
+	AdminChannelOpenOperator(w http.ResponseWriter, r *http.Request, id string)
+	// AdminChannelSuspendOperator 停用运营商（审计）
+	// (POST /channel/operators/{id}/suspend)
+	AdminChannelSuspendOperator(w http.ResponseWriter, r *http.Request, id string)
+	// AdminChannelSettlements 结算单列表
+	// (GET /channel/settlements)
+	AdminChannelSettlements(w http.ResponseWriter, r *http.Request)
+	// AdminChannelGenerateSettlement 生成月结结算单
+	// (POST /channel/settlements/generate)
+	AdminChannelGenerateSettlement(w http.ResponseWriter, r *http.Request)
+	// AdminChannelPaySettlement 打款（复核≠执行；凭证留存）
+	// (POST /channel/settlements/{id}/pay)
+	AdminChannelPaySettlement(w http.ResponseWriter, r *http.Request, id string)
+	// AdminChannelRejectSettlement 驳回结算单
+	// (POST /channel/settlements/{id}/reject)
+	AdminChannelRejectSettlement(w http.ResponseWriter, r *http.Request, id string)
+	// AdminChannelReviewSettlement 复核结算单
+	// (POST /channel/settlements/{id}/review)
+	AdminChannelReviewSettlement(w http.ResponseWriter, r *http.Request, id string)
 	// AdminDissolveCircle 平台解散圈子（代操作，前后值审计）
 	// (POST /circles/{id}/dissolve)
 	AdminDissolveCircle(w http.ResponseWriter, r *http.Request, id string)
@@ -1324,6 +1415,296 @@ func (siw *ServerInterfaceWrapper) AdminReviewCert(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminReviewCert(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminChannelAttributions operation middleware
+func (siw *ServerInterfaceWrapper) AdminChannelAttributions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminChannelAttributions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminChannelCorrectAttribution operation middleware
+func (siw *ServerInterfaceWrapper) AdminChannelCorrectAttribution(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminChannelCorrectAttribution(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminChannelOperators operation middleware
+func (siw *ServerInterfaceWrapper) AdminChannelOperators(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminChannelOperators(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminChannelOperatorFees operation middleware
+func (siw *ServerInterfaceWrapper) AdminChannelOperatorFees(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminChannelOperatorFees(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminChannelRecordFees operation middleware
+func (siw *ServerInterfaceWrapper) AdminChannelRecordFees(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminChannelRecordFees(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminChannelRefundGuarantee operation middleware
+func (siw *ServerInterfaceWrapper) AdminChannelRefundGuarantee(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminChannelRefundGuarantee(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminChannelOpenOperator operation middleware
+func (siw *ServerInterfaceWrapper) AdminChannelOpenOperator(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminChannelOpenOperator(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminChannelSuspendOperator operation middleware
+func (siw *ServerInterfaceWrapper) AdminChannelSuspendOperator(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminChannelSuspendOperator(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminChannelSettlements operation middleware
+func (siw *ServerInterfaceWrapper) AdminChannelSettlements(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminChannelSettlements(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminChannelGenerateSettlement operation middleware
+func (siw *ServerInterfaceWrapper) AdminChannelGenerateSettlement(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminChannelGenerateSettlement(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminChannelPaySettlement operation middleware
+func (siw *ServerInterfaceWrapper) AdminChannelPaySettlement(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminChannelPaySettlement(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminChannelRejectSettlement operation middleware
+func (siw *ServerInterfaceWrapper) AdminChannelRejectSettlement(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminChannelRejectSettlement(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminChannelReviewSettlement operation middleware
+func (siw *ServerInterfaceWrapper) AdminChannelReviewSettlement(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminChannelReviewSettlement(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2771,6 +3152,19 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/roles/{code}/scope", wrapper.AdminSetRoleScope)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin-users/{id}/roles", wrapper.AdminUserRoles)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/admin-users/{id}/roles", wrapper.AdminAssignRoles)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/channel/operators", wrapper.AdminChannelOperators)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/channel/operators/{id}/open", wrapper.AdminChannelOpenOperator)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/channel/operators/{id}/suspend", wrapper.AdminChannelSuspendOperator)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/channel/operators/{id}/fees", wrapper.AdminChannelOperatorFees)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/channel/operators/{id}/fees", wrapper.AdminChannelRecordFees)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/channel/operators/{id}/guarantee/refund", wrapper.AdminChannelRefundGuarantee)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/channel/attributions", wrapper.AdminChannelAttributions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/channel/attributions/{id}/correct", wrapper.AdminChannelCorrectAttribution)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/channel/settlements", wrapper.AdminChannelSettlements)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/channel/settlements/generate", wrapper.AdminChannelGenerateSettlement)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/channel/settlements/{id}/review", wrapper.AdminChannelReviewSettlement)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/channel/settlements/{id}/reject", wrapper.AdminChannelRejectSettlement)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/channel/settlements/{id}/pay", wrapper.AdminChannelPaySettlement)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports", wrapper.AdminExports)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/exports", wrapper.AdminCreateExport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports/{id}/download", wrapper.AdminDownloadExport)

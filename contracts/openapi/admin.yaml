@@ -323,6 +323,155 @@ paths:
             schema: { type: object, required: [roles], properties: { roles: { type: array, items: { type: string } } } }
       responses:
         '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/operators:
+    get:
+      tags: [admin-channel]
+      summary: 运营商列表（状态/区域过滤）
+      operationId: adminChannelOperators
+      responses:
+        '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/operators/{id}/open:
+    post:
+      tags: [admin-channel]
+      summary: 开通运营商（一地一家；审计）
+      operationId: adminChannelOpenOperator
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/operators/{id}/suspend:
+    post:
+      tags: [admin-channel]
+      summary: 停用运营商（审计）
+      operationId: adminChannelSuspendOperator
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/operators/{id}/fees:
+    get:
+      tags: [admin-channel]
+      summary: 代理费/保证金台账
+      operationId: adminChannelOperatorFees
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 台账, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+    post:
+      tags: [admin-channel]
+      summary: 代理费/保证金收款登记（审计）
+      operationId: adminChannelRecordFees
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                agency_fee_fen: { type: integer }
+                agency_fee_year: { type: integer }
+                guarantee_fen: { type: integer }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/operators/{id}/guarantee/refund:
+    post:
+      tags: [admin-channel]
+      summary: 保证金退款（走台账；审计）
+      operationId: adminChannelRefundGuarantee
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { reason: { type: string } } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/attributions:
+    get:
+      tags: [admin-channel]
+      summary: 归属关系列表（有效）
+      operationId: adminChannelAttributions
+      responses:
+        '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/attributions/{id}/correct:
+    post:
+      tags: [admin-channel]
+      summary: 归属纠错（审批留痕；单一有效）
+      operationId: adminChannelCorrectAttribution
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operator_id]
+              properties: { operator_id: { type: integer }, reason: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/settlements:
+    get:
+      tags: [admin-channel]
+      summary: 结算单列表
+      operationId: adminChannelSettlements
+      responses:
+        '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/settlements/generate:
+    post:
+      tags: [admin-channel]
+      summary: 生成月结结算单
+      operationId: adminChannelGenerateSettlement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operator_id]
+              properties: { operator_id: { type: string }, month: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/settlements/{id}/review:
+    post:
+      tags: [admin-channel]
+      summary: 复核结算单
+      operationId: adminChannelReviewSettlement
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/settlements/{id}/reject:
+    post:
+      tags: [admin-channel]
+      summary: 驳回结算单
+      operationId: adminChannelRejectSettlement
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { reason: { type: string } } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/settlements/{id}/pay:
+    post:
+      tags: [admin-channel]
+      summary: 打款（复核≠执行；凭证留存）
+      operationId: adminChannelPaySettlement
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { voucher_ref: { type: string } } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
   /exports:
     get:
       tags: [admin-governance]

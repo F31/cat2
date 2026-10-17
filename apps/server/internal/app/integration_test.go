@@ -6011,6 +6011,134 @@ func TestIntegrationAdminRBAC(t *testing.T) {
 	}
 }
 
+// 渠道台账与归属纠错（p4 §2.1/2.6/2.7）：代理费/保证金、退款、归属纠错、结算导出模板。
+func TestIntegrationChannelFeesAttribution(t *testing.T) {
+	h := newTestApp(t)
+	ctx := context.Background()
+	_, admTok := loginAdmin(t, h)
+	_, _ = h.app.Pool.Exec(ctx, `UPDATE chn_operator SET status=2 WHERE region_code IN ('310000','310100') AND status=1`)
+	// 追加区域字典（市辖区）供第二个运营商使用
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO dct_taxonomy_option (id, dimension, code, label, sort, status)
+		VALUES (910100,'region','310100','上海市-市辖区',1,1) ON CONFLICT DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
+
+	// 运营商 A（310000）申请+开通
+	_, aTok := loginUser(t, h)
+	_, env := h.do(http.MethodPost, "/api/mp/v1/channel/operator/apply", aTok, map[string]any{"region_code": "310000", "name": "沪东运营"})
+	var opA struct {
+		Operator struct {
+			ID int64 `json:"id,string"`
+		} `json:"operator"`
+	}
+	_ = json.Unmarshal(env.Data, &opA)
+	if opA.Operator.ID == 0 {
+		t.Fatalf("A 申请失败: %+v", env)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/channel/operators/%d/open", opA.Operator.ID), admTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("A 开通失败: %d %+v", s, e)
+	}
+
+	// 代理费/保证金收款登记 → 台账
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/channel/operators/%d/fees", opA.Operator.ID), admTok, map[string]any{
+		"agency_fee_fen": 3000000, "agency_fee_year": 1, "guarantee_fen": 1000000,
+	}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("登记费用失败: %d %+v", s, e)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/admin/v1/channel/operators/%d/fees", opA.Operator.ID), admTok, nil)
+	var fees struct {
+		AgencyFeePaid int64 `json:"agency_fee_paid_fen"`
+		GuaranteeFen  int64 `json:"guarantee_fen"`
+		Guarantees    []struct {
+			ID         int64 `json:"id"`
+			AmountFen  int64 `json:"amount_fen"`
+			RefundedAt int64 `json:"refunded_at"`
+		} `json:"guarantees"`
+	}
+	_ = json.Unmarshal(env.Data, &fees)
+	if fees.AgencyFeePaid != 3000000 || fees.GuaranteeFen != 1000000 || len(fees.Guarantees) != 1 || fees.Guarantees[0].AmountFen != 1000000 {
+		t.Fatalf("台账不符: %+v", fees)
+	}
+	// 保证金退款（走台账）
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/channel/operators/%d/guarantee/refund", opA.Operator.ID), admTok, map[string]any{"reason": "退网"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("保证金退款失败: %d %+v", s, e)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/admin/v1/channel/operators/%d/fees", opA.Operator.ID), admTok, nil)
+	_ = json.Unmarshal(env.Data, &fees)
+	if fees.GuaranteeFen != 0 || fees.Guarantees[0].RefundedAt == 0 {
+		t.Fatalf("保证金退款未入台账: %+v", fees)
+	}
+
+	// 用户 C 归属 A
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO chn_link (id, operator_id, channel, code, region_code, status)
+		VALUES ($1,$2,'invite_code',$3,'310000',0) ON CONFLICT (code) DO NOTHING`,
+		time.Now().UnixNano(), opA.Operator.ID, fmt.Sprintf("fa-%d", opA.Operator.ID)); err != nil {
+		t.Fatal(err)
+	}
+	_, cTok := loginUser(t, h)
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/channel/attribution", cTok, map[string]any{"code": fmt.Sprintf("fa-%d", opA.Operator.ID)}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("归属绑定失败: %d %+v", s, e)
+	}
+
+	// 运营商 B（310100）开通
+	_, bTok := loginUser(t, h)
+	_, env = h.do(http.MethodPost, "/api/mp/v1/channel/operator/apply", bTok, map[string]any{"region_code": "310100", "name": "沪西运营"})
+	var opB struct {
+		Operator struct {
+			ID int64 `json:"id,string"`
+		} `json:"operator"`
+	}
+	_ = json.Unmarshal(env.Data, &opB)
+	if opB.Operator.ID == 0 {
+		t.Fatalf("B 申请失败: %+v", env)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/channel/operators/%d/open", opB.Operator.ID), admTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("B 开通失败: %d %+v", s, e)
+	}
+
+	// 归属纠错：C 的归属改到 B（留痕 + 单一有效）
+	_, env = h.do(http.MethodGet, "/api/admin/v1/channel/attributions", admTok, nil)
+	var attrs struct {
+		Items []struct {
+			ID         int64 `json:"id"`
+			UserID     int64 `json:"user_id"`
+			OperatorID int64 `json:"operator_id"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &attrs)
+	var attrID int64
+	for _, a := range attrs.Items {
+		if a.OperatorID == opA.Operator.ID {
+			attrID = a.ID
+		}
+	}
+	if attrID == 0 {
+		t.Fatalf("归属列表缺少记录: %+v", attrs.Items)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/channel/attributions/%d/correct", attrID), admTok, map[string]any{
+		"operator_id": opB.Operator.ID, "reason": "区域调整",
+	}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("归属纠错失败: %d %+v", s, e)
+	}
+	_, env = h.do(http.MethodGet, "/api/mp/v1/channel/attribution", cTok, nil)
+	var cur struct {
+		Attribution struct {
+			OperatorID int64 `json:"operator_id,string"`
+		} `json:"attribution"`
+	}
+	_ = json.Unmarshal(env.Data, &cur)
+	if cur.Attribution.OperatorID != opB.Operator.ID {
+		t.Fatalf("纠错后归属应为 B: %+v", cur)
+	}
+
+	// 结算导出模板可用（对账导出走导出中心）
+	if s, e := h.do(http.MethodPost, "/api/admin/v1/exports", admTok, map[string]any{"template": "settlements"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("结算导出申请失败: %d %+v", s, e)
+	}
+}
+
 // 渠道佣金与结算（p4 §2）：OrderPaid 计佣快照、比例可配、月结状态机、复核≠执行。
 func TestIntegrationChannelCommissionSettlement(t *testing.T) {
 	h := newTestApp(t)
