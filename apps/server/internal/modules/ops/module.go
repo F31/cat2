@@ -19,6 +19,7 @@ import (
 	"catcube/internal/kernel/featureflag"
 	"catcube/internal/kernel/module"
 	"catcube/internal/kernel/obs"
+	"catcube/internal/kernel/rbac"
 	"catcube/internal/kernel/scheduler"
 	"catcube/internal/kernel/settings"
 	idcontract "catcube/internal/modules/identity/contract"
@@ -43,6 +44,7 @@ type Deps struct {
 	Bus      *eventbus.Bus
 	Flags    *featureflag.Store
 	Settings *settings.Registry
+	RBAC     *rbac.Store
 }
 
 // Module ops 模块。
@@ -102,6 +104,7 @@ func (m *Module) Register(r *module.Registry) error {
 		audit.Point{Action: "channel:commission_rule:set", Path: "/api/admin/v1/settings/{key}", Required: true, LogFailed: true, Module: "channel"},
 		audit.Point{Action: "discovery:weight:set", Path: "/api/admin/v1/settings/{key}", Required: true, LogFailed: true, Module: "discovery"},
 		audit.Point{Action: "membership:price:set", Path: "/api/admin/v1/settings/{key}", Required: true, LogFailed: true, Module: "membership"},
+		audit.Point{Action: "ops:miniapp:set", Path: "/api/admin/v1/settings/{key}", Required: true, LogFailed: true, Module: "ops"},
 	)
 	return nil
 }
@@ -126,6 +129,11 @@ func (m *Module) handleList(w http.ResponseWriter, req *http.Request) {
 var Schemas = []settings.Schema{
 	{Key: "audit.retention_days", Type: settings.TypeInt, Default: "180", Description: "审计留存天数（资金/合规类建议 ≥1095）"},
 	{Key: "audit.denied_surge_threshold", Type: settings.TypeInt, Default: "50", Description: "5 分钟内 denied 审计告警阈值"},
+
+	// 系统设置 · 小程序接入（超级管理员；热生效）
+	{Key: "miniapp.appid", Type: settings.TypeString, Default: "", Description: "小程序 AppID（留空回退环境变量）"},
+	{Key: "miniapp.secret", Type: settings.TypeString, Default: "", Description: "小程序 AppSecret（敏感；仅超级管理员可改）", Sensitive: true},
+	{Key: "miniapp.env_version", Type: settings.TypeString, Default: "release", Description: "小程序码环境版本（release/trial/develop）"},
 
 	// 系统设置 · 登录安全（p4 §3.4；超管/运营管理员在后台「系统设置」配置）
 	{Key: "admin.security.login_fail_threshold", Type: settings.TypeInt, Default: "3",
@@ -363,6 +371,13 @@ func (m *Module) handleSetSetting(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	op := userIDFrom(req.Context())
+	if strings.HasPrefix(key, "miniapp.") {
+		super, err := m.deps.RBAC.IsSuper(req.Context(), op)
+		if err != nil || !super {
+			writeErr(w, 3, "仅超级管理员可修改小程序设置")
+			return
+		}
+	}
 	before, _ := m.deps.Settings.Get(req.Context(), 1, key)
 	sc, _ := m.deps.Settings.GetSchema(key)
 	if err := m.deps.Settings.Set(req.Context(), 1, key, body.Value, op); err != nil {
@@ -403,6 +418,8 @@ func SettingAction(key string) string {
 		return "discovery:weight:set"
 	case strings.HasPrefix(key, "membership.year_fee_"), strings.HasPrefix(key, "membership.discount_"):
 		return "membership:price:set"
+	case strings.HasPrefix(key, "miniapp."):
+		return "ops:miniapp:set"
 	default:
 		return "ops:setting:set"
 	}

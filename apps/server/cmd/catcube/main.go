@@ -118,6 +118,17 @@ func main() {
 		}
 	case "jobs":
 		fmt.Println("jobs：单跑一次定时任务（待实现）")
+	case "hash-password":
+		if len(os.Args) < 3 {
+			fmt.Println("用法: catcube hash-password <password>")
+			os.Exit(1)
+		}
+		h, err := app.HashAdminPassword(os.Args[2])
+		if err != nil {
+			fatal(err)
+		}
+		fmt.Println(h)
+
 	case "grant-admin":
 		// 运维引导：将手机号设为平台管理员（用于首个后台账号/自助恢复）
 		a, err := app.Wire(ctx, cfg)

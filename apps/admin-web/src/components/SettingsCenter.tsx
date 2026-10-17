@@ -5,6 +5,7 @@ import SettingsForm from './SettingsForm'
 
 // 分组：安全类细分「登录安全 / 密码策略」；其余按配置键首段自动分组（新增键无需改前端）。
 const GROUP_LABEL: Record<string, string> = {
+  miniapp: '小程序设置',
   sms: '短信网关',
   ai: 'AI 网关',
   policy: '复核策略',
@@ -14,7 +15,7 @@ const GROUP_LABEL: Record<string, string> = {
   audit: '审计与告警',
   msg: '消息留存',
 }
-const GROUP_ORDER = ['登录安全', '密码策略', '短信网关', 'AI 网关', '复核策略', '渠道与佣金', '会员价格', '匹配参数', '审计与告警', '消息留存']
+const GROUP_ORDER = ['小程序设置', '登录安全', '密码策略', '短信网关', 'AI 网关', '复核策略', '渠道与佣金', '会员价格', '匹配参数', '审计与告警', '消息留存']
 
 function groupOf(key: string): string {
   if (key.startsWith('admin.security.password.')) return '密码策略'
@@ -24,7 +25,7 @@ function groupOf(key: string): string {
 }
 
 /** 配置中心：完全由 SettingsSchema 驱动（§8.2）；新增配置项不写前端代码。 */
-export default function SettingsCenter() {
+export default function SettingsCenter({ only }: { only?: string }) {
   const [items, setItems] = useState<SettingItem[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -47,6 +48,7 @@ export default function SettingsCenter() {
   const groups = useMemo(() => {
     const m = new Map<string, SettingItem[]>()
     for (const it of items) {
+      if (only && !it.key.startsWith(`${only}.`)) continue
       const g = groupOf(it.key)
       m.set(g, [...(m.get(g) ?? []), it])
     }
@@ -56,7 +58,7 @@ export default function SettingsCenter() {
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
     })
     return ordered.map((g) => ({ key: g, label: g, items: m.get(g) ?? [] }))
-  }, [items])
+  }, [items, only])
 
   return (
     <>

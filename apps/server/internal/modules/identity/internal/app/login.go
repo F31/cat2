@@ -289,6 +289,18 @@ func (s *Service) startSession(ctx context.Context, userID int64, authzVer int, 
 	return contract.Tokens{AccessToken: access, RefreshToken: plain, ExpiresIn: int(s.tokens.AccessTTL().Seconds())}, nil
 }
 
+// IssueTokens 为已认证用户直接签发会话（后台口令登录）。
+func (s *Service) IssueTokens(ctx context.Context, userID int64, device string) (contract.Tokens, error) {
+	u, err := s.repo.UserByID(ctx, userID)
+	if err != nil {
+		return contract.Tokens{}, err
+	}
+	if !domain.CanLogin(u.Status) {
+		return contract.Tokens{}, domain.StatusError(u.Status)
+	}
+	return s.startSession(ctx, u.ID, u.AuthzVer, device)
+}
+
 // Refresh 刷新：校验 refresh 哈希 → 滚动轮换 → 新 Access（authz_ver 取当前值，消除陈旧窗口）。
 func (s *Service) Refresh(ctx context.Context, refreshPlain string) (contract.Tokens, error) {
 	if refreshPlain == "" {

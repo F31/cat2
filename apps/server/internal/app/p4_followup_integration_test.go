@@ -253,3 +253,39 @@ func TestIntegrationCircleShareLanding(t *testing.T) {
 	_, _ = h.app.Pool.Exec(ctx, `DELETE FROM cir_mount WHERE circle_id=$1`, id)
 	_, _ = h.app.Pool.Exec(ctx, `DELETE FROM cir_circle WHERE id=$1`, id)
 }
+
+// 系统 → 小程序设置：schema 自动出现，超管可热改（AppID/Secret/env_version）。
+func TestIntegrationMiniappSettings(t *testing.T) {
+	h := newTestApp(t)
+	ctx := context.Background()
+	_, admTok := loginAdmin(t, h)
+	defer func() {
+		_, _ = h.app.Pool.Exec(ctx, `DELETE FROM sys_settings WHERE key LIKE 'miniapp.%'`)
+	}()
+
+	_, env := h.do(http.MethodGet, "/api/admin/v1/settings", admTok, nil)
+	var body struct {
+		Items []struct {
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &body)
+	found := false
+	for _, it := range body.Items {
+		if it.Key == "miniapp.appid" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("小程序设置未出现在 SettingsSchema")
+	}
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/settings/miniapp.appid", admTok, map[string]any{"value": "wx-test-appid"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("超管修改小程序 AppID 失败: %d %+v", s, e)
+	}
+	var v string
+	_ = h.app.Pool.QueryRow(ctx, `SELECT value FROM sys_settings WHERE key='miniapp.appid'`).Scan(&v)
+	if v != "wx-test-appid" {
+		t.Fatalf("小程序 AppID 未热生效: %q", v)
+	}
+}

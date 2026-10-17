@@ -150,19 +150,12 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		Pool: pool, Bus: bus, Encryptor: encryptor, BlindKey: blindKey, DevSMSCode: cfg.DevSMSCode,
 		Audit: auditRec, Settings: settingsReg,
 	}
-	var miniCoder ports.MiniProgramCoder
-	if cfg.WeChatAppID != "" && cfg.WeChatAppSecret != "" {
-		authClient := wechat.NewAuthClient(cfg.WeChatAppID, cfg.WeChatAppSecret)
-		identityDeps.WeChat = authClient
-		identityDeps.PhoneCode = authClient
-		miniCoder = authClient
-	} else {
-		dev := wechat.NewDevAuthClient()
-		slog.Info("微信未配置 appid/secret：使用开发态登录实现（不可用于生产）")
-		identityDeps.WeChat = dev
-		identityDeps.PhoneCode = dev
-		miniCoder = dev
-	}
+	// 小程序接入信息优先从后台「小程序设置」读取（super admin 可改，热生效）；
+	// 未配置时回退环境变量，仍为空则使用开发态实现。
+	wechatClient := wechat.NewDynamicClient(settingsReg, cfg.WeChatAppID, cfg.WeChatAppSecret)
+	identityDeps.WeChat = wechatClient
+	identityDeps.PhoneCode = wechatClient
+	var miniCoder ports.MiniProgramCoder = wechatClient
 	storage := oss.NewClient(cfg.OSSEndpoint, cfg.OSSBucket, cfg.CDNHost, cfg.OSSAK, cfg.OSSSK)
 
 	// 模块（shared + R0 + R1 + R2）
@@ -239,8 +232,9 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	})
 	flagStore := featureflag.NewStore(pool)
 	schedRunner := scheduler.NewRunner(pool, 20261013)
+	rbacStore := rbac.New(pool)
 	opsMod := ops.New(ops.Deps{Pool: pool, Identity: identityMod.Facade(), Outbox: outbox, Bus: bus,
-		Flags: flagStore, Settings: settingsReg, Storage: storage, Audit: auditRec, Runner: schedRunner})
+		Flags: flagStore, Settings: settingsReg, Storage: storage, Audit: auditRec, Runner: schedRunner, RBAC: rbacStore})
 	aiMod := ai.New(ai.Deps{Pool: pool, Flags: flagStore, LLM: llm.NewDevClient(), Auth: authFunc,
 		Settings: settingsReg, Dict: dictMod.Facade(), Audit: auditRec})
 	channelMod := channel.New(channel.Deps{Pool: pool, Bus: bus, Auth: authFunc, Audit: auditRec, Dict: dictMod.Facade(), Cube: cubeMod.Facade(), Settings: settingsReg, Policy: policyEngine})
@@ -280,7 +274,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	a := &App{Config: cfg, Pool: pool, Bus: bus, Policy: policyEngine, Modules: ordered, Mux: http.NewServeMux(), Sched: schedRunner, Cache: cache, Audit: auditRec, RBAC: rbac.New(pool), AlertTh: eventbus.AlertThresholds{Backlog: cfg.AlertOutboxBacklog, OldestAge: cfg.AlertOutboxOldestSec, DeadCount: cfg.AlertOutboxDead}}
+	a := &App{Config: cfg, Pool: pool, Bus: bus, Policy: policyEngine, Modules: ordered, Mux: http.NewServeMux(), Sched: schedRunner, Cache: cache, Audit: auditRec, RBAC: rbacStore, AlertTh: eventbus.AlertThresholds{Backlog: cfg.AlertOutboxBacklog, OldestAge: cfg.AlertOutboxOldestSec, DeadCount: cfg.AlertOutboxDead}}
 
 	// 逐模块 Register：收集路由/事件/任务/能力
 	for _, m := range ordered {
@@ -427,6 +421,9 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 					continue
 				}
 				if s.Key == "ops.system_settings" && !canSettings {
+					continue
+				}
+				if s.Key == "system.miniapp" && !isSuper {
 					continue
 				}
 				if mods[s.Module] {
@@ -581,6 +578,10 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		auditRBAC(req, editor, "ops:rbac:assign", map[string]any{"user_id": uid, "roles": body.Roles}, audit.ResultOK)
 		adminJSON(w, 0, "ok", map[string]any{"ok": true})
 	}))
+
+	// 后台口令登录（生产主路径；手机号+密码，PBKDF2 哈希经 env 注入）
+	adminLoginLimiter := newLoginLimiter()
+	a.Mux.HandleFunc("POST /api/admin/v1/auth/password", adminPasswordLogin(identityMod.Facade(), cfg, a.Audit, adminLoginLimiter))
 
 	// 后台短信二次验证（p4 §3.4）：仅需已登录（令牌有效），不经后台准入/权限门禁
 	adminTokenAuth := func(next http.HandlerFunc) http.HandlerFunc {
@@ -837,7 +838,7 @@ func adminSectionsFor(mods []module.Module) []module.AdminSection {
 		"verify":     {{Key: "verify.certs", Label: "认证审核", Path: "/verify-certs", Module: "verify"}},
 		"profile":    {{Key: "profile.templates", Label: "画像字段模板", Path: "/profile-templates", Module: "profile"}},
 		"notice":     {{Key: "notice.templates", Label: "通知模板", Path: "/templates", Module: "notice"}},
-		"ops":        {{Key: "ops.dead_letters", Label: "死信队列", Path: "/dead-letters", Module: "ops"}, {Key: "ops.rbac", Label: "角色与权限", Path: "/roles", Module: "ops"}, {Key: "ops.system_settings", Label: "系统设置", Path: "/system-settings", Module: "ops"}},
+		"ops":        {{Key: "ops.dead_letters", Label: "死信队列", Path: "/dead-letters", Module: "ops"}, {Key: "ops.rbac", Label: "角色与权限", Path: "/roles", Module: "ops"}, {Key: "ops.system_settings", Label: "系统设置", Path: "/system-settings", Module: "ops"}, {Key: "system.miniapp", Label: "小程序设置", Path: "/miniapp-settings", Module: "ops"}},
 		"dict":       {{Key: "dict.taxonomy", Label: "主体类型与选项", Path: "/dict", Module: "dict"}},
 		"channel":    {{Key: "channel.operators", Label: "运营商", Path: "/channel-operators", Module: "channel"}, {Key: "channel.settlements", Label: "渠道结算", Path: "/channel-settlements", Module: "channel"}},
 	}

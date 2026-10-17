@@ -19,6 +19,10 @@ type Config struct {
 	WeChatAppID     string
 	WeChatAppSecret string
 
+	// 后台口令登录（单管理员起步；哈希经 `catcube hash-password` 生成）
+	AdminPhone        string
+	AdminPasswordHash string
+
 	// 敏感数据密钥（hex，64 位十六进制=32 字节）
 	IdentityEncKey string // 字段加密（手机号/证件号）
 	BlindKey       string // 盲索引（phone_hmac）独立密钥
@@ -66,6 +70,8 @@ func FromEnv() Config {
 		HTTPAddr:             getenv("CATCUBE_HTTP_ADDR", ":8080"),
 		Roles:                split(getenv("CATCUBE_ROLES", "api,worker,scheduler,admin")),
 		Modules:              split(getenv("CATCUBE_MODULES", "")),
+		AdminPhone:           getenv("CATCUBE_ADMIN_PHONE", ""),
+		AdminPasswordHash:    getenv("CATCUBE_ADMIN_PASSWORD_HASH", ""),
 		OSSEndpoint:          getenv("CATCUBE_OSS_ENDPOINT", ""),
 		OSSBucket:            getenv("CATCUBE_OSS_BUCKET", ""),
 		CDNHost:              getenv("CATCUBE_CDN_HOST", ""),

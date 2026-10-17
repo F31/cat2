@@ -14,9 +14,10 @@ import (
 
 // AuthClient 微信登录。
 type AuthClient struct {
-	AppID     string
-	AppSecret string
-	HTTP      *http.Client
+	AppID      string
+	AppSecret  string
+	EnvVersion string // 小程序码环境：release/trial/develop
+	HTTP       *http.Client
 
 	tk tokenCache
 }

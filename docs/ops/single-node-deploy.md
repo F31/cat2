@@ -50,6 +50,18 @@ docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-co
   exec api catcube seed
 ```
 
+## 3.1 小程序接入信息（后台热配置）
+
+登录后台 →「系统 → 小程序设置」可修改：
+
+- `miniapp.appid`：小程序 AppID
+- `miniapp.secret`：AppSecret（脱敏回显，仅超级管理员可写）
+- `miniapp.env_version`：小程序码环境（`release`/`trial`/`develop`）
+
+保存后立即生效：微信登录、手机号获取、小程序码都按新配置重建客户端；未配置时回退 env `CATCUBE_WECHAT_APPID/SECRET`，仍为空则使用开发态实现。
+
+后台登录使用手机号 + 密码（`ADMIN_PHONE` / `ADMIN_PASSWORD_HASH`），不再依赖开发态微信登录。
+
 ## 4. 后台前端与 Nginx
 
 > 无域名/证书的初始部署：使用 `deploy/nginx/catcube-http.conf`（HTTP + Basic Auth，仅内测），
@@ -81,6 +93,8 @@ docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-co
 ```
 
 > 注意：当前 admin-web 登录走开发态微信适配器（手机号当 code）。**若配置了真实 WECHAT_APPID/SECRET，后台登录会失败**；生产前需补后台账号体系（密码/SSO/短信），这是上公网前的阻塞项。
+
+> 域名已接入 EdgeOne/CDN 时，HTTP-01 验证可能被 CDN 拦截（LE 会看到 CDN IP）。需先暂停该子域名的 CDN/代理或让 `/.well-known/acme-challenge` 回源，再执行 Certbot；也可改用 DNS-01。
 
 ## 5. 备份与恢复
 

@@ -122,6 +122,16 @@ export interface NoticeTemplate {
 
 export const adminApi = {
   // 开发态登录：微信登录适配器以手机号为 code。
+  loginPassword(phone: string, password: string) {
+    return call<{ user_id: string; tokens: { access_token: string } }>('POST', '/admin/v1/auth/password', {
+      phone,
+      password,
+    }).then((r) => {
+      setToken(r.tokens.access_token)
+      return r
+    })
+  },
+
   login(phone: string) {
     return call<{ user_id: string; tokens: { access_token: string } }>('POST', '/mp/v1/auth/wechat', {
       code: phone,

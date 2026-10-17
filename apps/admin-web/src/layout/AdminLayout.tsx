@@ -31,6 +31,7 @@ const FALLBACK: MenuProps['items'] = [
   { key: '/badges', label: '认证标识' },
   { key: '/roles', label: '角色与权限' },
   { key: '/system-settings', label: '系统设置' },
+  { key: '/miniapp-settings', label: '小程序设置' },
   { key: '/channel-operators', label: '运营商' },
   { key: '/channel-settlements', label: '渠道结算' },
 ]

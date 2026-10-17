@@ -191,6 +191,20 @@ func (m *Module) AdminSearchUsers(ctx context.Context, f contract.AdminUserFilte
 func (m *Module) Facade() contract.Facade { return m }
 
 // Authenticate 校验 Access Token（签名/有效期）。
+// UserIDByPhone 按盲索引查已有用户（不建号）。
+func (m *Module) UserIDByPhone(ctx context.Context, phone string) (int64, error) {
+	u, err := m.store.FindUserByPhoneHMAC(ctx, sensitive.BlindIndex(m.deps.BlindKey, phone))
+	if err != nil {
+		return 0, err
+	}
+	return u.ID, nil
+}
+
+// IssueTokens 为已认证用户签发会话。
+func (m *Module) IssueTokens(ctx context.Context, userID int64, device string) (contract.Tokens, error) {
+	return m.svc.IssueTokens(ctx, userID, device)
+}
+
 func (m *Module) Authenticate(_ context.Context, accessToken string) (int64, int, error) {
 	claims, err := m.token.Verify(accessToken)
 	if err != nil {

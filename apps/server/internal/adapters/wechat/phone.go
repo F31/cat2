@@ -61,8 +61,12 @@ func (c *AuthClient) MiniProgramCode(ctx context.Context, page, scene string) ([
 	if err != nil {
 		return nil, err
 	}
+	envVersion := c.EnvVersion
+	if envVersion == "" {
+		envVersion = "release"
+	}
 	body, _ := json.Marshal(map[string]any{
-		"page": page, "scene": scene, "check_path": false, "env_version": "release",
+		"page": page, "scene": scene, "check_path": false, "env_version": envVersion,
 		"width": 430,
 	})
 	url := "https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token=" + token

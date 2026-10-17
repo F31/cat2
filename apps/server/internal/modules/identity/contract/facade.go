@@ -67,4 +67,8 @@ type Facade interface {
 	MarkRealname(ctx context.Context, userID int64, status int16) error
 	// AdminSearchUsers 后台用户检索（昵称模糊/手机号盲精确/状态/实名/注册时间）。
 	AdminSearchUsers(ctx context.Context, f AdminUserFilter) ([]AdminUserRow, error)
+	// UserIDByPhone 按手机号盲索引查已有用户（后台口令登录；不建号）。
+	UserIDByPhone(ctx context.Context, phone string) (int64, error)
+	// IssueTokens 为已认证用户签发会话（后台口令登录）。
+	IssueTokens(ctx context.Context, userID int64, device string) (Tokens, error)
 }

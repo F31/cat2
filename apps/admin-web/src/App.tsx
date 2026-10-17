@@ -28,6 +28,7 @@ import Circles from './pages/Circles'
 import VerifyCerts from './pages/VerifyCerts'
 import DictPage from './pages/DictPage'
 import ProfileTemplates from './pages/ProfileTemplates'
+import MiniappSettings from './pages/MiniappSettings'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="verify-certs" element={<VerifyCerts />} />
         <Route path="dict" element={<DictPage />} />
         <Route path="profile-templates" element={<ProfileTemplates />} />
+        <Route path="miniapp-settings" element={<MiniappSettings />} />
         <Route path="users/:id/360" element={<User360 />} />
       </Route>
     </Routes>
