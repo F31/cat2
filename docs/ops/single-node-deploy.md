@@ -49,6 +49,10 @@ docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-co
 
 ## 4. 后台前端与 Nginx
 
+> 无域名/证书的初始部署：使用 `deploy/nginx/catcube-http.conf`（HTTP + Basic Auth，仅内测），
+> 生成 `/etc/nginx/.htpasswd` 后启用；域名就绪后切换 `catcube.conf` + Certbot。
+> 有 Basic Auth 时后台令牌走 `X-Admin-Token`（前端已适配），避免与 `Authorization` 冲突。
+
 ```bash
 # 在 CI 或本机构建（Node 20 + pnpm）
 pnpm install --frozen-lockfile
@@ -78,6 +82,7 @@ docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-co
 ## 5. 备份与恢复
 
 - `db` 开启 WAL 归档（`/wal-archive`），`backup` 边车每日全备到卷 `pgbackups`，保留 14 天。
+- 备份脚本启动时会把 WAL/备份卷交给 `postgres` 用户（否则首次部署会因权限导致归档失败）。
 - 卷位置：`docker volume inspect compose_pgbackups` / `compose_walarchive`。
 - 恢复流程见 `deploy/compose/restore.md`；建议先在测试机演练，再每季度复跑 `pitr-drill.sh`。
 - 建议把 `pgbackups`/`walarchive` 同步到对象存储（异地备份）。

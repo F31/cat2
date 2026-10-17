@@ -18,7 +18,10 @@ run_backup() {
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
   base="${BACKUP_DIR}/base-${stamp}"
   echo "[backup] 开始全备 → ${base}"
-  pg_basebackup -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" -D "${base}" -Ft -z -X none -P
+  if ! pg_basebackup -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" -D "${base}" -Ft -z -X none -P; then
+    echo "[backup] 全备失败" >&2
+    return 1
+  fi
   # 记录当前 WAL 位置（恢复起点），便于 PITR 定位
   psql -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" -tAc \
     "SELECT pg_walfile_name(pg_current_wal_lsn())" > "${base}.wal-start" || true
@@ -29,6 +32,8 @@ run_backup() {
 }
 
 mkdir -p "${BACKUP_DIR}" "${WAL_DIR}"
+# 卷首次创建时属 root；交给 postgres（db 容器的 archive_command 需要对 WAL_DIR 可写）
+chown -R postgres:postgres "${WAL_DIR}" "${BACKUP_DIR}" 2>/dev/null || true
 while true; do
   if ! run_backup; then
     echo "[backup] 本次失败，${INTERVAL_SECONDS}s 后重试" >&2

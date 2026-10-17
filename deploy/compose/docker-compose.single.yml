@@ -29,6 +29,8 @@ services:
       - archive_timeout=60
       - -c
       - archive_command=test ! -f /wal-archive/%f && cp %p /wal-archive/%f
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
     environment:
       POSTGRES_USER: catcube
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.single}
@@ -36,6 +38,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - walarchive:/wal-archive
+      - ./pg/pg_hba.single.conf:/etc/postgresql/pg_hba.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U catcube -d catcube"]
       interval: 5s
