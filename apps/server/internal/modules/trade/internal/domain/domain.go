@@ -42,7 +42,7 @@ const (
 var Machine = statemachine.Def{
 	Name:     "trade.order",
 	States:   []string{StatePending, StatePaid, StateClosed},
-	Terminal: []string{StateClosed},
+	Terminal: []string{StatePaid, StateClosed},
 	Transitions: []statemachine.Transition{
 		{From: StatePending, Event: EventPay, To: StatePaid, Actor: "*"},            // 支付回调
 		{From: StatePending, Event: EventTimeout, To: StateClosed, Actor: "system"}, // 超时关闭

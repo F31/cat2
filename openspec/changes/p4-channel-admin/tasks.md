@@ -88,11 +88,11 @@
 
 ## 9. 测试与门禁
 
-- [ ] 9.1 权限矩阵补全后台格：五角色 × 权限点全量表驱动用例
-- [ ] 9.2 状态机测试：#3、#4、#16、#17 全表
-- [ ] 9.3 结算闭环测试：佣金计提 → 月结生成 → 财务复核 → 打款 → 凭证；复核=执行 denied 用例
-- [ ] 9.4 审计覆盖面测试（tests/audit）与 CI 审计点校验
-- [ ] 9.5 契约测试：admin.yaml 全量路径、channel/verify 事件 Schema
+- [x] 9.1 权限矩阵：`internal/kernel/rbac/matrix_test.go` 五角色×全权限点精确集合 + 负向红线（运营不碰资金/审核不外溢等）+ 权限点无悬空
+- [x] 9.2 状态机全表：`TestIntegrationStateMachinesFullTable`（全部状态机定义/状态可达/非终态有出边/非法事件拒绝 + #3/#4/#16/#17 存在性）；顺带校正 trade.order/pending 终态、cube.report、circle.demand、channel.settlement 终态标记
+- [x] 9.3 结算闭环：`TestIntegrationChannelCommissionSettlement`（计佣快照→生成→复核→打款→凭证；同一人复核+打款 denied）
+- [x] 9.4 审计覆盖面：`TestIntegrationAuditCoverage`（变更类敏感后台路由必须声明审计点；已修复 review 读取类误报，仅校验非 GET）
+- [x] 9.5 契约：`TestIntegrationAdminOpenAPICoversRoutes`（模块后台路由全量在 admin.yaml 声明，补 `/cubes`；channel/verify 事件 Schema 齐备）
 
 ## 10. 退出标准
 

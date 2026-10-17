@@ -129,6 +129,13 @@ paths:
         - { name: limit, in: query, schema: { type: integer } }
       responses:
         '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /cubes:
+    get:
+      tags: [admin-cube]
+      summary: 猫立方列表（后台）
+      operationId: adminCubes
+      responses:
+        '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
   /cubes/{id}/ban:
     post:
       tags: [admin-governance]

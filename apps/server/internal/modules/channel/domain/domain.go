@@ -31,8 +31,9 @@ const (
 
 // MachineSettlement 月结结算单状态机（#17）：复核≠执行由内核 policy 强制。
 var MachineSettlement = statemachine.Def{
-	Name:   "channel.settlement",
-	States: []string{SettlePending, SettleReviewed, SettlePaid, SettleRejected},
+	Name:     "channel.settlement",
+	States:   []string{SettlePending, SettleReviewed, SettlePaid, SettleRejected},
+	Terminal: []string{SettlePaid},
 	Transitions: []statemachine.Transition{
 		{From: SettlePending, Event: "review", To: SettleReviewed, Actor: "*"},
 		{From: SettleReviewed, Event: "pay", To: SettlePaid, Actor: "*"},

@@ -112,8 +112,9 @@ var MachineTask = statemachine.Def{
 
 // MachineReport 状态机 #9：重点客户报备（待确认→已确认/已驳回，驳回可重提）。
 var MachineReport = statemachine.Def{
-	Name:   "cube.report",
-	States: []string{ReportPending, ReportConfirmed, ReportRejected},
+	Name:     "cube.report",
+	States:   []string{ReportPending, ReportConfirmed, ReportRejected},
+	Terminal: []string{ReportConfirmed},
 	Transitions: []statemachine.Transition{
 		{From: ReportPending, Event: EventConfirmReport, To: ReportConfirmed, Actor: "confirm_org"},
 		{From: ReportPending, Event: EventRejectReport, To: ReportRejected, Actor: "confirm_org"},

@@ -41,8 +41,9 @@ var MachineCircle = statemachine.Def{
 
 // MachineDemand 状态机 #11：有效→已过期（沉底可续期 30 天）。
 var MachineDemand = statemachine.Def{
-	Name:   "circle.demand",
-	States: []string{DemandValid, DemandExpired},
+	Name:     "circle.demand",
+	States:   []string{DemandValid, DemandExpired},
+	Terminal: []string{DemandExpired},
 	Transitions: []statemachine.Transition{
 		{From: DemandValid, Event: EventExpire, To: DemandExpired, Actor: "system"},
 	},

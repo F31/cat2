@@ -808,6 +808,9 @@ type ServerInterface interface {
 	// AdminTakedownContent 下架内容（记录原因）
 	// (POST /contents/{id}/takedown)
 	AdminTakedownContent(w http.ResponseWriter, r *http.Request, id string)
+	// AdminCubes 猫立方列表（后台）
+	// (GET /cubes)
+	AdminCubes(w http.ResponseWriter, r *http.Request)
 	// AdminBanCube 平台封禁猫立方（代操作，前后值审计）
 	// (POST /cubes/{id}/ban)
 	AdminBanCube(w http.ResponseWriter, r *http.Request, id string)
@@ -1816,6 +1819,20 @@ func (siw *ServerInterfaceWrapper) AdminTakedownContent(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminTakedownContent(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminCubes operation middleware
+func (siw *ServerInterfaceWrapper) AdminCubes(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCubes(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3136,6 +3153,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/memberships/sub-accounts/remove", wrapper.AdminForceRemoveSub)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/memberships/{id}/adjust", wrapper.AdminAdjustMember)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/affiliations/overdue", wrapper.AdminOverdueAffiliations)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes", wrapper.AdminCubes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/ban", wrapper.AdminBanCube)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/dissolve", wrapper.AdminDissolveCube)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/dissolve", wrapper.AdminDissolveCircle)
