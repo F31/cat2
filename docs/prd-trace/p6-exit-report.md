@@ -8,8 +8,8 @@
 | 章节 | 状态 | 说明 |
 | --- | --- | --- |
 | 1 安全 | ◐ | 越权/支付回放/审计断链/日志脱敏/CI 门禁 ✅；渗透与抓取压测待环境 |
-| 2 性能与容量 | ◐ | 造数与压测工具 ✅ 且本地并发 100 全达标；S1 正式复跑待环境 |
-| 3 部署与可靠性 | ◐ | S0/S1 编排、健康检查与优雅停机、PITR 配置与演练 ✅；云环境 PITR 演练待执行 |
+| 2 性能与容量 | ◐ | 造数/压测工具、本地基线 ✅；**S1 形态本机复跑**（api×2 + worker/scheduler + Redis + 独立库）并发 100 全 PASS；云 S1 待环境 |
+| 3 部署与可靠性 | ◐ | S0/S1 编排、健康检查、优雅停机、PITR ✅；本机复跑排空 PASS / PITR RTO 104s；云环境演练待执行 |
 | 4 降级矩阵 | ✅ | 搜索/内容安全/notice/Redis/履约/AI 六类降级均已自动化验证 |
 | 5 可观测 | ◐ | 结构化日志+脱敏+trace 贯通+`/metrics`+看板口径+告警清单+OTel trace/metric/log 统一入口与指标 `module` 标签 ✅；监控栈后端接入待环境 |
 | 6 灰度发布 | ◐ | 特性开关（用户/比例/白名单）✅；小程序审核发版与灰度批次执行属外部 |
@@ -32,10 +32,12 @@
 
 - ✅ 造数：`tests/perf/seed.sh`（1 万用户/内容、1 千圈、100 立方；幂等；独立压测库）
 - ✅ 压测工具：`tools/loadtest`（无外部依赖；P50/P95/P99、RPS、状态码构成；门槛不达标退出码非 0）
-- ✅ 本地基线（并发 100）：feed P95 71ms（≤3s）、search P99 30ms（≤1s）、detail P99 777ms（≤1s），错误率 0%
+- ✅ 本地基线（并发 100）：feed P95 71ms、search P99 30ms、detail P99 777ms，错误率 0%
   → `tests/perf/reports/2026-10-16-local.md`
+- ✅ S1 形态复跑（2×API + worker/scheduler + Redis + 独立库，并发 100）：feed P95 60ms、search P99 19ms、detail P99 66ms，错误率 0%
+  → `tests/perf/reports/2026-10-17-s1-local.md`
 - ✅ Outbox 吞吐：批量幂等/确认后 **283 → 18,483 条/秒**（积压 5000 条零丢失零死信，`TestIntegrationOutboxBacklogDrain`）
-- ◐ S1 形态正式复跑（api×2 + PG 主从 + Redis）与 5~10 倍余量验证：待独立环境
+- ◐ 云 S1（api×2 + PG 主从 + Redis）压测归档与 5~10 倍余量验证：待独立环境（本机 S1 形态已复跑）
 
 ## 3. 部署与可靠性
 
@@ -43,7 +45,8 @@
 - ✅ 健康检查（`/healthz`、`/readyz`，容器探针 `catcube probe`）与**优雅停机**（`CATCUBE_DRAIN_SECONDS`；先摘流量→等在途→退出；`ready` atomic）
   → 演练 `deploy/scripts/drain-drill.sh` 实测 PASS（129 请求 0×5xx、80×503、5s 退出）
 - ✅ PITR：WAL 归档 + 每日全备 + 保留清理；恢复步骤 `deploy/compose/restore.md`
-  → 演练 `deploy/scripts/pitr-drill.sh` 实测 PASS（时间点恢复精确到基线，RTO 111s）
+  → 演练 `deploy/scripts/pitr-drill.sh` 复跑 PASS（恢复行数符合目标点，RTO 104s；前次 111s）
+- ✅ 排空演练（S1 形态）：140 请求 0×5xx、readyz 503×83、5s 退出 → PASS
 - ◐ 云环境 PITR 演练与 RPO≤5min/RTO≤1h 记录：待云托管库执行
 
 ## 4. 降级矩阵（全部自动化验证）
@@ -85,7 +88,7 @@
 | ~~产品/管理决策~~ | ~~p0 #13 五角色~~ **已确认**（RBAC 可配，`ADR-002`）→ p4 开工前置解除 | ✅ 已闭环（2026-10-17） |
 | ~~p4 实施~~ | 运营商/渠道/RBAC/审计/认证/后台 | ✅ 已闭环（2026-10-17，`p4-channel-admin` 59/59） |
 | ~~产品决策~~ | ~~p0 #3 AI 是否纳入一期~~ **已确认**：纳入一期文本场景（含客服），语音二期 | ✅ 已闭环（2026-10-17）；生产 LLM 待 #4 |
-| 外部环境 | S1 正式压测、监控栈接入、云 PITR 演练、渗透测试 | 独立环境与工具 |
+| 外部环境 | 云 S1 压测归档、监控栈接入、云 PITR 演练、渗透测试 | 独立环境与工具（本机 S1 形态压测/排空/PITR 已 PASS） |
 | 外部平台 | 小程序审核与灰度发版（含圈分享落地页） | 微信平台流程 |
 | 合规/技术 | OTel SDK 引入 | 网络可用（当前离线/不稳） |
 

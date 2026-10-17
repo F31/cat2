@@ -12,8 +12,8 @@
 ## 2. 压测（tests/perf，独立库）
 
 - [x] 2.1 造数脚本：`tests/perf/seed.sh`（1 万用户/名片、1 万内容 + 搜索投影、1 千圈（5 成员/圈）、100 立方（3 成员）；固定 ID 段幂等，须用独立压测库）；场景与指标口径见 `tests/perf/README.md`
-- [x] 2.2 场景压测：内置 `tools/loadtest`（无外部依赖，连接池随并发放大；输出 P50/P95/P99、RPS、错误率与状态码构成，门槛不达标退出码非 0）+ `make loadtest`；已跑 feed/搜索/详情（并发 100，本地）；消息同步与下单支付场景待 S1 复跑
-- [x] 2.3 指标验证（本地基线）：并发 100 下 feed P95 71ms（≤3s）、search P99 30ms（≤1s）、detail P99 777ms（≤1s），错误率 0%；报告 `tests/perf/reports/2026-10-16-local.md`；S1 形态正式复跑与 5~10 倍余量验证待独立环境
+- [x] 2.2 场景压测：内置 `tools/loadtest` + `make loadtest`；本地基线 + **S1 形态复跑**（api×2 + worker/scheduler + Redis + 独立压测库，并发 100）feed/search/detail 全 PASS，报告 `tests/perf/reports/2026-10-17-s1-local.md`
+- [x] 2.3 指标验证：本地基线（feed P95 71ms / search P99 30ms / detail P99 777ms）与 S1 形态复跑（feed P95 60ms / search P99 19ms / detail P99 66ms，错误率 0%）均达标；报告 `2026-10-16-local.md`、`2026-10-17-s1-local.md`；云 S1 归档待独立环境
 - [x] 2.4 事件积压与吞吐：`Bus.Relay` 批量幂等/批量确认（`MarkDoneBatch`/`SeenBatch`/`MarkBatch`，适配器可选实现，无则回退逐条）；`TestIntegrationOutboxBacklogDrain` 积压 5000 条实测 **18,483 条/秒**（优化前 283 条/秒）、零丢失零死信
 
 ## 3. S1 环境部署
@@ -21,7 +21,7 @@
 - [x] 3.1 deploy/ S1 编排：`deploy/compose/docker-compose.s1.yml`（api×2 + worker×1 含 scheduler + PG 主从流复制(脚本 `pg-replica-entrypoint.sh`/`init-replication.sql`) + Redis + 备份边车）；`docker compose config` 校验通过；多副本 Job 单活由 PG 咨询锁保证
 - [x] 3.2 健康检查与停机：`/healthz`（存活）/`/readyz`（就绪，DB 探活）接入 compose healthcheck（`catcube probe`）；优雅停机 `CATCUBE_DRAIN_SECONDS`（SIGTERM→readyz 503 摘流量→排空窗口→Shutdown 等在途请求；`ready` 改 atomic 消除数据竞争）；演练 `deploy/scripts/drain-drill.sh` 实测 PASS（129 请求 0×5xx、80×503、5s 退出）；流程见 `deploy/compose/operations.md`
 - [x] 3.3 三层配置落地：启动配置（`kernel/config` 环境变量）/业务配置（`kernel/settings` + `pg.Settings` 存储 → `sys_settings`；后台 `GET/PUT /api/admin/v1/settings` + admin-web「业务配置」页，热生效，集成测试验证）/特性开关（`kernel/featureflag`→`sys_feature_flag` 灰度）；见 `operations.md`
-- [x] 3.4 备份恢复演练：`deploy/scripts/pitr-drill.sh`（全备→batch-2 模拟故障→按时间点恢复→校验行数/RTO，本机实测 PASS，RTO 111s）；云环境演练与记录留档仍待执行（见 `docs/ops/launch-checklist.md` 第 3 节）
+- [x] 3.4 备份恢复演练：`deploy/scripts/pitr-drill.sh` 本机复跑 PASS（恢复行数符合目标点，RTO 104s；前次 111s）；排空演练 S1 形态 PASS（140 请求 0×5xx、503×83、5s 退出）；云环境演练待执行
 
 ## 4. 降级与可靠性演练（逐项自动化/半自动化）
 
@@ -44,7 +44,7 @@
 
 - [x] 6.1 特性开关放量机制：`kernel/featureflag`（`sys_feature_flag`；Enabled/白名单用户/比例放量，按用户稳定哈希不抖动）；后台 `GET/PUT /api/admin/v1/feature-flags` + 客户端 `GET /api/mp/v1/flags`（按用户评估，开关即回滚动作）；admin-web「特性开关」页；单测 + 集成测试覆盖
 - [ ] 6.2 小程序体验版 → 微信审核 → 全量的发布流程走通（订阅消息模板、内容安全均已就位）
-- [ ] 6.3 灰度计划：内测（白名单）→ 小比例 → 全量，每批次观测指标门槛
+- [x] 6.3 灰度计划：`docs/ops/gray-release-plan.md`（B0 白名单→5%→20%→50%→100%，统一门槛：错误率/延迟/支付成功率/漏斗/Outbox/审核 SLA/审计链/履约；暂停与回滚动作）
 
 ## 7. PRD 11.4 验收
 
@@ -58,5 +58,5 @@
 > 状态汇总见 `docs/prd-trace/p6-exit-report.md`（代码可验证范围内已闭环；以下三项待外部条件）。
 
 - [x] 8.1 达到 PRD 11.4 验收标准：p4 运营商/渠道/RBAC + 圈子批量封禁/归档、圈名片（Canvas+小程序码）、分享落地页「来自 XX 圈」全部落地并有集成测试；真机保存/扫码/分享入口随小程序发版验证
-- [ ] 8.2 S1 环境就绪且降级/备份演练全部通过（◐：编排/降级/停机/PITR 演练均已通过；S1 正式压测与云 PITR 待环境）
+- [ ] 8.2 S1 环境就绪且降级/备份演练全部通过（◐：Docker 镜像拉取受网络限制，已用**宿主形态 S1**复跑：2×API+worker/scheduler+Redis+独立库，压测/排空/PITR 全 PASS；云 S1 与监控后端待环境）
 - [ ] 8.3 灰度放量完成，核心指标（注册→画像→匹配→联系→付费漏斗）可观测（◐：漏斗指标与 `/metrics` 口径就绪；监控栈接入与灰度执行待外部）
