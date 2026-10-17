@@ -6292,6 +6292,25 @@ func TestIntegrationChannelOperator(t *testing.T) {
 		t.Fatalf("开通后应为 1: %+v", a.Operator)
 	}
 
+	// 推广链接/邀请码（幂等复用）
+	_, env = h.do(http.MethodGet, "/api/mp/v1/channel/link", aTok, nil)
+	var lk struct {
+		Code string `json:"code"`
+		Path string `json:"path"`
+	}
+	_ = json.Unmarshal(env.Data, &lk)
+	if lk.Code == "" || lk.Path == "" {
+		t.Fatalf("推广链接生成失败: %+v", env)
+	}
+	_, env = h.do(http.MethodGet, "/api/mp/v1/channel/link", aTok, nil)
+	var lk2 struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(env.Data, &lk2)
+	if lk2.Code != lk.Code {
+		t.Fatalf("推广链接应幂等复用: %s != %s", lk2.Code, lk.Code)
+	}
+
 	// 运营商 B 申请同区域 → 可申请；开户时因区域占用被拒
 	_, bTok := loginUser(t, h)
 	_, env = h.do(http.MethodPost, "/api/mp/v1/channel/operator/apply", bTok, map[string]any{"region_code": "310000", "name": "同区运营"})

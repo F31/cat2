@@ -2750,6 +2750,89 @@ paths:
             application/json:
               schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { ok: { type: boolean } } } } } ] }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /channel/operator:
+    get:
+      tags: [channel]
+      summary: 我的运营商身份卡（身份/区域/状态）
+      operationId: channelMyOperator
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: 身份卡, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/operator/apply:
+    post:
+      tags: [channel]
+      summary: 申请/重新申请运营商（一地一家；referrer 单层）
+      operationId: channelApply
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [region_code, name]
+              properties:
+                region_code: { type: string }
+                name: { type: string, maxLength: 64 }
+                referrer_operator_id: { type: string }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/attribution:
+    get:
+      tags: [channel]
+      summary: 我的归属关系
+      operationId: channelMyAttribution
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: 归属, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+    post:
+      tags: [channel]
+      summary: 绑定归属（邀请码；幂等，单一有效）
+      operationId: channelBindAttribution
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [code], properties: { code: { type: string } } }
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/overview:
+    get:
+      tags: [channel]
+      summary: 运营商业绩概览（本月/累计佣金 + 保底任务）
+      operationId: channelOverview
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: month, in: query, schema: { type: string } }
+      responses:
+        '200': { description: 概览, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/commissions:
+    get:
+      tags: [channel]
+      summary: 佣金明细
+      operationId: channelCommissions
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: month, in: query, schema: { type: string } }
+      responses:
+        '200': { description: 明细, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/link:
+    get:
+      tags: [channel]
+      summary: 推广链接/邀请码（已开通运营商，幂等）
+      operationId: channelMyLink
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: 链接, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /channel/withdraw:
+    post:
+      tags: [channel]
+      summary: 提现申请（生成当月结算单）
+      operationId: channelWithdraw
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
   /ai/features:
     get:
       tags: [ai]

@@ -10,9 +10,9 @@
 
 - [x] 1.1 迁移：`chn_operator`/`chn_guarantee`/`chn_commission`/`chn_settlement`/`chn_annual_target`/`chn_attribution`/`chn_link`（`chn_` 前缀，archcheck 通过）
 - [x] 1.2 红线进 schema：`referrer_operator_id` 单列（无上级/下级集合），申请时校验推荐人须已开通且区域不同（不得自建下级）；contract/SQL 无多级结构
-- [◐] 1.3 身份卡服务端就绪（`GET /api/mp/v1/channel/operator` 返回身份/区域名/状态）；**待办**：miniapp 个人中心身份卡 UI + 推广链接/邀请码生成（物料接口）
+- [x] 1.3 运营商身份卡（个人中心「运营商中心」）+ 推广链接/邀请码：服务端 `GET /channel/operator`、`GET /channel/link`（幂等复用）；miniapp `pages/channel/index`（身份卡/概览/佣金/邀请码/提现/入驻申请）+ `pages/channel/join`（邀请码绑定归属）；mp 契约同步
 - [x] 1.4 归属关系：`chn_attribution` 单一有效（部分唯一索引）；`BindAttribution`（按推广码，幂等）+ `GET /api/mp/v1/channel/attribution`；纠错审批留痕字段预留（§2.6）
-- [◐] 1.5 佣金明细 `GET /channel/commissions` + 业绩概览 `GET /channel/overview`（本月/累计佣金 + 保底任务进度）已就绪；**待办**：提现申请（随 §2 结算）
+- [x] 1.5 佣金明细 `GET /channel/commissions` + 业绩概览 `GET /channel/overview`（本月/累计佣金 + 保底任务）+ 提现申请 `POST /channel/withdraw`（生成当月结算单）
 - [x] 1.6 状态机 #16：`domain.MachineOperator`（0申请中→1已开通→2已停用→0重新申请）；后台 `open`/`suspend`（一地一家 + 审计）+ 事件 `channel.OperatorStatusChanged.v1`；`TestIntegrationChannelOperator`
 
 ## 2. channel：佣金与结算（后台）

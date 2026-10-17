@@ -87,6 +87,9 @@ export default function Mine() {
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/support/index' })}>
             <Text>客服</Text>
           </View>
+          <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/channel/index' })}>
+            <Text>运营商中心</Text>
+          </View>
         </View>
       </StateView>
     </View>

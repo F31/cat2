@@ -173,6 +173,52 @@ export interface AiCSReply {
   tokens?: number
 }
 
+/** 渠道运营商身份卡。 */
+export interface ChannelOperator {
+  id: string
+  user_id: string
+  region_code: string
+  region_name?: string
+  name: string
+  status: number // 0申请中/1已开通/2已停用
+  referrer_operator_id?: string
+  opened_at?: number
+}
+
+export interface ChannelAttribution {
+  id: string
+  operator_id: string
+  region_code: string
+  source: number
+  bound_at: number
+}
+
+export interface ChannelCommission {
+  id: string
+  order_id: string
+  biz_type: string
+  base_fen: number
+  ratio_bp: number
+  amount_fen: number
+  month: string
+  status: number
+}
+
+export interface ChannelOverview {
+  operator: ChannelOperator
+  month: string
+  month_fen: number
+  total_fen: number
+  target: { year: number; paid_member_count: number; landing_project_count: number }
+  commissions: ChannelCommission[]
+}
+
+export interface ChannelLink {
+  code: string
+  path: string
+  region_code: string
+}
+
 export interface DetailData {
   ref: string
   type: string
@@ -605,6 +651,36 @@ export function createClient(opts: ClientOptions) {
     },
     aiCustomerService(question: string) {
       return call<AiCSReply>('POST', '/ai/cs', { question })
+    },
+
+    // ---- 渠道（运营商）----
+    channelOperator() {
+      return call<{ operator: ChannelOperator; is_operator: boolean }>('GET', '/channel/operator')
+    },
+    channelApply(regionCode: string, name: string, referrerOperatorId?: string) {
+      return call<{ operator: ChannelOperator }>('POST', '/channel/operator/apply', {
+        region_code: regionCode,
+        name,
+        referrer_operator_id: referrerOperatorId,
+      })
+    },
+    channelAttribution() {
+      return call<{ attribution?: ChannelAttribution; bound: boolean }>('GET', '/channel/attribution')
+    },
+    channelBindAttribution(code: string) {
+      return call<{ attribution: ChannelAttribution }>('POST', '/channel/attribution', { code })
+    },
+    channelOverview(month?: string) {
+      return call<ChannelOverview>('GET', `/channel/overview${month ? `?month=${month}` : ''}`)
+    },
+    channelCommissions(month?: string) {
+      return call<{ items: ChannelCommission[] }>('GET', `/channel/commissions${month ? `?month=${month}` : ''}`)
+    },
+    channelLink() {
+      return call<ChannelLink>('GET', '/channel/link')
+    },
+    channelWithdraw() {
+      return call<{ settlement_id: string }>('POST', '/channel/withdraw')
     },
 
     explainMatch(ref: string) {

@@ -1437,6 +1437,28 @@ type ReviewCertByOrgJSONBody struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
+// ChannelBindAttributionJSONBody defines parameters for ChannelBindAttribution.
+type ChannelBindAttributionJSONBody struct {
+	Code string `json:"code"`
+}
+
+// ChannelCommissionsParams defines parameters for ChannelCommissions.
+type ChannelCommissionsParams struct {
+	Month *string `form:"month,omitempty" json:"month,omitempty"`
+}
+
+// ChannelApplyJSONBody defines parameters for ChannelApply.
+type ChannelApplyJSONBody struct {
+	Name               string  `json:"name"`
+	ReferrerOperatorId *string `json:"referrer_operator_id,omitempty"`
+	RegionCode         string  `json:"region_code"`
+}
+
+// ChannelOverviewParams defines parameters for ChannelOverview.
+type ChannelOverviewParams struct {
+	Month *string `form:"month,omitempty" json:"month,omitempty"`
+}
+
 // JoinCircleJSONBody defines parameters for JoinCircle.
 type JoinCircleJSONBody struct {
 	Code string `json:"code"`
@@ -1775,6 +1797,12 @@ type SubmitCertJSONRequestBody = CertifyInput
 // ReviewCertByOrgJSONRequestBody defines body for ReviewCertByOrg for application/json ContentType.
 type ReviewCertByOrgJSONRequestBody ReviewCertByOrgJSONBody
 
+// ChannelBindAttributionJSONRequestBody defines body for ChannelBindAttribution for application/json ContentType.
+type ChannelBindAttributionJSONRequestBody ChannelBindAttributionJSONBody
+
+// ChannelApplyJSONRequestBody defines body for ChannelApply for application/json ContentType.
+type ChannelApplyJSONRequestBody ChannelApplyJSONBody
+
 // CreateCircleJSONRequestBody defines body for CreateCircle for application/json ContentType.
 type CreateCircleJSONRequestBody = CircleCreateInput
 
@@ -1978,6 +2006,30 @@ type ServerInterface interface {
 	// ReviewCertByOrg 企业/组织审核认证（个人企业身份，评审人须为组织管理员）
 	// (POST /certs/{id}/review)
 	ReviewCertByOrg(w http.ResponseWriter, r *http.Request, id string)
+	// ChannelMyAttribution 我的归属关系
+	// (GET /channel/attribution)
+	ChannelMyAttribution(w http.ResponseWriter, r *http.Request)
+	// ChannelBindAttribution 绑定归属（邀请码；幂等，单一有效）
+	// (POST /channel/attribution)
+	ChannelBindAttribution(w http.ResponseWriter, r *http.Request)
+	// ChannelCommissions 佣金明细
+	// (GET /channel/commissions)
+	ChannelCommissions(w http.ResponseWriter, r *http.Request, params ChannelCommissionsParams)
+	// ChannelMyLink 推广链接/邀请码（已开通运营商，幂等）
+	// (GET /channel/link)
+	ChannelMyLink(w http.ResponseWriter, r *http.Request)
+	// ChannelMyOperator 我的运营商身份卡（身份/区域/状态）
+	// (GET /channel/operator)
+	ChannelMyOperator(w http.ResponseWriter, r *http.Request)
+	// ChannelApply 申请/重新申请运营商（一地一家；referrer 单层）
+	// (POST /channel/operator/apply)
+	ChannelApply(w http.ResponseWriter, r *http.Request)
+	// ChannelOverview 运营商业绩概览（本月/累计佣金 + 保底任务）
+	// (GET /channel/overview)
+	ChannelOverview(w http.ResponseWriter, r *http.Request, params ChannelOverviewParams)
+	// ChannelWithdraw 提现申请（生成当月结算单）
+	// (POST /channel/withdraw)
+	ChannelWithdraw(w http.ResponseWriter, r *http.Request)
 	// ListMyCircles 我的圈子（我加入的/我创建的）
 	// (GET /circles)
 	ListMyCircles(w http.ResponseWriter, r *http.Request)
@@ -2984,6 +3036,156 @@ func (siw *ServerInterfaceWrapper) ReviewCertByOrg(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReviewCertByOrg(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChannelMyAttribution operation middleware
+func (siw *ServerInterfaceWrapper) ChannelMyAttribution(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChannelMyAttribution(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChannelBindAttribution operation middleware
+func (siw *ServerInterfaceWrapper) ChannelBindAttribution(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChannelBindAttribution(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChannelCommissions operation middleware
+func (siw *ServerInterfaceWrapper) ChannelCommissions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ChannelCommissionsParams
+
+	// ------------- Optional query parameter "month" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "month", r.URL.Query(), &params.Month, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "month"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "month", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChannelCommissions(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChannelMyLink operation middleware
+func (siw *ServerInterfaceWrapper) ChannelMyLink(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChannelMyLink(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChannelMyOperator operation middleware
+func (siw *ServerInterfaceWrapper) ChannelMyOperator(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChannelMyOperator(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChannelApply operation middleware
+func (siw *ServerInterfaceWrapper) ChannelApply(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChannelApply(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChannelOverview operation middleware
+func (siw *ServerInterfaceWrapper) ChannelOverview(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ChannelOverviewParams
+
+	// ------------- Optional query parameter "month" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "month", r.URL.Query(), &params.Month, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "month"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "month", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChannelOverview(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChannelWithdraw operation middleware
+func (siw *ServerInterfaceWrapper) ChannelWithdraw(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChannelWithdraw(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6134,6 +6336,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/search", wrapper.AiSearch)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/telemetry", wrapper.ReportTelemetry)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/feedback", wrapper.AiFeedback)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/channel/operator", wrapper.ChannelMyOperator)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/channel/operator/apply", wrapper.ChannelApply)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/channel/attribution", wrapper.ChannelMyAttribution)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/channel/attribution", wrapper.ChannelBindAttribution)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/channel/overview", wrapper.ChannelOverview)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/channel/commissions", wrapper.ChannelCommissions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/channel/link", wrapper.ChannelMyLink)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/channel/withdraw", wrapper.ChannelWithdraw)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/ai/features", wrapper.AiFeatures)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/cs", wrapper.AiCustomerService)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/certs/{id}/review", wrapper.ReviewCertByOrg)

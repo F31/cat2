@@ -174,6 +174,7 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/channel/attribution", Handler: m.auth(m.handleBindAttribution)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/channel/overview", Handler: m.auth(m.handleOverview)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/channel/commissions", Handler: m.auth(m.handleCommissions)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/channel/link", Handler: m.auth(m.handleMyLink)},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/channel/operators", Handler: m.auth(m.handleListOperators), Admin: true, Perm: "channel:operator:review"},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/channel/operators/{id}/open", Handler: m.auth(m.handleOpen), Admin: true, Perm: "channel:operator:review"},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/channel/operators/{id}/suspend", Handler: m.auth(m.handleSuspend), Admin: true, Perm: "channel:operator:review"},
@@ -620,6 +621,30 @@ func (m *Module) handleCommissions(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	writeData(w, map[string]any{"items": cs})
+}
+
+// handleMyLink 推广链接/邀请码（已开通运营商；幂等复用）。
+func (m *Module) handleMyLink(w http.ResponseWriter, req *http.Request) {
+	op, ok, _ := m.operatorOf(req.Context(), userIDFrom(req.Context()))
+	if !ok || op.Status != contract.StatusOpened {
+		writeErr(w, codeNoOperator, "非已开通运营商")
+		return
+	}
+	var code string
+	if err := m.deps.Pool.QueryRow(req.Context(), `
+		SELECT code FROM chn_link WHERE operator_id=$1 AND channel='invite_code' AND status=0
+		ORDER BY created_at DESC LIMIT 1`, op.ID).Scan(&code); err != nil {
+		code = "inv" + strconv.FormatInt(int64(ids.New()), 36)
+		if _, err := m.deps.Pool.Exec(req.Context(), `
+			INSERT INTO chn_link (id, operator_id, channel, code, region_code, status)
+			VALUES ($1,$2,'invite_code',$3,$4,0)`, int64(ids.New()), op.ID, code, op.RegionCode); err != nil {
+			writeErr(w, codeInternal, "服务错误")
+			return
+		}
+	}
+	writeData(w, map[string]any{
+		"code": code, "path": "/pages/channel/join?code=" + code, "region_code": op.RegionCode,
+	})
 }
 
 func (m *Module) handleListOperators(w http.ResponseWriter, req *http.Request) {

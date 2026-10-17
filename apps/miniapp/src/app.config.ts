@@ -20,6 +20,7 @@ export default defineAppConfig({
     { root: 'pages/cube', pages: ['create', 'detail', 'project', 'task', 'report', 'plan'] },
     { root: 'pages/circle', pages: ['create', 'detail', 'publish', 'settings'] },
     { root: 'pages/support', pages: ['index'] },
+    { root: 'pages/channel', pages: ['index', 'join'] },
   ],
   window: {
     backgroundTextStyle: 'light',
