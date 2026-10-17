@@ -6011,6 +6011,116 @@ func TestIntegrationAdminRBAC(t *testing.T) {
 	}
 }
 
+// 渠道运营商（p4 §1）：申请/开通/停用状态机、一地一家、归属绑定、红线单层。
+func TestIntegrationChannelOperator(t *testing.T) {
+	h := newTestApp(t)
+	ctx := context.Background()
+	_, admTok := loginAdmin(t, h)
+
+	type operatorResp struct {
+		Operator struct {
+			ID         int64  `json:"id,string"`
+			Status     int16  `json:"status"`
+			RegionCode string `json:"region_code"`
+			Referrer   int64  `json:"referrer_operator_id,string"`
+		} `json:"operator"`
+		IsOperator bool `json:"is_operator"`
+	}
+
+	// 运营商 A 申请
+	_, aTok := loginUser(t, h)
+	_, env := h.do(http.MethodPost, "/api/mp/v1/channel/operator/apply", aTok, map[string]any{
+		"region_code": "310000", "name": "沪东运营",
+	})
+	var a operatorResp
+	if err := json.Unmarshal(env.Data, &a); err != nil || a.Operator.ID == 0 {
+		t.Fatalf("申请失败: %+v err=%v", env, err)
+	}
+	if a.Operator.Status != 0 {
+		t.Fatalf("申请后应为申请中(0): %+v", a.Operator)
+	}
+	// 重复申请拒绝
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/channel/operator/apply", aTok, map[string]any{"region_code": "310000", "name": "重复"}); s != http.StatusBadRequest || e.Code != 150002 {
+		t.Fatalf("重复申请应 400/150002: %d %+v", s, e)
+	}
+	// 身份卡
+	_, env = h.do(http.MethodGet, "/api/mp/v1/channel/operator", aTok, nil)
+	_ = json.Unmarshal(env.Data, &a)
+	if !a.IsOperator || a.Operator.Status != 0 {
+		t.Fatalf("身份卡不正确: %+v", a)
+	}
+
+	// 后台开通（一地一家）
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/channel/operators/%d/open", a.Operator.ID), admTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("开通失败: %d %+v", s, e)
+	}
+	_, env = h.do(http.MethodGet, "/api/mp/v1/channel/operator", aTok, nil)
+	_ = json.Unmarshal(env.Data, &a)
+	if a.Operator.Status != 1 {
+		t.Fatalf("开通后应为 1: %+v", a.Operator)
+	}
+
+	// 运营商 B 申请同区域 → 可申请；开户时因区域占用被拒
+	_, bTok := loginUser(t, h)
+	_, env = h.do(http.MethodPost, "/api/mp/v1/channel/operator/apply", bTok, map[string]any{"region_code": "310000", "name": "同区运营"})
+	var b operatorResp
+	_ = json.Unmarshal(env.Data, &b)
+	if b.Operator.ID == 0 {
+		t.Fatalf("B 申请失败: %+v", env)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/channel/operators/%d/open", b.Operator.ID), admTok, nil); s != http.StatusBadRequest || e.Code != 150001 {
+		t.Fatalf("同区开户应 400/150001: %d %+v", s, e)
+	}
+
+	// 停用 → 重新申请
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/channel/operators/%d/suspend", a.Operator.ID), admTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("停用失败: %d %+v", s, e)
+	}
+	_, env = h.do(http.MethodGet, "/api/mp/v1/channel/operator", aTok, nil)
+	_ = json.Unmarshal(env.Data, &a)
+	if a.Operator.Status != 2 {
+		t.Fatalf("停用后应为 2: %+v", a.Operator)
+	}
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/channel/operator/apply", aTok, map[string]any{"region_code": "310100", "name": "沪东运营"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("停用后重新申请失败: %d %+v", s, e)
+	}
+
+	// 归属绑定：插入推广链接（后台/物料在 §1.3）→ 用户 C 绑定（幂等）
+	op := a.Operator.ID
+	code := fmt.Sprintf("inv-%d", op)
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO chn_link (id, operator_id, channel, code, region_code, status)
+		VALUES ($1,$2,'invite_code',$3,'310000',0)
+		ON CONFLICT (code) DO NOTHING`, time.Now().UnixNano(), op, code); err != nil {
+		t.Fatal(err)
+	}
+	_, cTok := loginUser(t, h)
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/channel/attribution", cTok, map[string]any{"code": code}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("归属绑定失败: %d %+v", s, e)
+	}
+	// 幂等
+	if s, e := h.do(http.MethodPost, "/api/mp/v1/channel/attribution", cTok, map[string]any{"code": code}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("归属重复绑定应幂等: %d %+v", s, e)
+	}
+	_, env = h.do(http.MethodGet, "/api/mp/v1/channel/attribution", cTok, nil)
+	var attr struct {
+		Bound       bool `json:"bound"`
+		Attribution struct {
+			OperatorID int64 `json:"operator_id,string"`
+		} `json:"attribution"`
+	}
+	_ = json.Unmarshal(env.Data, &attr)
+	if !attr.Bound || attr.Attribution.OperatorID != op {
+		t.Fatalf("归属记录不正确: %+v", attr)
+	}
+
+	// 业绩概览（无佣金时为零）
+	_, env = h.do(http.MethodGet, "/api/mp/v1/channel/overview", aTok, nil)
+	if env.Code != 0 {
+		t.Fatalf("概览失败: %+v", env)
+	}
+}
+
 // 双人复核可配（p4 §3.12）：`policy.dual_control` 生效于策略引擎。
 func TestIntegrationDualControlConfig(t *testing.T) {
 	h := newTestApp(t)

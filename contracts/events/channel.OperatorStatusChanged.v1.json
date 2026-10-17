@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/channel.OperatorStatusChanged.v1.json",
+  "title": "channel.OperatorStatusChanged.v1",
+  "description": "运营商状态变更（申请中/已开通/已停用）。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "channel.OperatorStatusChanged.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["operator_id", "from", "to"],
+      "properties": {
+        "operator_id": { "type": "string" },
+        "from": { "type": "integer" },
+        "to": { "type": "integer" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

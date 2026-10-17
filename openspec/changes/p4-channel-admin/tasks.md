@@ -8,12 +8,12 @@
 
 ## 1. channel：运营商移动端身份（小程序）
 
-- [ ] 1.1 迁移：`chn_operator`、`chn_guarantee`、`chn_commission`、`chn_settlement`、`chn_annual_target`、`chn_attribution`（详细设计 4.2.18 附）
-- [ ] 1.2 红线进 schema：`chn_operator.referrer_operator_id` 单列、无上级字段、不能自建下级；SQL 层与 contract 均无多级结构
-- [ ] 1.3 运营商身份卡（个人中心显示身份与所属区域）；区域推广专属链接/邀请码
-- [ ] 1.4 归属关系记录（`chn_attribution`：用户注册来源绑定运营商）
-- [ ] 1.5 佣金明细、提现申请、业绩概览（本月新增付费会员/佣金合计/保底任务完成度）
-- [ ] 1.6 状态机 #16 运营商（申请中→已开通→已停用，停用须重新申请）+ 表驱动测试
+- [x] 1.1 迁移：`chn_operator`/`chn_guarantee`/`chn_commission`/`chn_settlement`/`chn_annual_target`/`chn_attribution`/`chn_link`（`chn_` 前缀，archcheck 通过）
+- [x] 1.2 红线进 schema：`referrer_operator_id` 单列（无上级/下级集合），申请时校验推荐人须已开通且区域不同（不得自建下级）；contract/SQL 无多级结构
+- [◐] 1.3 身份卡服务端就绪（`GET /api/mp/v1/channel/operator` 返回身份/区域名/状态）；**待办**：miniapp 个人中心身份卡 UI + 推广链接/邀请码生成（物料接口）
+- [x] 1.4 归属关系：`chn_attribution` 单一有效（部分唯一索引）；`BindAttribution`（按推广码，幂等）+ `GET /api/mp/v1/channel/attribution`；纠错审批留痕字段预留（§2.6）
+- [◐] 1.5 佣金明细 `GET /channel/commissions` + 业绩概览 `GET /channel/overview`（本月/累计佣金 + 保底任务进度）已就绪；**待办**：提现申请（随 §2 结算）
+- [x] 1.6 状态机 #16：`domain.MachineOperator`（0申请中→1已开通→2已停用→0重新申请）；后台 `open`/`suspend`（一地一家 + 审计）+ 事件 `channel.OperatorStatusChanged.v1`；`TestIntegrationChannelOperator`
 
 ## 2. channel：佣金与结算（后台）
 
