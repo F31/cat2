@@ -22,7 +22,7 @@ export default function Login() {
   }
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f0f2f5' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#141414' }}>
       <Card style={{ width: 360 }}>
         <Typography.Title level={4} style={{ textAlign: 'center' }}>
           猫平方管理后台

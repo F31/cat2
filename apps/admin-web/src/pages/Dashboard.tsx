@@ -125,7 +125,7 @@ export default function Dashboard() {
                     {s.users}（{(s.conversion * 100).toFixed(1)}%）
                   </span>
                 </div>
-                <div style={{ height: 8, background: '#f0f0f0', borderRadius: 4 }}>
+                <div style={{ height: 8, background: '#303030', borderRadius: 4 }}>
                   <div
                     style={{
                       width: `${Math.min(100, s.conversion * 100).toFixed(1)}%`,

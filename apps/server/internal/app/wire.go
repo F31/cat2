@@ -468,6 +468,26 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	rbacWrite := func(next http.HandlerFunc) http.HandlerFunc {
 		return rbacAdmin(requirePerm(a.RBAC, a.Audit, rbac.PermRBACManage, next))
 	}
+	a.Mux.HandleFunc("GET /api/admin/v1/me", rbacAdmin(func(w http.ResponseWriter, req *http.Request) {
+		uid, _ := adminUID(req)
+		brief, _ := identityMod.Facade().UserBrief(req.Context(), uid)
+		super, _ := a.RBAC.IsSuper(req.Context(), uid)
+		codes, _ := a.RBAC.AdminRoles(req.Context(), uid)
+		all, _ := a.RBAC.Roles(req.Context())
+		names := map[string]string{}
+		for _, r := range all {
+			names[r.Code] = r.Name
+		}
+		roles := make([]map[string]string, 0, len(codes))
+		for _, c := range codes {
+			roles = append(roles, map[string]string{"code": c, "name": names[c]})
+		}
+		adminJSON(w, 0, "ok", map[string]any{
+			"user_id": strconv.FormatInt(uid, 10), "nickname": brief.Nickname,
+			"super": super, "roles": roles,
+		})
+	}))
+
 	a.Mux.HandleFunc("GET /api/admin/v1/permissions", rbacAdmin(func(w http.ResponseWriter, req *http.Request) {
 		adminJSON(w, 0, "ok", map[string]any{"items": rbac.Registry()})
 	}))

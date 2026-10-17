@@ -12,9 +12,6 @@ func defaultAdminMenus() []menu.Item {
 		return menu.Item{Key: key, Label: label, Path: path, Module: module, Group: group,
 			GroupLabel: groupLabel, GroupOrder: groupOrder, Order: order, Enabled: true}
 	}
-	overview := func(key, label, path, module string, order int) menu.Item {
-		return m(key, label, path, module, "overview", "概览", 1, order)
-	}
 	content := func(key, label, path, module string, order int) menu.Item {
 		return m(key, label, path, module, "content", "内容管理", 2, order)
 	}
@@ -34,8 +31,6 @@ func defaultAdminMenus() []menu.Item {
 		return m(key, label, path, module, "system", "系统管理", 7, order)
 	}
 	items := []menu.Item{
-		overview("ops.dashboard", "经营概览", "/dashboard", "ops", 1),
-
 		content("content.contents", "内容列表", "/contents", "content", 1),
 		content("trust.reviews", "审核队列", "/reviews", "trust", 2),
 		content("verify.certs", "认证审核", "/verify-certs", "verify", 3),
@@ -82,6 +77,10 @@ func defaultAdminMenus() []menu.Item {
 
 func seedAdminMenus(ctx context.Context, pool *db.Pool) error {
 	if _, err := pool.Exec(ctx, menu.Schema); err != nil {
+		return err
+	}
+	// 首页固定为登录后默认页，不占菜单项（清理历史种子）。
+	if _, err := pool.Exec(ctx, `DELETE FROM sys_admin_menu WHERE key='ops.dashboard'`); err != nil {
 		return err
 	}
 	return menu.New(pool).Seed(ctx, defaultAdminMenus())

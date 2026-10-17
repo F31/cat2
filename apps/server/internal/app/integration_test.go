@@ -3577,6 +3577,11 @@ func TestIntegrationAdminMenusDBDriven(t *testing.T) {
 	if dict {
 		t.Fatal("停用菜单不应返回")
 	}
+	for _, it := range res.Items {
+		if it.Path == "/dashboard" {
+			t.Fatal("首页不应出现在菜单中")
+		}
+	}
 }
 
 // 后台菜单声明（p1 §9.9/§11.7）：AdminSection 声明式返回，内容随启用模块。
@@ -3608,6 +3613,17 @@ func TestIntegrationAdminMenus(t *testing.T) {
 	if len(want) != 0 {
 		t.Fatalf("菜单声明缺失: %+v", want)
 	}
+	// 当前账号信息（右上角用户名/角色）
+	_, meEnv := h.do(http.MethodGet, "/api/admin/v1/me", tok, nil)
+	var me struct {
+		UserID string `json:"user_id"`
+		Super  bool   `json:"super"`
+	}
+	_ = json.Unmarshal(meEnv.Data, &me)
+	if me.UserID == "" || !me.Super {
+		t.Fatalf("当前账号信息不完整: %+v", me)
+	}
+
 	// 未登录拒绝
 	if s, _ := h.do(http.MethodGet, "/api/admin/v1/menus", "", nil); s != http.StatusUnauthorized {
 		t.Fatalf("未登录应 401: %d", s)

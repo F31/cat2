@@ -262,6 +262,12 @@ export const adminApi = {
   menus() {
     return call<{ items: AdminMenu[] }>('GET', '/admin/v1/menus')
   },
+  me() {
+    return call<{ user_id: string; nickname: string; super: boolean; roles: Array<{ code: string; name: string }> }>(
+      'GET',
+      '/admin/v1/me',
+    )
+  },
 
   // ---- 后台 RBAC（p4 §3，ADR-002）----
   rbacPermissions() {
