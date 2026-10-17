@@ -49,10 +49,14 @@ type Route struct {
 
 // AdminSection 后台菜单声明段（p1 §9.9/§11.7；菜单级+操作级权限点细化在 p4）。
 type AdminSection struct {
-	Key    string `json:"key"`    // 稳定键，如 identity.users
-	Label  string `json:"label"`  // 菜单名
-	Path   string `json:"path"`   // 前端路由，如 /users
-	Module string `json:"module"` // 归属模块
+	Key        string `json:"key"`         // 稳定键，如 identity.users
+	Label      string `json:"label"`       // 菜单名
+	Path       string `json:"path"`        // 前端路由，如 /users
+	Module     string `json:"module"`      // 归属模块
+	Group      string `json:"group"`       // 一级菜单 key（顶部）
+	GroupLabel string `json:"group_label"` // 一级菜单名
+	GroupOrder int    `json:"group_order"` // 一级菜单顺序
+	Order      int    `json:"order"`       // 组内顺序
 }
 
 // JobDef 定时任务（scheduler 执行，PG 咨询锁单活）。

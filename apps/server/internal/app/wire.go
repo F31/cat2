@@ -11,7 +11,6 @@ import (
 	"hash/crc32"
 	"log/slog"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -32,6 +31,7 @@ import (
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/featureflag"
+	"catcube/internal/kernel/menu"
 	"catcube/internal/kernel/migrate"
 	"catcube/internal/kernel/module"
 	"catcube/internal/kernel/obs"
@@ -398,40 +398,41 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 
 	// 后台菜单声明（p1 §9.9/§11.7）：模块 → AdminSection 声明式；p4 按 RBAC 菜单级过滤
-	adminMenus := adminSectionsFor(ordered)
+	menuStore := menu.New(pool)
 	menusHandler := func(w http.ResponseWriter, req *http.Request) {
 		uid, _ := adminUID(req)
 		isSuper, _ := a.RBAC.IsSuper(req.Context(), uid)
-		items := adminMenus
-		if !isSuper {
+		all, err := menuStore.List(req.Context())
+		if err != nil {
+			adminJSON := func(w http.ResponseWriter, code int, msg string, data any) {
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{"code": code, "message": msg, "data": data})
+			}
+			adminJSON(w, 9, "菜单加载失败", nil)
+			return
+		}
+		items := make([]menu.Item, 0, len(all))
+		if isSuper {
+			items = all
+		} else {
 			perms, _ := a.RBAC.Perms(req.Context(), uid)
 			mods := rbac.VisibleModules(perms)
-			canRBAC := false
-			canSettings := false
+			permSet := map[string]bool{}
 			for _, p := range perms {
-				if p == rbac.PermRBACManage {
-					canRBAC = true
-				}
-				if p == rbac.PermSettingsRead || p == rbac.PermSettingsSet {
-					canSettings = true
-				}
+				permSet[p] = true
 			}
-			filtered := make([]module.AdminSection, 0, len(adminMenus))
-			for _, s := range adminMenus {
-				if s.Key == "ops.rbac" && !canRBAC {
+			for _, it := range all {
+				if it.SuperOnly {
 					continue
 				}
-				if (s.Key == "ops.system_settings" || s.Key == "ops.settings" || s.Key == "ops.feature_flags") && !canSettings {
+				if it.RequiredPerm != "" && !permSet[it.RequiredPerm] {
 					continue
 				}
-				if s.Key == "system.miniapp" && !isSuper {
+				if !mods[it.Module] {
 					continue
 				}
-				if mods[s.Module] {
-					filtered = append(filtered, s)
-				}
+				items = append(items, it)
 			}
-			items = filtered
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "message": "ok", "data": map[string]any{"items": items}})
@@ -827,56 +828,6 @@ func SeedSensitive(ctx context.Context, a *App, path string) (int, error) {
 	return 0, fmt.Errorf("trust 模块未装载")
 }
 
-// adminSectionsFor 后台菜单声明（装配根集中声明，p4 改为模块 AdminSection + 操作级权限点）。
-func adminSectionsFor(mods []module.Module) []module.AdminSection {
-	decl := map[string][]module.AdminSection{
-		"identity":   {{Key: "identity.users", Label: "用户管理", Path: "/users", Module: "identity"}},
-		"content":    {{Key: "content.contents", Label: "内容管理", Path: "/contents", Module: "content"}},
-		"trust":      {{Key: "trust.reviews", Label: "审核队列", Path: "/reviews", Module: "trust"}},
-		"trade":      {{Key: "trade.orders", Label: "订单管理", Path: "/orders", Module: "trade"}},
-		"membership": {{Key: "membership.members", Label: "会员管理", Path: "/members", Module: "membership"}},
-		"cube":       {{Key: "cube.cubes", Label: "猫立方管理", Path: "/cubes", Module: "cube"}},
-		"circle":     {{Key: "circle.circles", Label: "圈子管理", Path: "/circles", Module: "circle"}},
-		"verify":     {{Key: "verify.certs", Label: "认证审核", Path: "/verify-certs", Module: "verify"}, {Key: "verify.badges", Label: "认证标识", Path: "/badges", Module: "verify"}},
-		"ai":         {{Key: "ai.prompts", Label: "AI 提示词与用量", Path: "/ai-prompts", Module: "ai"}},
-		"profile":    {{Key: "profile.templates", Label: "画像字段模板", Path: "/profile-templates", Module: "profile"}},
-		"notice":     {{Key: "notice.templates", Label: "通知模板", Path: "/templates", Module: "notice"}},
-		"ops": {{Key: "ops.settings", Label: "业务配置", Path: "/settings", Module: "ops"},
-			{Key: "ops.feature_flags", Label: "特性开关", Path: "/feature-flags", Module: "ops"},
-			{Key: "ops.audits", Label: "审计轨迹", Path: "/audits", Module: "ops"},
-			{Key: "ops.exports", Label: "导出中心", Path: "/exports", Module: "ops"},
-			{Key: "ops.governance", Label: "代操作", Path: "/governance", Module: "ops"},
-			{Key: "ops.dead_letters", Label: "死信队列", Path: "/dead-letters", Module: "ops"},
-			{Key: "ops.rbac", Label: "角色与权限", Path: "/roles", Module: "ops"},
-			{Key: "ops.system_settings", Label: "系统设置", Path: "/system-settings", Module: "ops"},
-			{Key: "system.miniapp", Label: "小程序设置", Path: "/miniapp-settings", Module: "ops"}},
-		"dict":    {{Key: "dict.taxonomy", Label: "主体类型与选项", Path: "/dict", Module: "dict"}},
-		"channel": {{Key: "channel.operators", Label: "运营商", Path: "/channel-operators", Module: "channel"}, {Key: "channel.settlements", Label: "渠道结算", Path: "/channel-settlements", Module: "channel"}},
-	}
-	var out []module.AdminSection
-	for _, m := range mods {
-		out = append(out, decl[m.Name()]...)
-	}
-	rank := map[string]int{
-		"/users": 1, "/contents": 2, "/reviews": 3, "/verify-certs": 4, "/orders": 5, "/members": 6,
-		"/cubes": 7, "/circles": 8, "/templates": 9, "/channel-operators": 10, "/channel-settlements": 11,
-		"/dict": 12, "/profile-templates": 13, "/badges": 14, "/ai-prompts": 15,
-		"/settings": 20, "/feature-flags": 21, "/audits": 22, "/exports": 23, "/governance": 24,
-		"/dead-letters": 25, "/roles": 26, "/system-settings": 27, "/miniapp-settings": 28,
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		ri, rj := rank[out[i].Path], rank[out[j].Path]
-		if ri == 0 {
-			ri = 99
-		}
-		if rj == 0 {
-			rj = 99
-		}
-		return ri < rj
-	})
-	return out
-}
-
 // selectModules 按 --modules 过滤（空=全部）：共享域与 ops 始终装载；
 // 被启用模块的依赖自动向上补齐（传递闭包），未知模块名报错。
 func selectModules(all []module.Module, enabled []string) ([]module.Module, error) {
@@ -944,7 +895,10 @@ func RunMigrations(ctx context.Context, pool *db.Pool, mods []module.Module) err
 	if err := migrate.NewRunner(pool).Apply(ctx, sources); err != nil {
 		return err
 	}
-	return seedRBAC(ctx, pool)
+	if err := seedRBAC(ctx, pool); err != nil {
+		return err
+	}
+	return seedAdminMenus(ctx, pool)
 }
 
 // seedRBAC 幂等写入后台五角色与默认权限矩阵（p4 §3，ADR-002）。

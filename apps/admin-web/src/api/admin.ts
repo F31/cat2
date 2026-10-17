@@ -61,6 +61,10 @@ export interface AdminMenu {
   label: string
   path: string
   module: string
+  group?: string
+  group_label?: string
+  group_order?: number
+  order?: number
 }
 
 export interface AuditEntry {

@@ -3537,6 +3537,48 @@ func TestIntegrationExpirySample(t *testing.T) {
 	}
 }
 
+// 后台菜单以 DB 为唯一数据源：初始化后可在库中改标签/停用，接口实时反映。
+func TestIntegrationAdminMenusDBDriven(t *testing.T) {
+	h := newTestApp(t)
+	_, tok := loginAdmin(t, h)
+	ctx := context.Background()
+	defer func() {
+		_, _ = h.app.Pool.Exec(ctx, `UPDATE sys_admin_menu SET label='内容列表', enabled=true WHERE key='content.contents'`)
+		_, _ = h.app.Pool.Exec(ctx, `UPDATE sys_admin_menu SET enabled=true WHERE key='dict.taxonomy'`)
+	}()
+
+	if _, err := h.app.Pool.Exec(ctx, `UPDATE sys_admin_menu SET label='内容库（自定义）' WHERE key='content.contents'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.app.Pool.Exec(ctx, `UPDATE sys_admin_menu SET enabled=false WHERE key='dict.taxonomy'`); err != nil {
+		t.Fatal(err)
+	}
+	_, env := h.do(http.MethodGet, "/api/admin/v1/menus", tok, nil)
+	var res struct {
+		Items []struct {
+			Key   string `json:"key"`
+			Label string `json:"label"`
+			Path  string `json:"path"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &res)
+	found, dict := false, false
+	for _, it := range res.Items {
+		if it.Key == "content.contents" && it.Label == "内容库（自定义）" {
+			found = true
+		}
+		if it.Path == "/dict" {
+			dict = true
+		}
+	}
+	if !found {
+		t.Fatal("菜单标签修改未实时生效")
+	}
+	if dict {
+		t.Fatal("停用菜单不应返回")
+	}
+}
+
 // 后台菜单声明（p1 §9.9/§11.7）：AdminSection 声明式返回，内容随启用模块。
 func TestIntegrationAdminMenus(t *testing.T) {
 	h := newTestApp(t)
@@ -3544,9 +3586,11 @@ func TestIntegrationAdminMenus(t *testing.T) {
 	_, env := h.do(http.MethodGet, "/api/admin/v1/menus", tok, nil)
 	var res struct {
 		Items []struct {
-			Key    string `json:"key"`
-			Path   string `json:"path"`
-			Module string `json:"module"`
+			Key        string `json:"key"`
+			Path       string `json:"path"`
+			Module     string `json:"module"`
+			Group      string `json:"group"`
+			GroupLabel string `json:"group_label"`
 		} `json:"items"`
 	}
 	_ = json.Unmarshal(env.Data, &res)
@@ -3557,6 +3601,9 @@ func TestIntegrationAdminMenus(t *testing.T) {
 	}
 	for _, it := range res.Items {
 		delete(want, it.Key)
+		if it.Group == "" || it.GroupLabel == "" {
+			t.Fatalf("菜单缺少分组: %+v", it)
+		}
 	}
 	if len(want) != 0 {
 		t.Fatalf("菜单声明缺失: %+v", want)
@@ -5979,6 +6026,7 @@ func TestIntegrationAdminRBAC(t *testing.T) {
 	_, env = h.do(http.MethodGet, "/api/admin/v1/menus", atok, nil)
 	var menus struct {
 		Items []struct {
+			Key    string `json:"key"`
 			Module string `json:"module"`
 		} `json:"items"`
 	}
@@ -5987,6 +6035,9 @@ func TestIntegrationAdminRBAC(t *testing.T) {
 	for _, m := range menus.Items {
 		if m.Module == "channel" || m.Module == "trade" || m.Module == "membership" {
 			t.Fatalf("审核员菜单不应含 %s", m.Module)
+		}
+		if m.Key == "system.miniapp" {
+			t.Fatal("小程序设置仅超管可见")
 		}
 	}
 
