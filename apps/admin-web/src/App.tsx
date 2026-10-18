@@ -31,6 +31,8 @@ import ProfileTemplates from './pages/ProfileTemplates'
 import MiniappSettings from './pages/MiniappSettings'
 import ChannelSettings from './pages/ChannelSettings'
 import MembershipPricing from './pages/MembershipPricing'
+import SmsSettings from './pages/SmsSettings'
+import AiGatewaySettings from './pages/AiGatewaySettings'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />
@@ -76,6 +78,8 @@ export default function App() {
         <Route path="miniapp-settings" element={<MiniappSettings />} />
         <Route path="channel-settings" element={<ChannelSettings />} />
         <Route path="membership-pricing" element={<MembershipPricing />} />
+        <Route path="sms-settings" element={<SmsSettings />} />
+        <Route path="ai-gateway-settings" element={<AiGatewaySettings />} />
         <Route path="users/:id/360" element={<User360 />} />
       </Route>
     </Routes>

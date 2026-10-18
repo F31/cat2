@@ -220,7 +220,8 @@ func (m *Module) handleAudits(w http.ResponseWriter, req *http.Request) {
 			writeErr(w, 9, "服务错误")
 			return
 		}
-		items = append(items, auditRow(id, actorID, actorType, channel, action, target, detail, result, ip, rid, hash, createdAt, archived))
+		items = append(items, auditRow(id, actorID, actorType, channel, action, target, detail, result, ip, rid, hash, createdAt, archived,
+			m.actorName(req, actorID), auditActionLabel(action)))
 	}
 	writeData(w, map[string]any{"items": items})
 }
@@ -247,13 +248,14 @@ func (m *Module) handleAuditDetail(w http.ResponseWriter, req *http.Request) {
 		writeErr(w, 4, "审计记录不存在")
 		return
 	}
-	row := auditRow(id, actorID, actorType, channel, action, target, detail, result, ip, rid, hash, createdAt, archived)
+	row := auditRow(id, actorID, actorType, channel, action, target, detail, result, ip, rid, hash, createdAt, archived,
+		m.actorName(req, actorID), auditActionLabel(action))
 	row["prev_hash"] = prevHash
 	writeData(w, row)
 }
 
 func auditRow(id, actorID int64, actorType int16, channel, action, target string, detail []byte, result int16,
-	ip, rid, hash string, createdAt int64, archived bool) map[string]any {
+	ip, rid, hash string, createdAt int64, archived bool, actorName, actionLabel string) map[string]any {
 	var dv any
 	if len(detail) > 0 {
 		var v any
@@ -262,10 +264,26 @@ func auditRow(id, actorID int64, actorType int16, channel, action, target string
 		}
 	}
 	return map[string]any{
-		"id": id, "actor_id": actorID, "actor_type": actorType, "channel": channel, "action": action,
+		"id": id, "actor_id": strconv.FormatInt(actorID, 10), "actor_name": actorName, "actor_type": actorType,
+		"channel": channel, "action": action, "action_label": actionLabel,
 		"target_ref": target, "detail": dv, "result": result, "ip": ip, "request_id": rid,
 		"hash": hash, "created_at": createdAt, "archived": archived,
 	}
+}
+
+// actorName 操作者姓名（系统/后台/小程序统一经 identity facade 取昵称）。
+func (m *Module) actorName(req *http.Request, actorID int64) string {
+	if actorID == 0 {
+		return "系统"
+	}
+	if m.deps.Identity == nil {
+		return ""
+	}
+	b, err := m.deps.Identity.UserBrief(req.Context(), actorID)
+	if err != nil {
+		return ""
+	}
+	return b.Nickname
 }
 
 // securityMonitor denied 突增告警（p4 §5.6）。

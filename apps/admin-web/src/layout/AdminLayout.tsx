@@ -24,6 +24,8 @@ const FALLBACK: AdminMenu[] = [
   { key: 'system.users', label: '用户管理', path: '/users', module: 'identity', group: 'system', group_label: '系统管理', group_order: 6, order: 1 },
   { key: 'system.roles', label: '角色管理', path: '/roles', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 2 },
   { key: 'system.settings', label: '系统设置', path: '/system-settings', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 3 },
+  { key: 'system.sms', label: '短信网关', path: '/sms-settings', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 4 },
+  { key: 'system.aiGateway', label: 'AI 网关', path: '/ai-gateway-settings', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 5 },
   { key: 'system.audits', label: '日志审计', path: '/audits', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 4 },
   { key: 'system.flags', label: '特性开关', path: '/feature-flags', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 5 },
   { key: 'system.dead', label: '死信队列', path: '/dead-letters', module: 'ops', group: 'system', group_label: '系统管理', group_order: 6, order: 6 },

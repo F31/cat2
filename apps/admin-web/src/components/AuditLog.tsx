@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Descriptions, Drawer, Input, InputNumber, Select, Space, Tag, message } from 'antd'
+import { Button, Descriptions, Drawer, Input, InputNumber, Select, Space, Tag, Tooltip, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { adminApi, type AuditEntry } from '../api/admin'
 import DataTable from './DataTable'
@@ -10,6 +10,13 @@ const RESULT: Record<number, { text: string; color: string }> = {
   2: { text: '失败', color: 'orange' },
 }
 const CHANNEL: Record<string, string> = { admin: '后台', mp: '小程序', jobs: '任务', open: '开放' }
+
+function fmtTime(v?: number): string {
+  if (!v) return '—'
+  const d = new Date(v * 1000)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
 
 /** 审计轨迹共享组件（五维筛选 + target_ref 反查 + detail 快照）。 */
 export default function AuditLog() {
@@ -45,22 +52,41 @@ export default function AuditLog() {
   }
 
   const columns: ColumnsType<AuditEntry> = [
-    { title: '时间', dataIndex: 'created_at', render: (v: number) => new Date(v * 1000).toLocaleString() },
-    { title: '操作者', dataIndex: 'actor_id', render: (v: number, r) => `${CHANNEL[r.channel ?? ''] ?? r.channel}#${v}` },
-    { title: '动作', dataIndex: 'action' },
+    {
+      title: '操作者',
+      dataIndex: 'actor_name',
+      width: 200,
+      render: (v: string | undefined, r) => (
+        <Space size={4}>
+          <span>{v || (r.actor_id === '0' ? '系统' : `用户#${r.actor_id}`)}</span>
+          <Tag>{CHANNEL[r.channel ?? ''] ?? r.channel ?? '—'}</Tag>
+        </Space>
+      ),
+    },
+    { title: '时间', dataIndex: 'created_at', width: 180, render: (v?: number) => fmtTime(v) },
+    { title: 'IP 地址', dataIndex: 'ip', width: 140, render: (v?: string) => v || '—' },
+    {
+      title: '动作',
+      dataIndex: 'action_label',
+      render: (v: string | undefined, r) => (
+        <Tooltip title={r.action}>
+          <span>{v || r.action}</span>
+        </Tooltip>
+      ),
+    },
     { title: '对象', dataIndex: 'target_ref', render: (v?: string) => (v ? <code>{v}</code> : '—') },
     {
       title: '结果',
       dataIndex: 'result',
+      width: 90,
       render: (v: number) => {
         const r = RESULT[v] ?? { text: String(v), color: 'default' }
         return <Tag color={r.color}>{r.text}</Tag>
       },
     },
-    { title: '请求', dataIndex: 'request_id', render: (v?: string) => v || '—' },
-    { title: '归档', dataIndex: 'archived', render: (v?: boolean) => (v ? <Tag>已归档</Tag> : '—') },
     {
       title: '操作',
+      width: 80,
       render: (_, r) => (
         <Button size="small" onClick={() => void open(r.id)}>
           详情
@@ -99,10 +125,20 @@ export default function AuditLog() {
       <Drawer title={`审计详情 #${detail?.id ?? ''}`} width={560} open={!!detail} onClose={() => setDetail(null)}>
         {detail ? (
           <Descriptions column={1} size="small" bordered>
-            <Descriptions.Item label="动作">{detail.action}</Descriptions.Item>
+            <Descriptions.Item label="操作者">
+              {`${detail.actor_name || (detail.actor_id === '0' ? '系统' : `用户#${detail.actor_id}`)}（${CHANNEL[detail.channel ?? ''] ?? detail.channel ?? '—'}）`}
+            </Descriptions.Item>
+            <Descriptions.Item label="时间">{fmtTime(detail.created_at)}</Descriptions.Item>
+            <Descriptions.Item label="IP 地址">{detail.ip || '—'}</Descriptions.Item>
+            <Descriptions.Item label="动作">
+              <Space direction="vertical" size={0}>
+                <span>{detail.action_label || detail.action}</span>
+                <code>{detail.action}</code>
+              </Space>
+            </Descriptions.Item>
             <Descriptions.Item label="结果">{RESULT[detail.result]?.text ?? detail.result}</Descriptions.Item>
             <Descriptions.Item label="对象">{detail.target_ref || '—'}</Descriptions.Item>
-            <Descriptions.Item label="IP / 请求">{`${detail.ip || '—'} / ${detail.request_id || '—'}`}</Descriptions.Item>
+            <Descriptions.Item label="请求 ID">{detail.request_id || '—'}</Descriptions.Item>
             <Descriptions.Item label="哈希">{detail.hash}</Descriptions.Item>
             <Descriptions.Item label="前序哈希">{detail.prev_hash || '—'}</Descriptions.Item>
             <Descriptions.Item label="快照（已脱敏）">

@@ -4804,12 +4804,16 @@ func TestIntegrationAuditGovernance(t *testing.T) {
 	_, env := h.do(http.MethodGet, "/api/admin/v1/audits?action=identity:user:ban&limit=5", admTok, nil)
 	var list struct {
 		Items []struct {
-			ID       int64          `json:"id"`
-			Action   string         `json:"action"`
-			Result   int16          `json:"result"`
-			Detail   map[string]any `json:"detail"`
-			Hash     string         `json:"hash"`
-			Archived bool           `json:"archived"`
+			ID          int64          `json:"id"`
+			ActorID     string         `json:"actor_id"`
+			ActorName   string         `json:"actor_name"`
+			Action      string         `json:"action"`
+			ActionLabel string         `json:"action_label"`
+			IP          string         `json:"ip"`
+			Result      int16          `json:"result"`
+			Detail      map[string]any `json:"detail"`
+			Hash        string         `json:"hash"`
+			Archived    bool           `json:"archived"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(env.Data, &list); err != nil {
@@ -4817,6 +4821,10 @@ func TestIntegrationAuditGovernance(t *testing.T) {
 	}
 	if len(list.Items) == 0 {
 		t.Fatal("应能查到封禁审计")
+	}
+	first := list.Items[0]
+	if first.ActorID == "" || first.ActorName == "" || first.ActionLabel != "封禁用户" || first.IP == "" {
+		t.Fatalf("审计展示字段不完整: %+v", first)
 	}
 	// 3) 明细查询：含哈希与前后值（detail 已脱敏）
 	id := list.Items[0].ID

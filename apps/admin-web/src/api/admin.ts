@@ -70,10 +70,12 @@ export interface AdminMenu {
 
 export interface AuditEntry {
   id: number
-  actor_id: number
+  actor_id: string
+  actor_name?: string
   actor_type: number
   channel?: string
   action: string
+  action_label?: string
   target_ref?: string
   detail?: Record<string, unknown>
   result: number

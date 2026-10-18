@@ -64,7 +64,9 @@ func defaultAdminMenus() []menu.Item {
 		system("ops.rbac", "system.authority", "角色管理", "/roles", "ops", 2),
 		system("system.config", "", "系统配置", "/m/system/config", "ops", 2),
 		system("ops.system_settings", "system.config", "系统设置", "/system-settings", "ops", 1),
-		system("system.miniapp", "system.config", "小程序设置", "/miniapp-settings", "ops", 2),
+		system("ops.sms_settings", "system.config", "短信网关", "/sms-settings", "ops", 2),
+		system("ops.ai_gateway_settings", "system.config", "AI 网关", "/ai-gateway-settings", "ops", 3),
+		system("system.miniapp", "system.config", "小程序设置", "/miniapp-settings", "ops", 4),
 		system("system.ops", "", "运维工具", "/m/system/ops", "ops", 3),
 		system("ops.audits", "system.ops", "日志审计", "/audits", "ops", 1),
 		system("ops.feature_flags", "system.ops", "特性开关", "/feature-flags", "ops", 2),
@@ -75,7 +77,7 @@ func defaultAdminMenus() []menu.Item {
 		switch items[i].Key {
 		case "ops.rbac":
 			items[i].RequiredPerm = "ops:rbac:manage"
-		case "ops.system_settings", "ops.feature_flags", "ops.channel_settings", "ops.membership_pricing":
+		case "ops.system_settings", "ops.sms_settings", "ops.ai_gateway_settings", "ops.feature_flags", "ops.channel_settings", "ops.membership_pricing":
 			items[i].RequiredPerm = "ops:settings:read"
 		case "system.miniapp":
 			items[i].SuperOnly = true
@@ -118,6 +120,17 @@ func seedAdminMenus(ctx context.Context, pool *db.Pool) error {
 	}
 	// 系统管理固定为第 6 个一级分组（兼容旧库遗留的 7）。
 	if _, err := pool.Exec(ctx, `UPDATE sys_admin_menu SET group_order=6 WHERE group_key='system'`); err != nil {
+		return err
+	}
+	// 系统配置子项顺序：系统设置 / 短信网关 / AI 网关 / 小程序设置。
+	if _, err := pool.Exec(ctx, `
+		UPDATE sys_admin_menu SET item_order=CASE key
+			WHEN 'ops.system_settings' THEN 1
+			WHEN 'ops.sms_settings' THEN 2
+			WHEN 'ops.ai_gateway_settings' THEN 3
+			WHEN 'system.miniapp' THEN 4
+		END
+		WHERE key IN ('ops.system_settings','ops.sms_settings','ops.ai_gateway_settings','system.miniapp')`); err != nil {
 		return err
 	}
 	return menu.New(pool).Seed(ctx, defaultAdminMenus())
