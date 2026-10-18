@@ -304,6 +304,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 
 	// 后台治理（RBAC）审计点（内核接口，非模块路由；p4 §5.4 admin/内核）
 	a.AuditPoints = append(a.AuditPoints,
+		audit.Point{Action: "admin:login:password", Path: "/api/admin/v1/auth/password", Required: true, LogFailed: true, Module: "ops"},
 		audit.Point{Action: "ops:rbac:role:set", Path: "/api/admin/v1/roles/{code}/permissions", Required: true, LogFailed: true, Module: "ops"},
 		audit.Point{Action: "ops:rbac:role:scope", Path: "/api/admin/v1/roles/{code}/scope", Required: true, LogFailed: true, Module: "ops"},
 		audit.Point{Action: "ops:rbac:role:create", Path: "/api/admin/v1/roles", Required: true, LogFailed: true, Module: "ops"},

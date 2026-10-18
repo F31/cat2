@@ -123,6 +123,9 @@ func (m *Module) Register(r *module.Registry) error {
 		audit.Point{Action: "circle:admin:unban", Path: "/api/admin/v1/circles/batch", Required: true, LogFailed: true, Module: "circle"},
 		audit.Point{Action: "circle:admin:restore", Path: "/api/admin/v1/circles/batch", Required: true, LogFailed: true, Module: "circle"},
 		audit.Point{Action: "circle:convert", Path: "/api/mp/v1/circles/{id}/convert", Required: true, LogFailed: false, Module: "circle"},
+		audit.Point{Action: "circle:demand:remove", Path: "/api/admin/v1/circles/{id}/demands/{did}/remove", Required: true, LogFailed: true, Module: "circle"},
+		audit.Point{Action: "circle:feed:remove", Path: "/api/admin/v1/circles/{id}/feeds/{fid}/remove", Required: true, LogFailed: true, Module: "circle"},
+		audit.Point{Action: "circle:mount:remove", Path: "/api/admin/v1/circles/{id}/mounts/{mid}/remove", Required: true, LogFailed: true, Module: "circle"},
 	)
 	r.StateMachines = append(r.StateMachines, domain.MachineCircle, domain.MachineDemand)
 	r.Jobs = append(r.Jobs,
@@ -495,6 +498,14 @@ func (m *Module) handleAdminStats(w http.ResponseWriter, req *http.Request) {
 			UNION SELECT circle_id FROM cir_member WHERE joined_at >= now() - make_interval(days => $1)
 		) x`, days).Scan(&active)
 	_ = m.deps.Pool.QueryRow(req.Context(), `SELECT count(1) FROM cir_member WHERE status=0`).Scan(&membersTotal)
+	var demandTotal, demandValid int
+	_ = m.deps.Pool.QueryRow(req.Context(), `
+		SELECT count(1), count(1) FILTER (WHERE expire_at > now() AND status <> 2)
+		FROM cir_demand WHERE created_at >= now() - make_interval(days => $1)`, days).Scan(&demandTotal, &demandValid)
+	rate := 0.0
+	if demandTotal > 0 {
+		rate = float64(demandValid) * 100 / float64(demandTotal)
+	}
 	trend := []map[string]any{}
 	rows, err := m.deps.Pool.Query(req.Context(), `
 		SELECT to_char(date_trunc('day', joined_at), 'YYYY-MM-DD'), count(1) FROM cir_member
@@ -511,7 +522,8 @@ func (m *Module) handleAdminStats(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	writeData(w, map[string]any{"days": days, "new_total": total, "new_permanent": permanent,
-		"new_temporary": temporary, "active_circles": active, "members_total": membersTotal, "member_trend": trend})
+		"new_temporary": temporary, "active_circles": active, "members_total": membersTotal,
+		"demands_total": demandTotal, "demand_valid_rate": rate, "member_trend": trend})
 }
 
 func (m *Module) handleAdminRemoveDemand(w http.ResponseWriter, req *http.Request) {
@@ -532,10 +544,17 @@ func (m *Module) removeCircleContent(w http.ResponseWriter, req *http.Request, p
 		Reason string `json:"reason"`
 	}
 	_ = json.NewDecoder(req.Body).Decode(&body)
+	if strings.TrimSpace(body.Reason) == "" {
+		writeErr(w, codeParamInvalid, "必须填写原因")
+		return
+	}
 	tag, err := m.deps.Pool.Exec(req.Context(), `UPDATE `+table+` SET status=2 WHERE id=$1 AND circle_id=$2`, itemID, circleID)
 	if err != nil || tag.RowsAffected() == 0 {
 		writeErr(w, 140001, "内容不存在")
 		return
+	}
+	if table == "cir_feed" {
+		_, _ = m.deps.Pool.Exec(req.Context(), `UPDATE cir_circle SET feed_count=GREATEST(feed_count-1,0) WHERE id=$1`, circleID)
 	}
 	if m.deps.Audit != nil {
 		_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{

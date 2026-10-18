@@ -264,6 +264,8 @@ export const adminApi = {
       new_temporary: number
       active_circles: number
       members_total: number
+      demands_total: number
+      demand_valid_rate: number
       member_trend: Array<{ date: string; new_members: number }>
     }>('GET', `/admin/v1/circles/stats?days=${days}`)
   },
@@ -688,6 +690,8 @@ export interface AdminCube {
   status: number
   member_count: number
   region_code?: string
+  project_count?: number
+  created_at?: string
 }
 
 export interface AdminCircle {

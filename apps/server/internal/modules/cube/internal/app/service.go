@@ -35,6 +35,7 @@ type Repo interface {
 	GetMember(ctx context.Context, cubeID, userID int64) (infra.Member, bool, error)
 	ListMembers(ctx context.Context, cubeID int64) ([]infra.Member, error)
 	CountMembers(ctx context.Context, cubeID int64) (int, error)
+	CountProjects(ctx context.Context, cubeID int64) (int, error)
 	SetMemberRole(ctx context.Context, q infra.Querier, cubeID, userID int64, role int16) error
 	RemoveMember(ctx context.Context, q infra.Querier, cubeID, userID int64, reason string) error
 	UpdateLeader(ctx context.Context, q infra.Querier, cubeID, leaderID, honeyID int64, logJSON []byte) error
@@ -263,6 +264,9 @@ func (s *Service) AdminRemoveMember(ctx context.Context, cubeID, targetID int64,
 	}
 	if targetID == c.LeaderID {
 		return domain.ErrNoPermission
+	}
+	if targetID == c.HoneyID {
+		return domain.ErrHoneyRequired // 需先调整猫蜜，再移除
 	}
 	if _, ok, err := s.repo.GetMember(ctx, cubeID, targetID); err != nil || !ok {
 		return domain.ErrNoPermission
@@ -501,7 +505,11 @@ func (s *Service) AdminList(ctx context.Context, q string, limit int) ([]contrac
 	out := make([]contract.CubeBrief, 0, len(cs))
 	for _, c := range cs {
 		n, _ := s.repo.CountMembers(ctx, c.ID)
-		out = append(out, s.brief(c, n))
+		b := s.brief(c, n)
+		b.ProjectCount, _ = s.repo.CountProjects(ctx, c.ID)
+		created := c.CreatedAt
+		b.CreatedAt = &created
+		out = append(out, b)
 	}
 	return out, nil
 }

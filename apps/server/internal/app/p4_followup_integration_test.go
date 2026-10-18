@@ -512,7 +512,7 @@ func TestIntegrationAdminPlazaManagement(t *testing.T) {
 		t.Fatalf("猫蜜未更新: %d", honey)
 	}
 	// 平台移除成员
-	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/cubes/%d/members/%d/remove", cubeID, other), admTok,
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/cubes/%d/members/%d/remove", cubeID, member2), admTok,
 		map[string]any{"reason": "违规"}); s != http.StatusOK || e.Code != 0 {
 		t.Fatalf("移除成员失败: %d %+v", s, e)
 	}

@@ -221,6 +221,13 @@ func (s *Store) ListMembers(ctx context.Context, cubeID int64) ([]Member, error)
 	return out, rows.Err()
 }
 
+// CountProjects 立方内项目数。
+func (s *Store) CountProjects(ctx context.Context, cubeID int64) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `SELECT count(1) FROM cub_project WHERE cube_id=$1`, cubeID).Scan(&n)
+	return n, err
+}
+
 // CountMembers 有效成员数（不含被移除）。
 func (s *Store) CountMembers(ctx context.Context, cubeID int64) (int, error) {
 	var n int

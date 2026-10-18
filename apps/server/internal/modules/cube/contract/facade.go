@@ -47,6 +47,9 @@ type CubeBrief struct {
 	Status       int16      `json:"status"`
 	MemberCount  int        `json:"member_count"`
 	RegionCode   string     `json:"region_code,omitempty"`
+	// 后台列表补充字段（小程序侧省略）
+	ProjectCount int        `json:"project_count,omitempty"`
+	CreatedAt    *time.Time `json:"created_at,omitempty"`
 }
 
 // CubeDetail 立方详情（含画像字段）。

@@ -174,7 +174,8 @@ func TestIntegrationAuditChecklist(t *testing.T) {
 	}
 	required := []string{
 		// identity / trust
-		"identity:login:locked", "identity:user:deactivate", "identity:user:ban", "identity:user:unban",
+		"admin:login:password", "identity:login:locked", "identity:user:create", "identity:user:update",
+		"identity:user:deactivate", "identity:user:ban", "identity:user:unban",
 		"trust:review:resolve", "trust:user:restrict",
 		// trade / 导出
 		"trade:refund:execute", "trade:fulfillment:retry", "trade:pay:notify", "export:create", "export:download",
@@ -188,15 +189,17 @@ func TestIntegrationAuditChecklist(t *testing.T) {
 		"content:takedown",
 		"cube:leader:transfer", "cube:member:remove", "cube:plan:change",
 		"cube:dissolve", "cube:admin:ban", "cube:admin:dissolve",
+		"cube:admin:member_remove", "cube:admin:leader", "cube:admin:honey", "cube:admin:chat_view",
 		"circle:dissolve", "circle:admin:dissolve", "circle:convert",
+		"circle:demand:remove", "circle:feed:remove", "circle:mount:remove",
 		// channel
 		"channel:operator:open", "channel:operator:suspend", "channel:settlement:review",
 		"channel:settlement:reject", "channel:settlement:pay", "channel:attribution:correct",
 		"channel:operator_fee:record", "channel:guarantee:refund", "channel:commission_rule:set",
 		// profile / msg / notice / discovery / dict / admin
 		"profile:contact:view", "profile:identity:modify:denied",
-		"notice:announcement:broadcast", "discovery:weight:set",
-		"ops:setting:set", "ops:feature_flag:set", "ops:dead_letter:replay", "ops:job:run",
+		"notice:announcement:broadcast", "notice:template:update", "discovery:weight:set",
+		"ops:setting:set", "ops:miniapp:set", "ops:feature_flag:set", "ops:dead_letter:replay", "ops:job:run",
 		"ops:rbac:role:set", "ops:rbac:role:scope", "ops:rbac:role:create",
 		"ops:rbac:role:delete", "ops:rbac:assign", "ai:prompt:save",
 	}

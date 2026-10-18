@@ -136,6 +136,8 @@ export default function Cubes() {
     { title: '猫蜜', dataIndex: 'honey_id', render: (v?: string) => v || '—' },
     { title: '订阅档位', dataIndex: 'plan_level', render: (v: number) => PLAN[v] ?? v },
     { title: '成员数', dataIndex: 'member_count' },
+    { title: '项目数', dataIndex: 'project_count', render: (v?: number) => v ?? 0 },
+    { title: '创建时间', dataIndex: 'created_at', render: (v?: string) => (v ? v.slice(0, 10) : '—') },
     { title: '区域', dataIndex: 'region_code', render: (v?: string) => v || '—' },
     { title: '状态', dataIndex: 'status', render: (v: number) => <Tag color={STATUS[v]?.color}>{STATUS[v]?.text ?? v}</Tag> },
     {
@@ -216,7 +218,7 @@ export default function Cubes() {
                         <Space>
                           <Button size="small" disabled={r.role === 1} onClick={() => setLeader(r.user_id, r.nickname)}>设为猫王</Button>
                           <Button size="small" disabled={r.role === 1 || r.role === 2} onClick={() => setHoney(r.user_id, r.nickname)}>设为猫蜜</Button>
-                          <Button size="small" danger disabled={r.role === 1} onClick={() => { setRemoveTarget({ uid: r.user_id, name: r.nickname }); setRemoveReason('') }}>移除</Button>
+                          <Button size="small" danger disabled={r.role === 1 || r.role === 2} onClick={() => { setRemoveTarget({ uid: r.user_id, name: r.nickname }); setRemoveReason('') }}>移除</Button>
                         </Space>
                       ),
                     },

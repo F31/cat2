@@ -131,10 +131,11 @@ export default function Circles() {
     <>
       {stats ? (
         <Row gutter={16} style={{ marginBottom: 16 }}>
-          <Col span={6}><Card><Statistic title="新增圈数（30天）" value={stats.new_total} /></Card></Col>
-          <Col span={6}><Card><Statistic title="常设 / 临时" value={`${stats.new_permanent} / ${stats.new_temporary}`} /></Card></Col>
-          <Col span={6}><Card><Statistic title="活跃圈（30天）" value={stats.active_circles} /></Card></Col>
-          <Col span={6}><Card><Statistic title="成员总数" value={stats.members_total} /></Card></Col>
+          <Col flex="1"><Card><Statistic title="新增圈数（30天）" value={stats.new_total} /></Card></Col>
+          <Col flex="1"><Card><Statistic title="常设 / 临时" value={`${stats.new_permanent} / ${stats.new_temporary}`} /></Card></Col>
+          <Col flex="1"><Card><Statistic title="活跃圈（30天）" value={stats.active_circles} /></Card></Col>
+          <Col flex="1"><Card><Statistic title="成员总数" value={stats.members_total} /></Card></Col>
+          <Col flex="1"><Card><Statistic title="需求发布（30天）" value={stats.demands_total} suffix={`有效率 ${stats.demand_valid_rate.toFixed(0)}%`} /></Card></Col>
         </Row>
       ) : null}
       <Space wrap style={{ marginBottom: 16 }}>
