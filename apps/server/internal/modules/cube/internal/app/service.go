@@ -38,6 +38,7 @@ type Repo interface {
 	SetMemberRole(ctx context.Context, q infra.Querier, cubeID, userID int64, role int16) error
 	RemoveMember(ctx context.Context, q infra.Querier, cubeID, userID int64, reason string) error
 	UpdateLeader(ctx context.Context, q infra.Querier, cubeID, leaderID, honeyID int64, logJSON []byte) error
+	SetHoney(ctx context.Context, q infra.Querier, cubeID, honeyID int64) error
 	SetCubeStatus(ctx context.Context, q infra.Querier, cubeID int64, status int16) error
 	SetPlan(ctx context.Context, cubeID int64, level int16, expireAt time.Time) error
 	ListExpiredPlans(ctx context.Context, limit int) ([]int64, error)
@@ -252,6 +253,63 @@ func (s *Service) RemoveMember(ctx context.Context, cubeID, operatorID, targetID
 		return err
 	}
 	return s.identity.AuthzBump(ctx, targetID)
+}
+
+// AdminRemoveMember 平台移除成员（不要求操作者是猫王/猫蜜；不可移除猫王）。
+func (s *Service) AdminRemoveMember(ctx context.Context, cubeID, targetID int64, reason string) error {
+	c, err := s.repo.GetCube(ctx, cubeID)
+	if err != nil {
+		return err
+	}
+	if targetID == c.LeaderID {
+		return domain.ErrNoPermission
+	}
+	if _, ok, err := s.repo.GetMember(ctx, cubeID, targetID); err != nil || !ok {
+		return domain.ErrNoPermission
+	}
+	if err := s.pool.InTx(ctx, func(tx db.Tx) error {
+		if err := s.repo.RemoveMember(ctx, tx, cubeID, targetID, reason); err != nil {
+			return err
+		}
+		return s.publish(ctx, tx, contract.NewMemberRemoved(ids.New().String(), contract.MemberPayload{
+			CubeID: cubeID, UserID: targetID, OperatorID: 0, Reason: reason,
+		}))
+	}); err != nil {
+		return err
+	}
+	return s.identity.AuthzBump(ctx, targetID)
+}
+
+// AdminSetHoney 平台指定猫蜜（需为在职成员，不能是猫王）。
+func (s *Service) AdminSetHoney(ctx context.Context, cubeID, userID int64) error {
+	c, err := s.repo.GetCube(ctx, cubeID)
+	if err != nil {
+		return err
+	}
+	if userID == c.LeaderID {
+		return domain.ErrHoneyRequired
+	}
+	target, ok, err := s.repo.GetMember(ctx, cubeID, userID)
+	if err != nil || !ok || target.Status != contract.MemberActive {
+		return domain.ErrNoPermission
+	}
+	if err := s.pool.InTx(ctx, func(tx db.Tx) error {
+		if c.HoneyID != 0 && c.HoneyID != userID {
+			if err := s.repo.SetMemberRole(ctx, tx, cubeID, c.HoneyID, contract.RoleMember); err != nil {
+				return err
+			}
+		}
+		if err := s.repo.SetHoney(ctx, tx, cubeID, userID); err != nil {
+			return err
+		}
+		return s.repo.SetMemberRole(ctx, tx, cubeID, userID, contract.RoleHoney)
+	}); err != nil {
+		return err
+	}
+	if c.HoneyID != 0 && c.HoneyID != userID {
+		_ = s.identity.AuthzBump(ctx, c.HoneyID)
+	}
+	return s.identity.AuthzBump(ctx, userID)
 }
 
 // Leave 主动退出。

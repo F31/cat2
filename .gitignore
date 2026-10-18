@@ -22,3 +22,5 @@ dist/
 *.tsbuildinfo
 
 deploy/compose/.env.single
+
+docs/~$*

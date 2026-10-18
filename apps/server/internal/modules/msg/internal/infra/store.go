@@ -146,15 +146,24 @@ func (s *Store) EnsureGroup(ctx context.Context, tx pgx.Tx, id int64, bizRef, ti
 }
 
 // ListGroups 全部群聊（成员重算用）。
-func (s *Store) ListGroups(ctx context.Context) ([]struct{ ID int64; BizRef string }, error) {
+func (s *Store) ListGroups(ctx context.Context) ([]struct {
+	ID     int64
+	BizRef string
+}, error) {
 	rows, err := s.pool.Query(ctx, `SELECT id, COALESCE(biz_ref,'') FROM msg_session WHERE kind=2`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []struct{ ID int64; BizRef string }
+	var out []struct {
+		ID     int64
+		BizRef string
+	}
 	for rows.Next() {
-		var g struct{ ID int64; BizRef string }
+		var g struct {
+			ID     int64
+			BizRef string
+		}
 		if err := rows.Scan(&g.ID, &g.BizRef); err != nil {
 			return nil, err
 		}
@@ -251,6 +260,41 @@ func (s *Store) MarkRead(ctx context.Context, tx pgx.Tx, sessionID, userID, read
 		 WHERE m.session_id=$1 AND m.user_id=$2 AND s.id=$1 AND c.session_id=$1 AND c.user_id=$2`,
 		sessionID, userID)
 	return err
+}
+
+// AdminSessionsByBizRefs 按业务引用批量取群聊会话（后台合规查看）。
+func (s *Store) AdminSessionsByBizRefs(ctx context.Context, bizRefs []string) ([]struct {
+	ID     int64
+	BizRef string
+	Title  string
+}, error) {
+	if len(bizRefs) == 0 {
+		return nil, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, COALESCE(biz_ref,''), COALESCE(title,'') FROM msg_session
+		WHERE kind=2 AND biz_ref = ANY($1) ORDER BY id`, bizRefs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []struct {
+		ID     int64
+		BizRef string
+		Title  string
+	}
+	for rows.Next() {
+		var it struct {
+			ID     int64
+			BizRef string
+			Title  string
+		}
+		if err := rows.Scan(&it.ID, &it.BizRef, &it.Title); err != nil {
+			return nil, err
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
 }
 
 // Messages 增量拉取（seq > cursor 升序）。

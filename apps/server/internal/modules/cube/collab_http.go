@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"catcube/internal/kernel/audit"
@@ -359,6 +360,165 @@ func (m *Module) FulfillOrder(ctx context.Context, bizRef string, snapshot []byt
 
 // BizType 实现 trade.OrderFulfiller。
 func (m *Module) BizType() string { return "cube_plan" }
+
+// handleAdminDetail 平台立方详情：基本信息 + 成员（含昵称）+ 项目。
+func (m *Module) handleAdminDetail(w http.ResponseWriter, req *http.Request) {
+	id, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	if id == 0 {
+		writeErr(w, 1, "参数错误")
+		return
+	}
+	d, err := m.svc.Detail(req.Context(), 0, id)
+	if err != nil {
+		writeErr(w, 4, "立方不存在")
+		return
+	}
+	members, _ := m.svc.Members(req.Context(), id)
+	memberItems := make([]map[string]any, 0, len(members))
+	for _, mb := range members {
+		nick := ""
+		if b, err := m.deps.Identity.UserBrief(req.Context(), mb.UserID); err == nil {
+			nick = b.Nickname
+		}
+		memberItems = append(memberItems, map[string]any{"user_id": strconv.FormatInt(mb.UserID, 10),
+			"nickname": nick, "role": mb.Role, "status": mb.Status, "joined_at": mb.JoinedAt.Unix()})
+	}
+	projects, _ := m.svc.ListProjects(req.Context(), id, 0)
+	writeData(w, map[string]any{"cube": d, "members": memberItems, "projects": projects})
+}
+
+// handleAdminProjects 平台查看立方研究/承接项目与进度。
+func (m *Module) handleAdminProjects(w http.ResponseWriter, req *http.Request) {
+	id, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	if id == 0 {
+		writeErr(w, 1, "参数错误")
+		return
+	}
+	projects, err := m.svc.ListProjects(req.Context(), id, 0)
+	if err != nil {
+		writeErr(w, 9, "服务错误")
+		return
+	}
+	writeData(w, map[string]any{"items": projects})
+}
+
+// handleAdminRemoveMember 平台移除立方成员（不可移除猫王，必填原因）。
+func (m *Module) handleAdminRemoveMember(w http.ResponseWriter, req *http.Request) {
+	cubeID, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	uid, _ := strconv.ParseInt(req.PathValue("uid"), 10, 64)
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	if cubeID == 0 || uid == 0 || json.NewDecoder(req.Body).Decode(&body) != nil || strings.TrimSpace(body.Reason) == "" {
+		writeErr(w, 1, "参数错误（必须给原因）")
+		return
+	}
+	if err := m.svc.AdminRemoveMember(req.Context(), cubeID, uid, body.Reason); err != nil {
+		writeErr(w, 4, "移除失败："+err.Error())
+		return
+	}
+	m.auditCube(req, "cube:admin:member_remove", fmt.Sprintf(`{"type":"cube","id":"%d"}`, cubeID),
+		map[string]any{"user_id": strconv.FormatInt(uid, 10), "reason": body.Reason})
+	writeData(w, map[string]any{"removed": true})
+}
+
+// handleAdminSetLeader 平台调整猫王。
+func (m *Module) handleAdminSetLeader(w http.ResponseWriter, req *http.Request) {
+	cubeID, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	var body struct {
+		UserID string `json:"user_id"`
+	}
+	if cubeID == 0 || json.NewDecoder(req.Body).Decode(&body) != nil {
+		writeErr(w, 1, "参数错误")
+		return
+	}
+	uid, err := strconv.ParseInt(body.UserID, 10, 64)
+	if err != nil || uid == 0 {
+		writeErr(w, 1, "用户 ID 不合法")
+		return
+	}
+	d, err := m.svc.Detail(req.Context(), 0, cubeID)
+	if err != nil {
+		writeErr(w, 4, "立方不存在")
+		return
+	}
+	if err := m.svc.Transfer(req.Context(), cubeID, d.LeaderID, uid); err != nil {
+		writeErr(w, 4, "调整失败："+err.Error())
+		return
+	}
+	m.auditCube(req, "cube:admin:leader", fmt.Sprintf(`{"type":"cube","id":"%d"}`, cubeID),
+		map[string]any{"from": strconv.FormatInt(d.LeaderID, 10), "to": body.UserID})
+	writeData(w, map[string]any{"updated": true})
+}
+
+// handleAdminSetHoney 平台调整猫蜜。
+func (m *Module) handleAdminSetHoney(w http.ResponseWriter, req *http.Request) {
+	cubeID, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	var body struct {
+		UserID string `json:"user_id"`
+	}
+	if cubeID == 0 || json.NewDecoder(req.Body).Decode(&body) != nil {
+		writeErr(w, 1, "参数错误")
+		return
+	}
+	uid, err := strconv.ParseInt(body.UserID, 10, 64)
+	if err != nil || uid == 0 {
+		writeErr(w, 1, "用户 ID 不合法")
+		return
+	}
+	if err := m.svc.AdminSetHoney(req.Context(), cubeID, uid); err != nil {
+		writeErr(w, 4, "调整失败："+err.Error())
+		return
+	}
+	m.auditCube(req, "cube:admin:honey", fmt.Sprintf(`{"type":"cube","id":"%d"}`, cubeID),
+		map[string]any{"to": body.UserID})
+	writeData(w, map[string]any{"updated": true})
+}
+
+// handleAdminChats 平台合规查看立方/项目群聊记录（只读，写审计）。
+func (m *Module) handleAdminChats(w http.ResponseWriter, req *http.Request) {
+	cubeID, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	if cubeID == 0 {
+		writeErr(w, 1, "参数错误")
+		return
+	}
+	projects, err := m.svc.ListProjects(req.Context(), cubeID, 0)
+	if err != nil {
+		writeErr(w, 9, "服务错误")
+		return
+	}
+	refs := []string{"cube:" + strconv.FormatInt(cubeID, 10)}
+	for _, p := range projects {
+		refs = append(refs, "cube.project:"+strconv.FormatInt(p.ID, 10))
+	}
+	if m.deps.Msg == nil {
+		writeData(w, map[string]any{"items": []any{}})
+		return
+	}
+	history, err := m.deps.Msg.AdminHistory(req.Context(), refs, 200)
+	if err != nil {
+		writeErr(w, 9, "服务错误")
+		return
+	}
+	items := make([]map[string]any, 0, len(history))
+	for _, sess := range history {
+		msgs := make([]map[string]any, 0, len(sess.Messages))
+		for _, msg := range sess.Messages {
+			nick := ""
+			if b, err := m.deps.Identity.UserBrief(req.Context(), msg.SenderID); err == nil {
+				nick = b.Nickname
+			}
+			msgs = append(msgs, map[string]any{"id": strconv.FormatInt(msg.ID, 10), "seq": msg.Seq,
+				"sender_id": strconv.FormatInt(msg.SenderID, 10), "sender_name": nick,
+				"msg_type": msg.MsgType, "content": msg.Content, "created_at": msg.CreatedAt.Unix()})
+		}
+		items = append(items, map[string]any{"session_id": strconv.FormatInt(sess.SessionID, 10),
+			"biz_ref": sess.BizRef, "title": sess.Title, "messages": msgs})
+	}
+	m.auditCube(req, "cube:admin:chat_view", fmt.Sprintf(`{"type":"cube","id":"%d"}`, cubeID),
+		map[string]any{"sessions": len(items)})
+	writeData(w, map[string]any{"items": items})
+}
 
 // handleAdminBanCube 平台封禁立方（status=1）。
 func (m *Module) handleAdminBanCube(w http.ResponseWriter, req *http.Request) {

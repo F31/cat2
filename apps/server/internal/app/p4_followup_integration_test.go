@@ -399,3 +399,126 @@ func TestIntegrationNoticeTemplateUpdate(t *testing.T) {
 		t.Fatal("模板修改未生效")
 	}
 }
+
+// 广场后台：圈子详情/统计/内容处置，猫立方详情/成员调整/项目/群聊。
+func TestIntegrationAdminPlazaManagement(t *testing.T) {
+	h := newTestApp(t)
+	ctx := context.Background()
+	owner, ownerTok := loginUser(t, h)
+	member2, _ := loginUser(t, h)
+	_, admTok := loginAdmin(t, h)
+	cid := time.Now().UnixNano()
+	cubeID := cid + 1
+	defer func() {
+		_, _ = h.app.Pool.Exec(ctx, `DELETE FROM cir_demand WHERE circle_id=$1`, cid)
+		_, _ = h.app.Pool.Exec(ctx, `DELETE FROM cir_feed WHERE circle_id=$1`, cid)
+		_, _ = h.app.Pool.Exec(ctx, `DELETE FROM cir_mount WHERE circle_id=$1`, cid)
+		_, _ = h.app.Pool.Exec(ctx, `DELETE FROM cir_circle WHERE id=$1`, cid)
+		_, _ = h.app.Pool.Exec(ctx, `DELETE FROM cub_project WHERE cube_id=$1`, cubeID)
+		_, _ = h.app.Pool.Exec(ctx, `DELETE FROM cub_member WHERE cube_id=$1`, cubeID)
+		_, _ = h.app.Pool.Exec(ctx, `DELETE FROM cub_cube WHERE id=$1`, cubeID)
+	}()
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO cir_circle (id,name,intro,type,owner_user_id,member_count,region_code,status)
+		VALUES ($1,'广场测试圈','简介',1,$2,2,'310000',0)`, cid, owner); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = h.app.Pool.Exec(ctx, `INSERT INTO cir_member (id,circle_id,user_ref) VALUES ($1,$2,$3),($4,$2,$5)`,
+		cid+10, cid, owner, cid+11, member2)
+	if _, err := h.app.Pool.Exec(ctx, `INSERT INTO cir_demand (id,circle_id,author_id,title,content,expire_at,status)
+		VALUES ($1,$2,$3,'测试需求','内容',now()+interval '7 day',0)`, cid+20, cid, owner); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = h.app.Pool.Exec(ctx, `INSERT INTO cir_feed (id,circle_id,author_id,text,status) VALUES ($1,$2,$3,'测试动态',0)`, cid+21, cid, owner)
+	_, _ = h.app.Pool.Exec(ctx, `INSERT INTO cir_mount (id,circle_id,item_ref,mounted_by,approval_status,status)
+		VALUES ($1,$2,'content.project:1',$3,1,0)`, cid+22, cid, owner)
+
+	// 统计 + 详情
+	_, env := h.do(http.MethodGet, "/api/admin/v1/circles/stats?days=7", admTok, nil)
+	var stats struct {
+		NewTotal int `json:"new_total"`
+		Members  int `json:"members_total"`
+	}
+	_ = json.Unmarshal(env.Data, &stats)
+	if stats.NewTotal == 0 {
+		t.Fatalf("圈子统计未包含新增: %+v", stats)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/admin/v1/circles/%d", cid), admTok, nil)
+	var detail struct {
+		Members []struct {
+			UserID string `json:"user_id"`
+		} `json:"members"`
+		Demands []struct {
+			ID string `json:"id"`
+		} `json:"demands"`
+		Feeds []struct {
+			ID string `json:"id"`
+		} `json:"feeds"`
+		Mounts []struct {
+			ID string `json:"id"`
+		} `json:"mounts"`
+	}
+	_ = json.Unmarshal(env.Data, &detail)
+	if len(detail.Members) < 2 || len(detail.Demands) == 0 || len(detail.Feeds) == 0 || len(detail.Mounts) == 0 {
+		t.Fatalf("圈子详情不完整: %+v", detail)
+	}
+	// 内容处置：删除需求
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/circles/%d/demands/%d/remove", cid, cid+20), admTok,
+		map[string]any{"reason": "违规"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("删除需求失败: %d %+v", s, e)
+	}
+	var st int16
+	_ = h.app.Pool.QueryRow(ctx, `SELECT status FROM cir_demand WHERE id=$1`, cid+20).Scan(&st)
+	if st != 2 {
+		t.Fatalf("需求应软删: %d", st)
+	}
+
+	// 猫立方详情/项目/成员调整
+	if _, err := h.app.Pool.Exec(ctx, `
+		INSERT INTO cub_cube (id,name,leader_id,honey_id,plan_level,status) VALUES ($1,'立方测试',$2,$3,1,0)`,
+		cubeID, owner, member2); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = h.app.Pool.Exec(ctx, `INSERT INTO cub_member (id,cube_id,user_ref,role,status) VALUES
+		($1,$2,$3,1,0),($4,$2,$5,2,0),($6,$2,$7,3,0)`, cubeID+10, cubeID, owner, cubeID+11, member2, cubeID+12, cubeID+13)
+	other, _ := loginUser(t, h)
+	_, _ = h.app.Pool.Exec(ctx, `INSERT INTO cub_member (id,cube_id,user_ref,role,status) VALUES ($1,$2,$3,3,0)`, cubeID+14, cubeID, other)
+	_, _ = h.app.Pool.Exec(ctx, `INSERT INTO cub_project (id,cube_id,type,name,leader_id,progress,status)
+		VALUES ($1,$2,1,'研究项目',$3,40,0)`, cubeID+20, cubeID, owner)
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/admin/v1/cubes/%d", cubeID), admTok, nil)
+	var cd struct {
+		Cube struct {
+			Name string `json:"name"`
+		} `json:"cube"`
+		Members []struct {
+			UserID string `json:"user_id"`
+		} `json:"members"`
+		Projects []struct {
+			Name string `json:"name"`
+		} `json:"projects"`
+	}
+	_ = json.Unmarshal(env.Data, &cd)
+	if cd.Cube.Name != "立方测试" || len(cd.Members) < 4 || len(cd.Projects) != 1 {
+		t.Fatalf("立方详情不完整: %+v", cd)
+	}
+	// 调整猫蜜为 other
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/cubes/%d/honey", cubeID), admTok,
+		map[string]any{"user_id": fmt.Sprintf("%d", other)}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("调整猫蜜失败: %d %+v", s, e)
+	}
+	var honey int64
+	_ = h.app.Pool.QueryRow(ctx, `SELECT honey_id FROM cub_cube WHERE id=$1`, cubeID).Scan(&honey)
+	if honey != other {
+		t.Fatalf("猫蜜未更新: %d", honey)
+	}
+	// 平台移除成员
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/cubes/%d/members/%d/remove", cubeID, other), admTok,
+		map[string]any{"reason": "违规"}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("移除成员失败: %d %+v", s, e)
+	}
+	// 群聊记录（无会话时为空数组）
+	if s, e := h.do(http.MethodGet, fmt.Sprintf("/api/admin/v1/cubes/%d/chats", cubeID), admTok, nil); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("群聊记录查询失败: %d %+v", s, e)
+	}
+	_ = ownerTok
+}

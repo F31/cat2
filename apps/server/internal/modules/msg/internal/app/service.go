@@ -49,6 +49,11 @@ type Repo interface {
 		BizRef string
 	}, error)
 	ListMembers(ctx context.Context, sessionID int64) ([]int64, error)
+	AdminSessionsByBizRefs(ctx context.Context, bizRefs []string) ([]struct {
+		ID     int64
+		BizRef string
+		Title  string
+	}, error)
 	RemoveMember(ctx context.Context, tx db.Tx, sessionID, userID int64) error
 }
 
@@ -198,6 +203,31 @@ func (s *Service) EnsureGroup(ctx context.Context, bizRef, title string, creator
 }
 
 // SyncGroups 成员变更后重算全部群聊成员（cube 成员事件驱动）。
+// AdminHistory 后台合规查看：按 biz_ref 列表返回群聊会话与最近消息。
+func (s *Service) AdminHistory(ctx context.Context, bizRefs []string, limit int) ([]contract.AdminChatSession, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	sessions, err := s.repo.AdminSessionsByBizRefs(ctx, bizRefs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contract.AdminChatSession, 0, len(sessions))
+	for _, ss := range sessions {
+		rows, err := s.repo.Messages(ctx, s.pool, ss.ID, 0, limit)
+		if err != nil {
+			return nil, err
+		}
+		msgs := make([]contract.Message, 0, len(rows))
+		for _, m := range rows {
+			msgs = append(msgs, contract.Message{ID: m.ID, SessionID: m.SessionID, Seq: m.Seq,
+				SenderID: m.SenderID, MsgType: m.MsgType, Content: m.Content, CreatedAt: m.CreatedAt})
+		}
+		out = append(out, contract.AdminChatSession{SessionID: ss.ID, BizRef: ss.BizRef, Title: ss.Title, Messages: msgs})
+	}
+	return out, nil
+}
+
 func (s *Service) SyncGroups(ctx context.Context) error {
 	groups, err := s.repo.ListGroups(ctx)
 	if err != nil {

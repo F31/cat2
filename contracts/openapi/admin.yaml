@@ -136,6 +136,76 @@ paths:
       operationId: adminCubes
       responses:
         '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /cubes/{id}:
+    get:
+      tags: [admin-cube]
+      summary: 猫立方详情（基本信息/成员/项目）
+      operationId: adminCubeDetail
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 详情, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /cubes/{id}/projects:
+    get:
+      tags: [admin-cube]
+      summary: 立方项目列表（研究/承接）
+      operationId: adminCubeProjects
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /cubes/{id}/members/{uid}/remove:
+    post:
+      tags: [admin-cube]
+      summary: 平台移除立方成员
+      operationId: adminCubeRemoveMember
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: uid, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string } } }
+      responses:
+        '200': { description: 已移除, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /cubes/{id}/leader:
+    post:
+      tags: [admin-cube]
+      summary: 平台调整猫王
+      operationId: adminCubeSetLeader
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [user_id], properties: { user_id: { type: string } } }
+      responses:
+        '200': { description: 已调整, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /cubes/{id}/honey:
+    post:
+      tags: [admin-cube]
+      summary: 平台调整猫蜜
+      operationId: adminCubeSetHoney
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [user_id], properties: { user_id: { type: string } } }
+      responses:
+        '200': { description: 已调整, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /cubes/{id}/chats:
+    get:
+      tags: [admin-cube]
+      summary: 立方/项目群聊记录（合规只读）
+      operationId: adminCubeChats
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 群聊记录, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
   /cubes/{id}/ban:
     post:
       tags: [admin-governance]
@@ -199,6 +269,69 @@ paths:
                 reason: { type: string }
       responses:
         '200': { description: 结果（逐圈成功/失败）, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /circles/stats:
+    get:
+      tags: [admin-circle]
+      summary: 圈子数据概览（新增/活跃/成员趋势）
+      operationId: adminCircleStats
+      parameters:
+        - { name: days, in: query, schema: { type: integer, default: 30 } }
+      responses:
+        '200': { description: 指标, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /circles/{id}:
+    get:
+      tags: [admin-circle]
+      summary: 圈子详情（关于/成员/动态/需求/挂载）
+      operationId: adminCircleDetail
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 详情, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /circles/{id}/demands/{did}/remove:
+    post:
+      tags: [admin-circle]
+      summary: 删除圈内需求（平台处置）
+      operationId: adminCircleRemoveDemand
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: did, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { reason: { type: string } } }
+      responses:
+        '200': { description: 已删除, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /circles/{id}/feeds/{fid}/remove:
+    post:
+      tags: [admin-circle]
+      summary: 删除圈内动态（平台处置）
+      operationId: adminCircleRemoveFeed
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: fid, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { reason: { type: string } } }
+      responses:
+        '200': { description: 已删除, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /circles/{id}/mounts/{mid}/remove:
+    post:
+      tags: [admin-circle]
+      summary: 移除圈内挂载内容（平台处置）
+      operationId: adminCircleRemoveMount
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: mid, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { reason: { type: string } } }
+      responses:
+        '200': { description: 已移除, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
   /circles/{id}/dissolve:
     post:
       tags: [admin-governance]

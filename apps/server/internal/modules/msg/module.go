@@ -118,6 +118,11 @@ func (m *Module) EnsureGroup(ctx context.Context, bizRef, title string, creatorI
 }
 func (m *Module) SyncGroups(ctx context.Context) error { return m.svc.SyncGroups(ctx) }
 
+// AdminHistory 后台合规查看群聊记录。
+func (m *Module) AdminHistory(ctx context.Context, bizRefs []string, limit int) ([]contract.AdminChatSession, error) {
+	return m.svc.AdminHistory(ctx, bizRefs, limit)
+}
+
 // SetMemberResolver 注入群成员解析器（cube 注册；msg 不认识猫立方）。
 func (m *Module) SetMemberResolver(r contract.SessionMemberResolver) { m.deps.MemberResolver = r }
 

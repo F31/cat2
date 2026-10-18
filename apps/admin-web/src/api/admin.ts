@@ -255,6 +255,91 @@ export const adminApi = {
     )
   },
 
+  // ---- 圈子后台详情/概览 ----
+  circleStats(days = 30) {
+    return call<{
+      days: number
+      new_total: number
+      new_permanent: number
+      new_temporary: number
+      active_circles: number
+      members_total: number
+      member_trend: Array<{ date: string; new_members: number }>
+    }>('GET', `/admin/v1/circles/stats?days=${days}`)
+  },
+  circleDetail(id: string) {
+    return call<{
+      circle: {
+        id: string
+        name: string
+        intro: string
+        type: number
+        status: number
+        owner_user_id: string
+        member_count: number
+        region_code?: string
+        created_at: number
+        end_at?: number
+      }
+      owner_name: string
+      members: Array<{ user_id: string; nickname: string; joined_via: number; joined_at: number }>
+      demands: Array<{ id: string; author_id: string; author_name: string; title: string; content: string; status: number; created_at: number }>
+      feeds: Array<{ id: string; author_id: string; author_name: string; text: string; is_announcement: boolean; status: number; created_at: number }>
+      mounts: Array<{ id: string; item_ref: string; mount_type: number; approval_status: number; status: number; created_at: number }>
+    }>('GET', `/admin/v1/circles/${id}`)
+  },
+  removeCircleContent(circleId: string, kind: 'demands' | 'feeds' | 'mounts', itemId: string, reason: string) {
+    return call<{ removed: boolean }>('POST', `/admin/v1/circles/${circleId}/${kind}/${itemId}/remove`, { reason })
+  },
+
+  // ---- 立方后台详情/成员/项目/群聊 ----
+  cubeDetail(id: string) {
+    return call<{
+      cube: {
+        id: string
+        name: string
+        leader_id: string
+        honey_id: string
+        plan_level: number
+        plan_expire_at?: string
+        status: number
+        member_count: number
+        region_code?: string
+        org_id?: string
+        industry_codes?: string[]
+        chain_stage?: string
+        direction?: string
+        resources?: string
+        strength?: string
+        cooperation?: string
+      }
+      members: Array<{ user_id: string; nickname: string; role: number; status: number; joined_at: number }>
+      projects: AdminCubeProject[]
+    }>('GET', `/admin/v1/cubes/${id}`)
+  },
+  cubeProjects(id: string) {
+    return call<{ items: AdminCubeProject[] }>('GET', `/admin/v1/cubes/${id}/projects`)
+  },
+  cubeRemoveMember(id: string, uid: string, reason: string) {
+    return call<{ removed: boolean }>('POST', `/admin/v1/cubes/${id}/members/${uid}/remove`, { reason })
+  },
+  cubeSetLeader(id: string, uid: string) {
+    return call<{ updated: boolean }>('POST', `/admin/v1/cubes/${id}/leader`, { user_id: uid })
+  },
+  cubeSetHoney(id: string, uid: string) {
+    return call<{ updated: boolean }>('POST', `/admin/v1/cubes/${id}/honey`, { user_id: uid })
+  },
+  cubeChats(id: string) {
+    return call<{
+      items: Array<{
+        session_id: string
+        biz_ref: string
+        title: string
+        messages: Array<{ id: string; seq: number; sender_id: string; sender_name: string; msg_type: number; content: string; created_at: number }>
+      }>
+    }>('GET', `/admin/v1/cubes/${id}/chats`)
+  },
+
   // ---- 退款 / 履约补偿 ----
   refund(orderId: string, amountFen: number, reason: string) {
     return call<{ id: string }>('POST', '/admin/v1/refunds', { order_id: orderId, amount_fen: amountFen, reason })
@@ -615,6 +700,19 @@ export interface AdminCircle {
   region_code?: string
   created_at: number
   prev_status?: number
+}
+
+export interface AdminCubeProject {
+  id: string
+  cube_id: string
+  type: number
+  name: string
+  progress: number
+  status: number
+  leader_id: string
+  todo_count?: number
+  created_at?: string
+  platform_status?: number
 }
 
 export interface ChannelOperatorRow {

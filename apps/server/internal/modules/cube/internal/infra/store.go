@@ -249,6 +249,12 @@ func (s *Store) UpdateLeader(ctx context.Context, q Querier, cubeID, leaderID, h
 	return err
 }
 
+// SetHoney 指定猫蜜（同步版本）。
+func (s *Store) SetHoney(ctx context.Context, q Querier, cubeID, honeyID int64) error {
+	_, err := q.Exec(ctx, `UPDATE cub_cube SET honey_id=$2, version=version+1, updated_at=now() WHERE id=$1`, cubeID, honeyID)
+	return err
+}
+
 // SetCubeStatus 变更加立方状态。
 func (s *Store) SetCubeStatus(ctx context.Context, q Querier, cubeID int64, status int16) error {
 	_, err := q.Exec(ctx, `UPDATE cub_cube SET status=$2, version=version+1, updated_at=now() WHERE id=$1`, cubeID, status)

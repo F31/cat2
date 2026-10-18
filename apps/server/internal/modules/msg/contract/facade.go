@@ -33,8 +33,8 @@ type Session struct {
 	LastSeq       int64      `json:"last_seq"`
 	Unread        int        `json:"unread"`
 	LastMessageAt *time.Time `json:"last_message_at,omitempty"`
-	Title         string     `json:"title,omitempty"`          // 群聊名称
-	LastPreview   string     `json:"last_preview,omitempty"`   // 最后消息摘要
+	Title         string     `json:"title,omitempty"`        // 群聊名称
+	LastPreview   string     `json:"last_preview,omitempty"` // 最后消息摘要
 	LastSenderID  int64      `json:"last_sender_id,string,omitempty"`
 }
 
@@ -62,6 +62,14 @@ type SyncResult struct {
 	HasMore    bool      `json:"has_more"`
 }
 
+// AdminChatSession 后台合规查看的群聊会话（含消息）。
+type AdminChatSession struct {
+	SessionID int64     `json:"session_id,string"`
+	BizRef    string    `json:"biz_ref"`
+	Title     string    `json:"title,omitempty"`
+	Messages  []Message `json:"messages"`
+}
+
 // SessionMemberResolver 群聊成员解析器开口（扩展点 #3）：群聊成员由 cube 决定，msg 不认识猫立方。
 type SessionMemberResolver interface {
 	// Members 返回会话（biz_ref）的成员 uid 列表。
@@ -84,4 +92,6 @@ type Facade interface {
 	EnsureGroup(ctx context.Context, bizRef, title string, creatorID int64) (Session, error)
 	// SyncGroups 成员变更后重算全部群聊成员（cube 成员事件驱动）。
 	SyncGroups(ctx context.Context) error
+	// AdminHistory 后台合规查看：按 biz_ref 列表返回群聊会话与消息（仅平台后台）。
+	AdminHistory(ctx context.Context, bizRefs []string, limit int) ([]AdminChatSession, error)
 }

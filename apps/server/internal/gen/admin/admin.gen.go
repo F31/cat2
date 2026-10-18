@@ -532,9 +532,29 @@ type AdminBatchCirclesJSONBody struct {
 // AdminBatchCirclesJSONBodyAction defines parameters for AdminBatchCircles.
 type AdminBatchCirclesJSONBodyAction string
 
+// AdminCircleStatsParams defines parameters for AdminCircleStats.
+type AdminCircleStatsParams struct {
+	Days *int `form:"days,omitempty" json:"days,omitempty"`
+}
+
+// AdminCircleRemoveDemandJSONBody defines parameters for AdminCircleRemoveDemand.
+type AdminCircleRemoveDemandJSONBody struct {
+	Reason *string `json:"reason,omitempty"`
+}
+
 // AdminDissolveCircleJSONBody defines parameters for AdminDissolveCircle.
 type AdminDissolveCircleJSONBody struct {
 	Reason string `json:"reason"`
+}
+
+// AdminCircleRemoveFeedJSONBody defines parameters for AdminCircleRemoveFeed.
+type AdminCircleRemoveFeedJSONBody struct {
+	Reason *string `json:"reason,omitempty"`
+}
+
+// AdminCircleRemoveMountJSONBody defines parameters for AdminCircleRemoveMount.
+type AdminCircleRemoveMountJSONBody struct {
+	Reason *string `json:"reason,omitempty"`
 }
 
 // AdminListContentsParams defines parameters for AdminListContents.
@@ -559,6 +579,21 @@ type AdminBanCubeJSONBody struct {
 
 // AdminDissolveCubeJSONBody defines parameters for AdminDissolveCube.
 type AdminDissolveCubeJSONBody struct {
+	Reason string `json:"reason"`
+}
+
+// AdminCubeSetHoneyJSONBody defines parameters for AdminCubeSetHoney.
+type AdminCubeSetHoneyJSONBody struct {
+	UserId string `json:"user_id"`
+}
+
+// AdminCubeSetLeaderJSONBody defines parameters for AdminCubeSetLeader.
+type AdminCubeSetLeaderJSONBody struct {
+	UserId string `json:"user_id"`
+}
+
+// AdminCubeRemoveMemberJSONBody defines parameters for AdminCubeRemoveMember.
+type AdminCubeRemoveMemberJSONBody struct {
 	Reason string `json:"reason"`
 }
 
@@ -784,8 +819,17 @@ type AdminChannelRejectSettlementJSONRequestBody AdminChannelRejectSettlementJSO
 // AdminBatchCirclesJSONRequestBody defines body for AdminBatchCircles for application/json ContentType.
 type AdminBatchCirclesJSONRequestBody AdminBatchCirclesJSONBody
 
+// AdminCircleRemoveDemandJSONRequestBody defines body for AdminCircleRemoveDemand for application/json ContentType.
+type AdminCircleRemoveDemandJSONRequestBody AdminCircleRemoveDemandJSONBody
+
 // AdminDissolveCircleJSONRequestBody defines body for AdminDissolveCircle for application/json ContentType.
 type AdminDissolveCircleJSONRequestBody AdminDissolveCircleJSONBody
+
+// AdminCircleRemoveFeedJSONRequestBody defines body for AdminCircleRemoveFeed for application/json ContentType.
+type AdminCircleRemoveFeedJSONRequestBody AdminCircleRemoveFeedJSONBody
+
+// AdminCircleRemoveMountJSONRequestBody defines body for AdminCircleRemoveMount for application/json ContentType.
+type AdminCircleRemoveMountJSONRequestBody AdminCircleRemoveMountJSONBody
 
 // AdminTakedownContentJSONRequestBody defines body for AdminTakedownContent for application/json ContentType.
 type AdminTakedownContentJSONRequestBody AdminTakedownContentJSONBody
@@ -795,6 +839,15 @@ type AdminBanCubeJSONRequestBody AdminBanCubeJSONBody
 
 // AdminDissolveCubeJSONRequestBody defines body for AdminDissolveCube for application/json ContentType.
 type AdminDissolveCubeJSONRequestBody AdminDissolveCubeJSONBody
+
+// AdminCubeSetHoneyJSONRequestBody defines body for AdminCubeSetHoney for application/json ContentType.
+type AdminCubeSetHoneyJSONRequestBody AdminCubeSetHoneyJSONBody
+
+// AdminCubeSetLeaderJSONRequestBody defines body for AdminCubeSetLeader for application/json ContentType.
+type AdminCubeSetLeaderJSONRequestBody AdminCubeSetLeaderJSONBody
+
+// AdminCubeRemoveMemberJSONRequestBody defines body for AdminCubeRemoveMember for application/json ContentType.
+type AdminCubeRemoveMemberJSONRequestBody AdminCubeRemoveMemberJSONBody
 
 // AdminCreateExportJSONRequestBody defines body for AdminCreateExport for application/json ContentType.
 type AdminCreateExportJSONRequestBody AdminCreateExportJSONBody
@@ -945,9 +998,24 @@ type ServerInterface interface {
 	// AdminBatchCircles 圈子批量封禁/归档/解封/恢复（action=ban|archive|unban|restore；≤100，逐圈审计）
 	// (POST /circles/batch)
 	AdminBatchCircles(w http.ResponseWriter, r *http.Request)
+	// AdminCircleStats 圈子数据概览（新增/活跃/成员趋势）
+	// (GET /circles/stats)
+	AdminCircleStats(w http.ResponseWriter, r *http.Request, params AdminCircleStatsParams)
+	// AdminCircleDetail 圈子详情（关于/成员/动态/需求/挂载）
+	// (GET /circles/{id})
+	AdminCircleDetail(w http.ResponseWriter, r *http.Request, id string)
+	// AdminCircleRemoveDemand 删除圈内需求（平台处置）
+	// (POST /circles/{id}/demands/{did}/remove)
+	AdminCircleRemoveDemand(w http.ResponseWriter, r *http.Request, id string, did string)
 	// AdminDissolveCircle 平台解散圈子（代操作，前后值审计）
 	// (POST /circles/{id}/dissolve)
 	AdminDissolveCircle(w http.ResponseWriter, r *http.Request, id string)
+	// AdminCircleRemoveFeed 删除圈内动态（平台处置）
+	// (POST /circles/{id}/feeds/{fid}/remove)
+	AdminCircleRemoveFeed(w http.ResponseWriter, r *http.Request, id string, fid string)
+	// AdminCircleRemoveMount 移除圈内挂载内容（平台处置）
+	// (POST /circles/{id}/mounts/{mid}/remove)
+	AdminCircleRemoveMount(w http.ResponseWriter, r *http.Request, id string, mid string)
 	// AdminListContents 内容列表（按类型/状态）
 	// (GET /contents)
 	AdminListContents(w http.ResponseWriter, r *http.Request, params AdminListContentsParams)
@@ -957,12 +1025,30 @@ type ServerInterface interface {
 	// AdminCubes 猫立方列表（后台）
 	// (GET /cubes)
 	AdminCubes(w http.ResponseWriter, r *http.Request)
+	// AdminCubeDetail 猫立方详情（基本信息/成员/项目）
+	// (GET /cubes/{id})
+	AdminCubeDetail(w http.ResponseWriter, r *http.Request, id string)
 	// AdminBanCube 平台封禁猫立方（代操作，前后值审计）
 	// (POST /cubes/{id}/ban)
 	AdminBanCube(w http.ResponseWriter, r *http.Request, id string)
+	// AdminCubeChats 立方/项目群聊记录（合规只读）
+	// (GET /cubes/{id}/chats)
+	AdminCubeChats(w http.ResponseWriter, r *http.Request, id string)
 	// AdminDissolveCube 平台解散猫立方（代操作，前后值审计）
 	// (POST /cubes/{id}/dissolve)
 	AdminDissolveCube(w http.ResponseWriter, r *http.Request, id string)
+	// AdminCubeSetHoney 平台调整猫蜜
+	// (POST /cubes/{id}/honey)
+	AdminCubeSetHoney(w http.ResponseWriter, r *http.Request, id string)
+	// AdminCubeSetLeader 平台调整猫王
+	// (POST /cubes/{id}/leader)
+	AdminCubeSetLeader(w http.ResponseWriter, r *http.Request, id string)
+	// AdminCubeRemoveMember 平台移除立方成员
+	// (POST /cubes/{id}/members/{uid}/remove)
+	AdminCubeRemoveMember(w http.ResponseWriter, r *http.Request, id string, uid string)
+	// AdminCubeProjects 立方项目列表（研究/承接）
+	// (GET /cubes/{id}/projects)
+	AdminCubeProjects(w http.ResponseWriter, r *http.Request, id string)
 	// AdminDashboard 数据概览（12+ 项核心指标，口径见 docs/ops/dashboards.md）
 	// (GET /dashboard)
 	AdminDashboard(w http.ResponseWriter, r *http.Request)
@@ -1935,6 +2021,100 @@ func (siw *ServerInterfaceWrapper) AdminBatchCircles(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// AdminCircleStats operation middleware
+func (siw *ServerInterfaceWrapper) AdminCircleStats(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AdminCircleStatsParams
+
+	// ------------- Optional query parameter "days" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "days", r.URL.Query(), &params.Days, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "days"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "days", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCircleStats(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminCircleDetail operation middleware
+func (siw *ServerInterfaceWrapper) AdminCircleDetail(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCircleDetail(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminCircleRemoveDemand operation middleware
+func (siw *ServerInterfaceWrapper) AdminCircleRemoveDemand(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "did" -------------
+	var did string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "did", r.PathValue("did"), &did, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "did", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCircleRemoveDemand(w, r, id, did)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminDissolveCircle operation middleware
 func (siw *ServerInterfaceWrapper) AdminDissolveCircle(w http.ResponseWriter, r *http.Request) {
 
@@ -1952,6 +2132,76 @@ func (siw *ServerInterfaceWrapper) AdminDissolveCircle(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminDissolveCircle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminCircleRemoveFeed operation middleware
+func (siw *ServerInterfaceWrapper) AdminCircleRemoveFeed(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "fid" -------------
+	var fid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fid", r.PathValue("fid"), &fid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCircleRemoveFeed(w, r, id, fid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminCircleRemoveMount operation middleware
+func (siw *ServerInterfaceWrapper) AdminCircleRemoveMount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "mid" -------------
+	var mid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "mid", r.PathValue("mid"), &mid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "mid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCircleRemoveMount(w, r, id, mid)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2060,6 +2310,32 @@ func (siw *ServerInterfaceWrapper) AdminCubes(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// AdminCubeDetail operation middleware
+func (siw *ServerInterfaceWrapper) AdminCubeDetail(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCubeDetail(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminBanCube operation middleware
 func (siw *ServerInterfaceWrapper) AdminBanCube(w http.ResponseWriter, r *http.Request) {
 
@@ -2086,6 +2362,32 @@ func (siw *ServerInterfaceWrapper) AdminBanCube(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// AdminCubeChats operation middleware
+func (siw *ServerInterfaceWrapper) AdminCubeChats(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCubeChats(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminDissolveCube operation middleware
 func (siw *ServerInterfaceWrapper) AdminDissolveCube(w http.ResponseWriter, r *http.Request) {
 
@@ -2103,6 +2405,119 @@ func (siw *ServerInterfaceWrapper) AdminDissolveCube(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdminDissolveCube(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminCubeSetHoney operation middleware
+func (siw *ServerInterfaceWrapper) AdminCubeSetHoney(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCubeSetHoney(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminCubeSetLeader operation middleware
+func (siw *ServerInterfaceWrapper) AdminCubeSetLeader(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCubeSetLeader(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminCubeRemoveMember operation middleware
+func (siw *ServerInterfaceWrapper) AdminCubeRemoveMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "uid" -------------
+	var uid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "uid", r.PathValue("uid"), &uid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCubeRemoveMember(w, r, id, uid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminCubeProjects operation middleware
+func (siw *ServerInterfaceWrapper) AdminCubeProjects(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCubeProjects(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3452,11 +3867,22 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/memberships/{id}/adjust", wrapper.AdminAdjustMember)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/affiliations/overdue", wrapper.AdminOverdueAffiliations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes", wrapper.AdminCubes)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes/{id}", wrapper.AdminCubeDetail)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes/{id}/projects", wrapper.AdminCubeProjects)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/members/{uid}/remove", wrapper.AdminCubeRemoveMember)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/leader", wrapper.AdminCubeSetLeader)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/honey", wrapper.AdminCubeSetHoney)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes/{id}/chats", wrapper.AdminCubeChats)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/ban", wrapper.AdminBanCube)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/dissolve", wrapper.AdminDissolveCube)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/profile-templates", wrapper.AdminProfileTemplates)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles", wrapper.AdminCircles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/batch", wrapper.AdminBatchCircles)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/stats", wrapper.AdminCircleStats)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/{id}", wrapper.AdminCircleDetail)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/demands/{did}/remove", wrapper.AdminCircleRemoveDemand)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/feeds/{fid}/remove", wrapper.AdminCircleRemoveFeed)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/mounts/{mid}/remove", wrapper.AdminCircleRemoveMount)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/dissolve", wrapper.AdminDissolveCircle)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/notices/broadcast", wrapper.AdminBroadcastNotice)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/ai/prompts", wrapper.AdminAiPrompts)

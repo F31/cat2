@@ -20,7 +20,7 @@ func defaultAdminMenus() []menu.Item {
 		return m(key, "", label, path, module, "trade", "交易与会员", 3, order)
 	}
 	collab := func(key, label, path, module string, order int) menu.Item {
-		return m(key, "", label, path, module, "collab", "圈子与立方", 4, order)
+		return m(key, "", label, path, module, "collab", "广场", 4, order)
 	}
 	operation := func(key, parent, label, path, module string, order int) menu.Item {
 		return m(key, parent, label, path, module, "operation", "运营管理", 5, order)
@@ -117,6 +117,10 @@ func seedAdminMenus(ctx context.Context, pool *db.Pool) error {
 		if _, err := pool.Exec(ctx, `UPDATE sys_admin_menu SET parent_key=$2 WHERE key=$1`, key, parent); err != nil {
 			return err
 		}
+	}
+	// 一级「圈子与立方」更名为「广场」。
+	if _, err := pool.Exec(ctx, `UPDATE sys_admin_menu SET group_label='广场' WHERE group_key='collab'`); err != nil {
+		return err
 	}
 	// 系统管理固定为第 6 个一级分组（兼容旧库遗留的 7）。
 	if _, err := pool.Exec(ctx, `UPDATE sys_admin_menu SET group_order=6 WHERE group_key='system'`); err != nil {

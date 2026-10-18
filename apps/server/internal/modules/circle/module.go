@@ -92,6 +92,11 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/members", Handler: m.auth(m.handleMembers)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/dissolve", Handler: m.auth(m.handleDissolve)},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/circles", Handler: m.auth(m.handleAdminList), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/circles/stats", Handler: m.auth(m.handleAdminStats), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/circles/{id}", Handler: m.auth(m.handleAdminDetail), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/circles/{id}/demands/{did}/remove", Handler: m.auth(m.handleAdminRemoveDemand), Admin: true, Perm: rbac.PermModeration},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/circles/{id}/feeds/{fid}/remove", Handler: m.auth(m.handleAdminRemoveFeed), Admin: true, Perm: rbac.PermModeration},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/circles/{id}/mounts/{mid}/remove", Handler: m.auth(m.handleAdminRemoveMount), Admin: true, Perm: rbac.PermModeration},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/circles/{id}/dissolve", Handler: m.auth(m.handleAdminDissolve), Admin: true, Perm: rbac.PermModeration},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/circles/batch", Handler: m.auth(m.handleBatchStatus), Admin: true, Perm: rbac.PermModeration},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/convert", Handler: m.auth(m.handleConvert)},
@@ -342,6 +347,207 @@ func (m *Module) handleDissolve(w http.ResponseWriter, req *http.Request) {
 }
 
 // handleAdminDissolve 平台代操作：解散圈子（before/after 快照入审计）。
+// handleAdminDetail 平台圈子详情：关于、成员、动态、需求、挂载（最近 50 条）。
+func (m *Module) handleAdminDetail(w http.ResponseWriter, req *http.Request) {
+	id := pathID(req, "id")
+	var c map[string]any
+	var name, intro, region string
+	var typ, status int16
+	var ownerID int64
+	var members int
+	var created time.Time
+	var endAt *time.Time
+	err := m.deps.Pool.QueryRow(req.Context(), `
+		SELECT name, COALESCE(intro,''), type, status, owner_user_id, member_count, COALESCE(region_code,''), created_at, end_at
+		FROM cir_circle WHERE id=$1`, id).
+		Scan(&name, &intro, &typ, &status, &ownerID, &members, &region, &created, &endAt)
+	if err != nil {
+		writeErr(w, 140001, "圈子不存在")
+		return
+	}
+	ownerName := ""
+	if b, err := m.deps.Identity.UserBrief(req.Context(), ownerID); err == nil {
+		ownerName = b.Nickname
+	}
+	c = map[string]any{"id": strconv.FormatInt(id, 10), "name": name, "intro": intro, "type": typ,
+		"status": status, "owner_user_id": strconv.FormatInt(ownerID, 10), "member_count": members,
+		"region_code": region, "created_at": created.Unix()}
+	if endAt != nil {
+		c["end_at"] = endAt.Unix()
+	}
+
+	memberRows, _ := m.deps.Pool.Query(req.Context(), `
+		SELECT user_ref, joined_via, joined_at FROM cir_member WHERE circle_id=$1 AND status=0 ORDER BY joined_at`, id)
+	memberItems := []map[string]any{}
+	if memberRows != nil {
+		defer memberRows.Close()
+		for memberRows.Next() {
+			var uid int64
+			var via int16
+			var joined time.Time
+			if memberRows.Scan(&uid, &via, &joined) == nil {
+				nick := ""
+				if b, err := m.deps.Identity.UserBrief(req.Context(), uid); err == nil {
+					nick = b.Nickname
+				}
+				memberItems = append(memberItems, map[string]any{"user_id": strconv.FormatInt(uid, 10),
+					"nickname": nick, "joined_via": via, "joined_at": joined.Unix()})
+			}
+		}
+	}
+	demands := m.adminDemands(req.Context(), id)
+	feeds := m.adminFeeds(req.Context(), id)
+	mounts := m.adminMounts(req.Context(), id)
+	writeData(w, map[string]any{"circle": c, "owner_name": ownerName, "members": memberItems,
+		"demands": demands, "feeds": feeds, "mounts": mounts})
+}
+
+func (m *Module) adminDemands(ctx context.Context, circleID int64) []map[string]any {
+	rows, err := m.deps.Pool.Query(ctx, `
+		SELECT id, author_id, title, content, status, created_at FROM cir_demand
+		WHERE circle_id=$1 AND status<>2 ORDER BY created_at DESC LIMIT 50`, circleID)
+	if err != nil {
+		return []map[string]any{}
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, author int64
+		var title, content string
+		var status int16
+		var created time.Time
+		if rows.Scan(&id, &author, &title, &content, &status, &created) == nil {
+			nick := ""
+			if b, err := m.deps.Identity.UserBrief(ctx, author); err == nil {
+				nick = b.Nickname
+			}
+			out = append(out, map[string]any{"id": strconv.FormatInt(id, 10), "author_id": strconv.FormatInt(author, 10),
+				"author_name": nick, "title": title, "content": content, "status": status, "created_at": created.Unix()})
+		}
+	}
+	return out
+}
+
+func (m *Module) adminFeeds(ctx context.Context, circleID int64) []map[string]any {
+	rows, err := m.deps.Pool.Query(ctx, `
+		SELECT id, author_id, COALESCE(text,''), is_announcement, status, created_at FROM cir_feed
+		WHERE circle_id=$1 AND status<>2 ORDER BY created_at DESC LIMIT 50`, circleID)
+	if err != nil {
+		return []map[string]any{}
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, author int64
+		var text string
+		var announce bool
+		var status int16
+		var created time.Time
+		if rows.Scan(&id, &author, &text, &announce, &status, &created) == nil {
+			nick := ""
+			if b, err := m.deps.Identity.UserBrief(ctx, author); err == nil {
+				nick = b.Nickname
+			}
+			out = append(out, map[string]any{"id": strconv.FormatInt(id, 10), "author_id": strconv.FormatInt(author, 10),
+				"author_name": nick, "text": text, "is_announcement": announce, "status": status, "created_at": created.Unix()})
+		}
+	}
+	return out
+}
+
+func (m *Module) adminMounts(ctx context.Context, circleID int64) []map[string]any {
+	rows, err := m.deps.Pool.Query(ctx, `
+		SELECT id, item_ref, mount_type, approval_status, status, created_at FROM cir_mount
+		WHERE circle_id=$1 AND status=0 ORDER BY created_at DESC LIMIT 50`, circleID)
+	if err != nil {
+		return []map[string]any{}
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id int64
+		var ref string
+		var mountType, approval, status int16
+		var created time.Time
+		if rows.Scan(&id, &ref, &mountType, &approval, &status, &created) == nil {
+			out = append(out, map[string]any{"id": strconv.FormatInt(id, 10), "item_ref": ref,
+				"mount_type": mountType, "approval_status": approval, "status": status, "created_at": created.Unix()})
+		}
+	}
+	return out
+}
+
+// handleAdminStats 数据概览：新增圈数（常设/临时）、周期活跃圈、成员趋势。
+func (m *Module) handleAdminStats(w http.ResponseWriter, req *http.Request) {
+	days, _ := strconv.Atoi(req.URL.Query().Get("days"))
+	if days <= 0 || days > 90 {
+		days = 30
+	}
+	var total, permanent, temporary int
+	_ = m.deps.Pool.QueryRow(req.Context(), `
+		SELECT count(1), count(1) FILTER (WHERE type=1), count(1) FILTER (WHERE type=2)
+		FROM cir_circle WHERE created_at >= now() - make_interval(days => $1)`, days).Scan(&total, &permanent, &temporary)
+	var active, membersTotal int
+	_ = m.deps.Pool.QueryRow(req.Context(), `
+		SELECT count(DISTINCT circle_id) FROM (
+			SELECT circle_id FROM cir_demand WHERE created_at >= now() - make_interval(days => $1)
+			UNION SELECT circle_id FROM cir_feed WHERE created_at >= now() - make_interval(days => $1)
+			UNION SELECT circle_id FROM cir_member WHERE joined_at >= now() - make_interval(days => $1)
+		) x`, days).Scan(&active)
+	_ = m.deps.Pool.QueryRow(req.Context(), `SELECT count(1) FROM cir_member WHERE status=0`).Scan(&membersTotal)
+	trend := []map[string]any{}
+	rows, err := m.deps.Pool.Query(req.Context(), `
+		SELECT to_char(date_trunc('day', joined_at), 'YYYY-MM-DD'), count(1) FROM cir_member
+		WHERE status=0 AND joined_at >= now() - make_interval(days => $1)
+		GROUP BY 1 ORDER BY 1`, days)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var d string
+			var n int
+			if rows.Scan(&d, &n) == nil {
+				trend = append(trend, map[string]any{"date": d, "new_members": n})
+			}
+		}
+	}
+	writeData(w, map[string]any{"days": days, "new_total": total, "new_permanent": permanent,
+		"new_temporary": temporary, "active_circles": active, "members_total": membersTotal, "member_trend": trend})
+}
+
+func (m *Module) handleAdminRemoveDemand(w http.ResponseWriter, req *http.Request) {
+	m.removeCircleContent(w, req, "did", "circle:demand:remove", "cir_demand")
+}
+func (m *Module) handleAdminRemoveFeed(w http.ResponseWriter, req *http.Request) {
+	m.removeCircleContent(w, req, "fid", "circle:feed:remove", "cir_feed")
+}
+func (m *Module) handleAdminRemoveMount(w http.ResponseWriter, req *http.Request) {
+	m.removeCircleContent(w, req, "mid", "circle:mount:remove", "cir_mount")
+}
+
+// removeCircleContent 平台内容处置：软删（status=2）并写审计。
+func (m *Module) removeCircleContent(w http.ResponseWriter, req *http.Request, param, action, table string) {
+	circleID := pathID(req, "id")
+	itemID := pathID(req, param)
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(req.Body).Decode(&body)
+	tag, err := m.deps.Pool.Exec(req.Context(), `UPDATE `+table+` SET status=2 WHERE id=$1 AND circle_id=$2`, itemID, circleID)
+	if err != nil || tag.RowsAffected() == 0 {
+		writeErr(w, 140001, "内容不存在")
+		return
+	}
+	if m.deps.Audit != nil {
+		_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+			ActorID: userIDFrom(req.Context()), ActorType: audit.ActorAdmin, Channel: "admin", Action: action,
+			TargetRef: fmt.Sprintf(`{"type":"%s","id":"%d"}`, table, itemID),
+			Detail:    map[string]any{"circle_id": strconv.FormatInt(circleID, 10), "reason": body.Reason},
+			Result:    audit.ResultOK, IP: audit.ClientIP(req), RequestID: audit.RequestIDOf(req.Context()),
+		})
+	}
+	writeData(w, map[string]any{"removed": true})
+}
+
 // handleAdminList 平台圈子列表（名称模糊检索；id 一律以字符串返回）。
 func (m *Module) handleAdminList(w http.ResponseWriter, req *http.Request) {
 	limit, _ := strconv.Atoi(req.URL.Query().Get("limit"))
