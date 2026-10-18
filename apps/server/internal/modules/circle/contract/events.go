@@ -14,6 +14,9 @@ const (
 	EventCircleEnded     = "circle.CircleEnded.v1"
 	EventCircleDissolved = "circle.CircleDissolved.v1"
 	EventMemberJoined    = "circle.MemberJoined.v1"
+	EventJoinApplied     = "circle.JoinApplied.v1"
+	EventJoinApproved    = "circle.JoinApproved.v1"
+	EventJoinRejected    = "circle.JoinRejected.v1"
 	EventDemandPublished = "circle.DemandPublished.v1"
 	EventDemandExpired   = "circle.DemandExpired.v1"
 )
@@ -31,6 +34,15 @@ type MemberPayload struct {
 	CircleID int64 `json:"circle_id,string"`
 	UserID   int64 `json:"user_id,string"`
 	Via      int16 `json:"via,omitempty"`
+}
+
+// ApplyPayload 入圈申请事件载荷。
+type ApplyPayload struct {
+	CircleID int64  `json:"circle_id,string"`
+	Name     string `json:"name,omitempty"`
+	UserID   int64  `json:"user_id,string"`
+	OwnerID  int64  `json:"owner_id,string,omitempty"`
+	Reason   string `json:"reason,omitempty"`
 }
 
 // DemandPayload 需求事件载荷。
@@ -58,6 +70,15 @@ func NewCircleDissolved(id string, p CirclePayload) eventbus.Event {
 }
 func NewMemberJoined(id string, p MemberPayload) eventbus.Event {
 	return newEvent(id, EventMemberJoined, p)
+}
+func NewJoinApplied(id string, p ApplyPayload) eventbus.Event {
+	return newEvent(id, EventJoinApplied, p)
+}
+func NewJoinApproved(id string, p ApplyPayload) eventbus.Event {
+	return newEvent(id, EventJoinApproved, p)
+}
+func NewJoinRejected(id string, p ApplyPayload) eventbus.Event {
+	return newEvent(id, EventJoinRejected, p)
 }
 func NewDemandPublished(id string, p DemandPayload) eventbus.Event {
 	return newEvent(id, EventDemandPublished, p)

@@ -1501,6 +1501,102 @@ paths:
                     properties:
                       data: { $ref: '#/components/schemas/CubeDetail' }
         '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [cube]
+      summary: 编辑「关于我们」（猫王/猫蜜）
+      operationId: updateCube
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                region_code: { type: string }
+                industry_codes: { type: array, items: { type: string } }
+                chain_stage: { type: string }
+                direction: { type: string }
+                resources: { type: string }
+                strength: { type: string }
+                cooperation: { type: string }
+      responses:
+        '200':
+          description: 结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { type: object, properties: { updated: { type: boolean } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /cubes/honey-lookup:
+    get:
+      tags: [cube]
+      summary: 按手机号精确查找猫蜜候选人（仅返回昵称）
+      operationId: lookupCubeHoney
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: phone, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 查找结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          found: { type: boolean }
+                          user_id: { type: string }
+                          nickname: { type: string }
+  /cubes/{id}/chat:
+    post:
+      tags: [cube]
+      summary: 进入猫立方工作群（成员）
+      operationId: ensureCubeChat
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 会话
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { type: object, properties: { session_id: { type: string }, title: { type: string } } }
+  /cubes/{id}/projects/{pid}/chat:
+    post:
+      tags: [cube]
+      summary: 进入项目群（立方成员）
+      operationId: ensureCubeProjectChat
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: pid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 会话
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { type: object, properties: { session_id: { type: string }, title: { type: string } } }
   /cubes/{id}/invites:
     post:
       tags: [cube]
@@ -1616,6 +1712,33 @@ paths:
                   - $ref: '#/components/schemas/Envelope'
                   - type: object
                     properties: { data: { type: object, properties: { transferred: { type: boolean } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /cubes/{id}/honey:
+    post:
+      tags: [cube]
+      summary: 猫王指定猫蜜（需为在职成员）
+      operationId: setCubeHoney
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties: { user_id: { type: string } }
+      responses:
+        '200':
+          description: 结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { type: object, properties: { honey_id: { type: string } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
   /cubes/{id}/dissolve:
     post:
@@ -2275,6 +2398,34 @@ paths:
                         type: object
                         properties:
                           items: { type: array, items: { $ref: '#/components/schemas/Circle' } }
+  /circles/discover:
+    get:
+      tags: [circle]
+      summary: 发现圈子（公开；登录后带加入/申请状态）
+      operationId: discoverCircles
+      security: []
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: region, in: query, schema: { type: string } }
+        - { name: type, in: query, schema: { type: integer } }
+        - { name: sort, in: query, schema: { type: string, enum: [recommend, new] } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: 圈子列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { $ref: '#/components/schemas/CircleDiscoverItem' } }
+                          next_cursor: { type: string, nullable: true }
   /circles/join:
     post:
       tags: [circle]
@@ -2375,14 +2526,14 @@ paths:
   /circles/{id}/members:
     get:
       tags: [circle]
-      summary: 成员列表
+      summary: 成员列表（含昵称与角色）
       operationId: listCircleMembers
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:
         '200':
-          description: 成员 ID 列表
+          description: 成员列表
           content:
             application/json:
               schema:
@@ -2390,7 +2541,58 @@ paths:
                   - $ref: '#/components/schemas/Envelope'
                   - type: object
                     properties:
-                      data: { type: object, properties: { items: { type: array, items: { type: string } } } }
+                      data: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/CircleMember' } } } }
+  /circles/{id}/applications:
+    get:
+      tags: [circle]
+      summary: 圈主查看入圈申请（status=1 待审 / 2 通过 / 3 拒绝；缺省待审）
+      operationId: listCircleApplications
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: status, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: 申请列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/CircleApplication' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /circles/{id}/applications/{uid}/decide:
+    post:
+      tags: [circle]
+      summary: 圈主通过/拒绝入圈申请（拒绝须填原因）
+      operationId: decideCircleApplication
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: uid, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approve]
+              properties:
+                approve: { type: boolean }
+                reason: { type: string }
+      responses:
+        '200':
+          description: 结果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties: { data: { type: object, properties: { approved: { type: boolean } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /circles/{id}/dissolve:
     post:
       tags: [circle]
@@ -2415,9 +2617,9 @@ paths:
   /circles/{id}/demands:
     get:
       tags: [circle]
-      summary: 圈内需求列表（生效在前；联系方式会员可见）
+      summary: 圈内需求列表（成员可见；生效在前；联系方式会员可见）
       operationId: listCircleDemands
-      security: []
+      security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
         - { name: limit, in: query, schema: { type: integer } }
@@ -2471,9 +2673,9 @@ paths:
   /circles/{id}/mounts:
     get:
       tags: [circle]
-      summary: 圈内挂载列表（引用不复制，点开进原详情）
+      summary: 圈内挂载列表（成员可见；引用不复制，点开进原详情）
       operationId: listCircleMounts
-      security: []
+      security: [{ bearerAuth: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:
@@ -2567,6 +2769,26 @@ paths:
                     properties: { data: { type: object, properties: { project_id: { type: string } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
   /circles/{id}/feeds:
+    get:
+      tags: [circle]
+      summary: 圈内动态/公告列表（成员可见）
+      operationId: listCircleFeeds
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: 动态列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/CircleFeed' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [circle]
       summary: 圈内动态/公告（公告仅圈主、每圈每日 ≤3 条不占个人额度）
@@ -3063,6 +3285,7 @@ components:
       required: [user_id, role, status]
       properties:
         user_id: { type: string }
+        nickname: { type: string }
         role: { type: integer }
         status: { type: integer }
         joined_at: { type: string, format: date-time }
@@ -3224,6 +3447,51 @@ components:
             my_role: { type: integer, description: '0 非成员 / 1 圈主 / 2 成员' }
             joined: { type: boolean }
             recommendable: { type: boolean, description: 新圈 7 天内不进推荐流 }
+            apply_status: { type: integer, description: '0 未申请 / 1 审核中 / 2 已通过 / 3 已拒绝' }
+            apply_reason: { type: string, description: 拒绝原因 }
+    CircleDiscoverItem:
+      allOf:
+        - $ref: '#/components/schemas/Circle'
+        - type: object
+          properties:
+            intro: { type: string }
+            region_code: { type: string }
+            owner_name: { type: string }
+            joined: { type: boolean }
+            apply_status: { type: integer }
+            created_at: { type: string, format: date-time }
+    CircleMember:
+      type: object
+      required: [user_id, role]
+      properties:
+        user_id: { type: string }
+        nickname: { type: string }
+        role: { type: integer, description: '1 圈主 / 2 成员' }
+        joined_via: { type: integer }
+        joined_at: { type: string, format: date-time }
+    CircleFeed:
+      type: object
+      required: [id, circle_id, author_id, text, created_at]
+      properties:
+        id: { type: string }
+        circle_id: { type: string }
+        author_id: { type: string }
+        author_name: { type: string }
+        text: { type: string }
+        image_file_ids: { type: array, items: { type: string } }
+        is_announcement: { type: boolean }
+        created_at: { type: string, format: date-time }
+    CircleApplication:
+      type: object
+      required: [id, circle_id, applicant_id, status]
+      properties:
+        id: { type: string }
+        circle_id: { type: string }
+        applicant_id: { type: string }
+        nickname: { type: string }
+        status: { type: integer, description: '1 审核中 / 2 已通过 / 3 已拒绝' }
+        reason: { type: string }
+        created_at: { type: string, format: date-time }
     CircleCreateInput:
       type: object
       required: [name, type]

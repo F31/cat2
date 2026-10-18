@@ -156,7 +156,7 @@ func TestIntegrationCircleShareLanding(t *testing.T) {
 	ctx := context.Background()
 	owner, ownerTok := loginUser(t, h)
 	_, otherTok := loginUser(t, h)
-	_, visitorTok := loginUser(t, h)
+	visitorID, visitorTok := loginUser(t, h)
 
 	// 实名后发布项目并上架
 	_, _ = h.do(http.MethodPost, "/api/mp/v1/certs", ownerTok, map[string]any{
@@ -218,7 +218,11 @@ func TestIntegrationCircleShareLanding(t *testing.T) {
 		"cert_type": 1, "real_name": "李四", "id_card_no": "110101199003070027", "agreed": true,
 	})
 	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/apply", id), visitorTok, nil); s != http.StatusOK || e.Code != 0 {
-		t.Fatalf("加入圈子失败: %d %+v", s, e)
+		t.Fatalf("申请加入失败: %d %+v", s, e)
+	}
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/applications/%d/decide", id, visitorID), ownerTok,
+		map[string]any{"approve": true}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("圈主审核通过失败: %d %+v", s, e)
 	}
 	fc := check(visitorTok, false)
 	if fc["joined"] != true {
@@ -521,4 +525,203 @@ func TestIntegrationAdminPlazaManagement(t *testing.T) {
 		t.Fatalf("群聊记录查询失败: %d %+v", s, e)
 	}
 	_ = ownerTok
+}
+
+// 小程序广场闭环：发现 → 申请审核 → 动态/成员 → 到猫立方；猫立方昵称/编辑/群聊。
+func TestIntegrationPlazaMiniProgramLoop(t *testing.T) {
+	h := newTestApp(t)
+	ctx := context.Background()
+	owner, ownerTok := loginUser(t, h)
+	_ = owner
+	applicantPhone := randPhone()
+	applicant, applicantTok := loginPhone(t, h, applicantPhone)
+	third, thirdTok := loginUser(t, h)
+	cert := func(tok string) {
+		if s, e := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+			"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+		}); s != http.StatusOK || e.Code != 0 {
+			t.Fatalf("实名失败: %d %+v", s, e)
+		}
+	}
+	cert(ownerTok)
+	cert(applicantTok)
+	cert(thirdTok)
+
+	_, env := h.do(http.MethodPost, "/api/mp/v1/circles", ownerTok, map[string]any{
+		"name": "闭环发现圈", "intro": "发现与审核", "type": 1, "region_code": "310000",
+	})
+	var cir struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cir)
+	if cir.ID == 0 {
+		t.Fatalf("建圈失败: %+v", env)
+	}
+	defer func() {
+		_, _ = h.app.Pool.Exec(ctx, `DELETE FROM cir_apply WHERE circle_id=$1`, cir.ID)
+		_, _ = h.app.Pool.Exec(ctx, `DELETE FROM cir_feed WHERE circle_id=$1`, cir.ID)
+		_, _ = h.app.Pool.Exec(ctx, `DELETE FROM cir_member WHERE circle_id=$1`, cir.ID)
+		_, _ = h.app.Pool.Exec(ctx, `DELETE FROM cir_circle WHERE id=$1`, cir.ID)
+	}()
+
+	// 发现（公开）
+	_, env = h.do(http.MethodGet, "/api/mp/v1/circles/discover?q=闭环发现", "", nil)
+	var disc struct {
+		Items []struct {
+			ID   int64 `json:"id,string"`
+			Name string
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &disc)
+	if len(disc.Items) == 0 || disc.Items[0].ID != cir.ID {
+		t.Fatalf("发现列表缺少圈子: %+v", disc)
+	}
+
+	// 申请 → 待审 → 圈主审核
+	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/apply", cir.ID), applicantTok, nil); e.Code != 0 {
+		t.Fatalf("申请失败: %+v", e)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/circles/%d", cir.ID), applicantTok, nil)
+	var detail struct {
+		ApplyStatus int16 `json:"apply_status"`
+		Joined      bool  `json:"joined"`
+	}
+	_ = json.Unmarshal(env.Data, &detail)
+	if detail.ApplyStatus != 1 || detail.Joined {
+		t.Fatalf("申请后应为待审: %+v", detail)
+	}
+	if s, _ := h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/circles/%d/applications", cir.ID), applicantTok, nil); s != http.StatusForbidden {
+		t.Fatalf("非圈主查看申请应403: %d", s)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/circles/%d/applications", cir.ID), ownerTok, nil)
+	var apps struct {
+		Items []struct {
+			ApplicantID string `json:"applicant_id"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &apps)
+	if len(apps.Items) != 1 || apps.Items[0].ApplicantID != fmt.Sprintf("%d", applicant) {
+		t.Fatalf("申请列表不符: %+v", apps)
+	}
+	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/applications/%d/decide", cir.ID, applicant), ownerTok,
+		map[string]any{"approve": true}); e.Code != 0 {
+		t.Fatalf("审核通过失败: %+v", e)
+	}
+
+	// 入圈后动态 + 成员昵称
+	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/feeds", cir.ID), applicantTok,
+		map[string]any{"text": "欢迎加入"}); e.Code != 0 {
+		t.Fatalf("发布动态失败: %+v", e)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/circles/%d/feeds", cir.ID), applicantTok, nil)
+	var feeds struct {
+		Items []struct {
+			Text string `json:"text"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &feeds)
+	if len(feeds.Items) != 1 || feeds.Items[0].Text != "欢迎加入" {
+		t.Fatalf("动态列表不符: %+v", feeds)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/circles/%d/members", cir.ID), applicantTok, nil)
+	var members struct {
+		Items []struct {
+			Nickname string `json:"nickname"`
+			Role     int16  `json:"role"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &members)
+	if len(members.Items) < 2 || members.Items[0].Role != 1 {
+		t.Fatalf("成员列表应含圈主与成员: %+v", members)
+	}
+
+	// 拒绝须原因，可重新申请
+	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/apply", cir.ID), thirdTok, nil); e.Code != 0 {
+		t.Fatalf("第三方申请失败: %+v", e)
+	}
+	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/applications/%d/decide", cir.ID, third), ownerTok,
+		map[string]any{"approve": false}); e.Code != 140007 {
+		t.Fatalf("拒绝未填原因应 140007: %+v", e)
+	}
+	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/applications/%d/decide", cir.ID, third), ownerTok,
+		map[string]any{"approve": false, "reason": "资料不全"}); e.Code != 0 {
+		t.Fatalf("拒绝失败: %+v", e)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/circles/%d", cir.ID), thirdTok, nil)
+	_ = json.Unmarshal(env.Data, &detail)
+	if detail.ApplyStatus != 3 || detail.Joined {
+		t.Fatalf("拒绝后状态不符: %+v", detail)
+	}
+
+	// 猫蜜手机号查找 → 建立方 → 成员昵称 → 编辑关于我们 → 群聊
+	_, env = h.do(http.MethodGet, "/api/mp/v1/cubes/honey-lookup?phone="+applicantPhone, ownerTok, nil)
+	var look struct {
+		Found    bool   `json:"found"`
+		UserID   string `json:"user_id"`
+		Nickname string `json:"nickname"`
+	}
+	_ = json.Unmarshal(env.Data, &look)
+	if !look.Found || look.UserID != fmt.Sprintf("%d", applicant) {
+		t.Fatalf("猫蜜查找失败: %+v", look)
+	}
+	_, env = h.do(http.MethodPost, "/api/mp/v1/cubes", ownerTok, map[string]any{
+		"name": "闭环立方", "honey_user_id": fmt.Sprintf("%d", applicant),
+	})
+	var cube struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cube)
+	if cube.ID == 0 {
+		t.Fatalf("建立方失败: %+v", env)
+	}
+	defer func() {
+		_, _ = h.app.Pool.Exec(ctx, `DELETE FROM cub_project WHERE cube_id=$1`, cube.ID)
+		_, _ = h.app.Pool.Exec(ctx, `DELETE FROM cub_member WHERE cube_id=$1`, cube.ID)
+		_, _ = h.app.Pool.Exec(ctx, `DELETE FROM cub_cube WHERE id=$1`, cube.ID)
+	}()
+	_, env = h.do(http.MethodPut, fmt.Sprintf("/api/mp/v1/cubes/%d", cube.ID), ownerTok, map[string]any{
+		"direction": "产业协同", "resources": "渠道", "strength": "交付", "cooperation": "联合承接",
+	})
+	if env.Code != 0 {
+		t.Fatalf("编辑关于我们失败: %+v", env)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/cubes/%d", cube.ID), applicantTok, nil)
+	var cd struct {
+		Direction string `json:"direction"`
+	}
+	_ = json.Unmarshal(env.Data, &cd)
+	if cd.Direction != "产业协同" {
+		t.Fatalf("关于我们未更新: %+v", cd)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/cubes/%d/members", cube.ID), applicantTok, nil)
+	var cm struct {
+		Items []struct {
+			Nickname string `json:"nickname"`
+			Role     int16  `json:"role"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &cm)
+	if len(cm.Items) != 2 || cm.Items[0].Nickname == "" || cm.Items[1].Nickname == "" {
+		t.Fatalf("立方成员昵称缺失: %+v", cm)
+	}
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/chat", cube.ID), applicantTok, nil)
+	var chat struct {
+		SessionID string `json:"session_id"`
+	}
+	_ = json.Unmarshal(env.Data, &chat)
+	if chat.SessionID == "" {
+		t.Fatalf("立方群聊会话缺失: %+v", env)
+	}
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/projects", cube.ID), ownerTok, map[string]any{
+		"type": 2, "name": "闭环承接项目",
+	})
+	var proj struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &proj)
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/cubes/%d/projects/%d/chat", cube.ID, proj.ID), applicantTok, nil)
+	_ = json.Unmarshal(env.Data, &chat)
+	if chat.SessionID == "" {
+		t.Fatalf("项目群聊会话缺失: %+v", env)
+	}
 }

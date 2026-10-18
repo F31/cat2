@@ -1,25 +1,39 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { View, Text, Button, Input } from '@tarojs/components'
-import type { Circle } from '@catcube/api-client'
+import type { Circle, CircleDiscoverItem } from '@catcube/api-client'
 import { api } from '../../services/request'
 import { ensureLogin } from '../../services/auth'
 import StateView from '../../components/StateView'
 
-// 圈子 Tab：我的圈子（我加入的/我创建的，进行中/已结束分区）+ 创建 + 输入邀请码加入。
+const APPLY_LABEL: Record<number, string> = { 1: '审核中', 2: '已通过', 3: '未通过' }
+
+// 圈子 Tab：发现圈子（公开搜索/筛选）与我的圈子；创建、邀请码加入。
 export default function CircleTab() {
+  const [tab, setTab] = useState<'discover' | 'mine'>('discover')
+  const [discover, setDiscover] = useState<CircleDiscoverItem[]>([])
   const [circles, setCircles] = useState<Circle[]>([])
+  const [q, setQ] = useState('')
+  const [code, setCode] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
-  const [code, setCode] = useState('')
+
+  const loadMine = useCallback(async () => {
+    const res = await api.listCircles()
+    setCircles(res.items ?? [])
+  }, [])
+
+  const loadDiscover = useCallback(async (keyword = q) => {
+    const res = await api.discoverCircles({ q: keyword.trim() || undefined, limit: 50 })
+    setDiscover(res.items ?? [])
+  }, [q])
 
   const load = async () => {
     setLoading(true)
     setError(false)
     try {
       await ensureLogin()
-      const res = await api.listCircles()
-      setCircles(res.items ?? [])
+      await Promise.all([loadDiscover(), loadMine()])
     } catch {
       setError(true)
     } finally {
@@ -63,6 +77,15 @@ export default function CircleTab() {
 
   return (
     <View className="page">
+      <View className="tabs">
+        <Text className={tab === 'discover' ? 'tabs__item tabs__item--active' : 'tabs__item'} onClick={() => setTab('discover')}>
+          发现圈子
+        </Text>
+        <Text className={tab === 'mine' ? 'tabs__item tabs__item--active' : 'tabs__item'} onClick={() => setTab('mine')}>
+          我的圈子
+        </Text>
+      </View>
+
       <View className="search-row">
         <Button className="btn-primary" size="mini" onClick={() => Taro.navigateTo({ url: '/pages/circle/create' })}>
           创建圈子
@@ -72,10 +95,52 @@ export default function CircleTab() {
           加入
         </Button>
       </View>
-      <StateView loading={loading} error={error} empty={circles.length === 0} emptyText="还没有圈子，创建一个或输入邀请码加入" onRetry={() => void load()}>
-        {section('进行中', active)}
-        {section('已结束 / 已解散', ended)}
-      </StateView>
+
+      {tab === 'discover' ? (
+        <>
+          <View className="search-row">
+            <Input
+              className="search-row__input"
+              value={q}
+              placeholder="搜索圈名 / 简介"
+              confirmType="search"
+              onInput={(e) => setQ(e.detail.value)}
+              onConfirm={() => void loadDiscover()}
+            />
+            <Button className="search-row__btn" size="mini" onClick={() => void loadDiscover()}>
+              搜索
+            </Button>
+          </View>
+          <StateView
+            loading={loading}
+            error={error}
+            empty={discover.length === 0}
+            emptyText="还没有可发现的圈子，创建一个吧"
+            onRetry={() => void load()}
+          >
+            <View className="menu">
+              {discover.map((c) => (
+                <View key={c.id} className="menu__item" onClick={() => Taro.navigateTo({ url: `/pages/circle/detail?id=${c.id}` })}>
+                  <View className="menu__row">
+                    <Text>{c.name}</Text>
+                    <Text className="row-tag">
+                      {c.joined ? '已加入' : APPLY_LABEL[c.apply_status ?? 0] ?? '查看'}
+                    </Text>
+                  </View>
+                  <Text className="form-field__label">
+                    {c.intro || '暂无简介'} · {c.member_count} 人{c.owner_name ? ` · 圈主 ${c.owner_name}` : ''}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </StateView>
+        </>
+      ) : (
+        <StateView loading={loading} error={error} empty={circles.length === 0} emptyText="还没有圈子，创建一个或输入邀请码加入" onRetry={() => void load()}>
+          {section('进行中', active)}
+          {section('已结束 / 已解散', ended)}
+        </StateView>
+      )}
     </View>
   )
 }

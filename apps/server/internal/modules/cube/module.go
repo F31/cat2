@@ -28,6 +28,7 @@ import (
 	msgcontract "catcube/internal/modules/msg/contract"
 	tradecontract "catcube/internal/modules/trade/contract"
 	"catcube/internal/shared/entityref"
+	"catcube/pkg/phone"
 )
 
 // Deps 装配依赖。
@@ -88,12 +89,17 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes", Handler: m.auth(m.handleCreate)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cubes", Handler: m.auth(m.handleListMine)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/join", Handler: m.auth(m.handleJoin)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cubes/honey-lookup", Handler: m.auth(m.handleHoneyLookup)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cubes/{id}", Handler: m.auth(m.handleDetail)},
+		module.Route{Method: http.MethodPut, Path: "/api/mp/v1/cubes/{id}", Handler: m.auth(m.handleUpdateProfile)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/chat", Handler: m.auth(m.handleCubeChat)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/projects/{pid}/chat", Handler: m.auth(m.handleProjectChat)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/invites", Handler: m.auth(m.handleInvite)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cubes/{id}/members", Handler: m.auth(m.handleMembers)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/members/{uid}/remove", Handler: m.auth(m.handleRemove)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/leave", Handler: m.auth(m.handleLeave)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/transfer", Handler: m.auth(m.handleTransfer)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/honey", Handler: m.auth(m.handleSetHoney)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/dissolve", Handler: m.auth(m.handleDissolve)},
 		// 协作实体（§2）
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/projects", Handler: m.auth(m.handleCreateProject)},
@@ -344,6 +350,94 @@ func (m *Module) handleDetail(w http.ResponseWriter, req *http.Request) {
 	writeData(w, d)
 }
 
+// handleHoneyLookup 按手机号精确查找可担任猫蜜的已实名用户（仅返回昵称，不回传手机号）。
+func (m *Module) handleHoneyLookup(w http.ResponseWriter, req *http.Request) {
+	p := strings.TrimSpace(req.URL.Query().Get("phone"))
+	if !phone.ValidMobile(p) {
+		writeErr(w, codeParamInvalid, "手机号格式不正确")
+		return
+	}
+	uid, err := m.deps.Identity.UserIDByPhone(req.Context(), p)
+	if err != nil || uid == 0 {
+		writeData(w, map[string]any{"found": false})
+		return
+	}
+	b, err := m.deps.Identity.UserBrief(req.Context(), uid)
+	if err != nil || b.Status != 0 {
+		writeData(w, map[string]any{"found": false})
+		return
+	}
+	writeData(w, map[string]any{"found": true, "user_id": strconv.FormatInt(uid, 10), "nickname": b.Nickname})
+}
+
+// handleUpdateProfile 编辑「关于我们」（猫王/猫蜜）。
+func (m *Module) handleUpdateProfile(w http.ResponseWriter, req *http.Request) {
+	id, err := pathID(req, "id")
+	if err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	var body struct {
+		Name          string   `json:"name"`
+		RegionCode    string   `json:"region_code"`
+		IndustryCodes []string `json:"industry_codes"`
+		ChainStage    string   `json:"chain_stage"`
+		Direction     string   `json:"direction"`
+		Resources     string   `json:"resources"`
+		Strength      string   `json:"strength"`
+		Cooperation   string   `json:"cooperation"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	err = m.svc.UpdateProfile(req.Context(), id, userIDFrom(req.Context()), contract.ProfileInput{
+		Name: body.Name, RegionCode: body.RegionCode, IndustryCodes: body.IndustryCodes,
+		ChainStage: body.ChainStage, Direction: body.Direction, Resources: body.Resources,
+		Strength: body.Strength, Cooperation: body.Cooperation,
+	})
+	if err != nil {
+		writeCubeErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"updated": true})
+}
+
+// handleCubeChat 进入立方工作群（成员）。
+func (m *Module) handleCubeChat(w http.ResponseWriter, req *http.Request) {
+	id, err := pathID(req, "id")
+	if err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	sess, err := m.svc.EnsureCubeChat(req.Context(), id, userIDFrom(req.Context()))
+	if err != nil {
+		writeCubeErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"session_id": strconv.FormatInt(sess.ID, 10), "title": sess.Title})
+}
+
+// handleProjectChat 进入项目群（立方成员）。
+func (m *Module) handleProjectChat(w http.ResponseWriter, req *http.Request) {
+	id, err := pathID(req, "id")
+	if err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	pid, err := pathID(req, "pid")
+	if err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	sess, err := m.svc.EnsureProjectChat(req.Context(), id, pid, userIDFrom(req.Context()))
+	if err != nil {
+		writeCubeErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"session_id": strconv.FormatInt(sess.ID, 10), "title": sess.Title})
+}
+
 func (m *Module) handleInvite(w http.ResponseWriter, req *http.Request) {
 	id, err := pathID(req, "id")
 	if err != nil {
@@ -429,6 +523,26 @@ func (m *Module) handleTransfer(w http.ResponseWriter, req *http.Request) {
 	m.auditCube(req, "cube:leader:transfer", fmt.Sprintf(`{"type":"cube","id":"%d"}`, id),
 		map[string]any{"to_user_id": strconv.FormatInt(body.ToUserID, 10)})
 	writeData(w, map[string]any{"transferred": true})
+}
+
+func (m *Module) handleSetHoney(w http.ResponseWriter, req *http.Request) {
+	id, err := pathID(req, "id")
+	if err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	var body struct {
+		UserID int64 `json:"user_id,string"`
+	}
+	if json.NewDecoder(req.Body).Decode(&body) != nil || body.UserID == 0 {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	if err := m.svc.SetHoneyByLeader(req.Context(), id, userIDFrom(req.Context()), body.UserID); err != nil {
+		writeCubeErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"honey_id": strconv.FormatInt(body.UserID, 10)})
 }
 
 func (m *Module) handleDissolve(w http.ResponseWriter, req *http.Request) {

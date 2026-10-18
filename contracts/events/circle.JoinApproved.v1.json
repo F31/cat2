@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/circle.JoinApproved.v1.json",
+  "title": "circle.JoinApproved.v1",
+  "description": "circle 圈子领域事件：入圈申请通过。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "circle.JoinApproved.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["circle_id","user_id"],
+      "properties": { "circle_id": { "type": "string" },"name": { "type": "string" },"user_id": { "type": "string" },"owner_id": { "type": "string" } }
+    }
+  },
+  "additionalProperties": false
+}

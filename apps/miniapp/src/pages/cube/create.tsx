@@ -16,7 +16,35 @@ export default function CubeCreate() {
   const [strength, setStrength] = useState('')
   const [cooperation, setCooperation] = useState('')
   const [honey, setHoney] = useState('')
+  const [honeyPhone, setHoneyPhone] = useState('')
+  const [honeyName, setHoneyName] = useState('')
   const [saving, setSaving] = useState(false)
+  const [searching, setSearching] = useState(false)
+
+  const findHoney = async () => {
+    if (!honeyPhone.trim()) {
+      Taro.showToast({ title: '请输入手机号', icon: 'none' })
+      return
+    }
+    setSearching(true)
+    try {
+      await ensureLogin()
+      const r = await api.lookupCubeHoney(honeyPhone.trim())
+      if (!r.found || !r.user_id) {
+        setHoney('')
+        setHoneyName('')
+        Taro.showToast({ title: '未找到已注册用户', icon: 'none' })
+        return
+      }
+      setHoney(r.user_id)
+      setHoneyName(r.nickname || r.user_id)
+      Taro.showToast({ title: `已选择 ${r.nickname || r.user_id}`, icon: 'success' })
+    } catch {
+      Taro.showToast({ title: '查找失败', icon: 'none' })
+    } finally {
+      setSearching(false)
+    }
+  }
 
   const submit = async () => {
     if (!name.trim()) {
@@ -24,7 +52,7 @@ export default function CubeCreate() {
       return
     }
     if (!honey.trim()) {
-      Taro.showToast({ title: '请指定 1 名猫蜜（用户 ID）', icon: 'none' })
+      Taro.showToast({ title: '请先按手机号查找猫蜜', icon: 'none' })
       return
     }
     setSaving(true)
@@ -57,7 +85,14 @@ export default function CubeCreate() {
       <FormField label="有啥（资源）" value={resources} onChange={setResources} />
       <FormField label="优势" value={strength} onChange={setStrength} />
       <FormField label="合作诉求" value={cooperation} onChange={setCooperation} />
-      <FormField label="猫蜜用户 ID" required value={honey} onChange={setHoney} placeholder="邀请 1 名伙伴共同管理" />
+      <FormField label="猫蜜手机号" required value={honeyPhone} onChange={setHoneyPhone} placeholder="输入对方注册手机号" />
+      <Button className="btn-secondary" size="mini" loading={searching} onClick={() => void findHoney()}>
+        查找猫蜜
+      </Button>
+      <Text className="form-field__label">
+        {honey ? `已选择：${honeyName || `用户 ${honey}`}（${honey}）` : '仅支持已注册且实名的用户；也可在下方直接填写用户 ID'}
+      </Text>
+      <FormField label="猫蜜用户 ID（备选）" value={honey} onChange={setHoney} placeholder="按手机号查找后自动填入" />
       <Button className="btn-primary" loading={saving} onClick={() => void submit()}>
         创建
       </Button>

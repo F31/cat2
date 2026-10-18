@@ -3356,6 +3356,9 @@ func TestIntegrationP3ExitCriteria(t *testing.T) {
 	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/apply", cir.ID), cTok2, nil); e.Code != 0 {
 		t.Fatalf("申请加入失败: %+v", e)
 	}
+	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/applications/%d/decide", cir.ID, cID), aTok, map[string]any{"approve": true}); e.Code != 0 {
+		t.Fatalf("圈主审核通过失败: %+v", e)
+	}
 	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/feeds", cir.ID), cTok2, map[string]any{"text": "圈内动态"}); e.Code != 0 {
 		t.Fatalf("圈内发布失败: %+v", e)
 	}

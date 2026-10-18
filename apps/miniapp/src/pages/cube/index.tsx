@@ -46,6 +46,17 @@ export default function CubeTab() {
 
   return (
     <View className="page">
+      {cubes.length > 0 ? (
+        <View className="search-row">
+          <Button className="btn-primary" size="mini" onClick={() => Taro.navigateTo({ url: '/pages/cube/create' })}>
+            创建猫立方
+          </Button>
+          <Input className="search-row__input" value={code} placeholder="输入邀请码加入" onInput={(e) => setCode(e.detail.value)} />
+          <Button className="btn-secondary" size="mini" onClick={() => void join()}>
+            加入
+          </Button>
+        </View>
+      ) : null}
       <StateView loading={loading} error={error} onRetry={() => void load()}>
         {cubes.length === 0 && !error ? (
           <View className="empty">

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Taro, { useDidShow, useRouter } from '@tarojs/taro'
-import { View, Text, Button } from '@tarojs/components'
+import { View, Text, Button, Input } from '@tarojs/components'
 import type { CubeTask, CubeMember } from '@catcube/api-client'
 import { api } from '../../services/request'
 import { ensureLogin } from '../../services/auth'
@@ -9,7 +9,7 @@ import FormField from '../../components/FormField'
 
 const STATUS: Record<number, string> = { 0: '待办', 1: '进行中', 2: '待确认', 3: '已完成' }
 
-// 内部工作安排：任务可不挂项目；猫王/猫蜜建任务指派负责人并（默认）确认。
+// 内部工作安排：成员选择器指派负责人；四态推进；驳回必填原因。
 export default function CubeTaskPage() {
   const router = useRouter()
   const id = router.params.id ?? ''
@@ -19,6 +19,13 @@ export default function CubeTaskPage() {
   const [error, setError] = useState(false)
   const [title, setTitle] = useState('')
   const [assignee, setAssignee] = useState('')
+  const [rejecting, setRejecting] = useState<CubeTask | null>(null)
+  const [reason, setReason] = useState('')
+
+  const nameOf = useMemo(() => {
+    const map = new Map(members.map((m) => [m.user_id, m.nickname || m.user_id]))
+    return (uid?: string | null) => (uid ? map.get(uid) || uid : '—')
+  }, [members])
 
   const load = async () => {
     setLoading(true)
@@ -27,7 +34,7 @@ export default function CubeTaskPage() {
       await ensureLogin()
       const [ts, ms] = await Promise.all([api.cubeTasks(id), api.cubeMembers(id)])
       setTasks(ts.items ?? [])
-      setMembers(ms.items ?? [])
+      setMembers((ms.items ?? []).filter((m) => m.status === 0))
     } catch {
       setError(true)
     } finally {
@@ -39,9 +46,23 @@ export default function CubeTaskPage() {
     void load()
   })
 
+  const pickAssignee = async () => {
+    if (members.length === 0) {
+      Taro.showToast({ title: '暂无成员', icon: 'none' })
+      return
+    }
+    try {
+      const r = await Taro.showActionSheet({ itemList: members.map((m) => `${m.nickname || m.user_id}`) })
+      const m = members[r.tapIndex]
+      if (m) setAssignee(m.user_id)
+    } catch {
+      /* 取消 */
+    }
+  }
+
   const create = async () => {
-    if (!title.trim() || !assignee.trim()) {
-      Taro.showToast({ title: '请填写任务与负责人', icon: 'none' })
+    if (!title.trim() || !assignee) {
+      Taro.showToast({ title: '请填写任务并选择负责人', icon: 'none' })
       return
     }
     try {
@@ -68,8 +89,10 @@ export default function CubeTaskPage() {
       <View className="detail-block">
         <Text className="detail-block__title">新建任务（可不挂项目）</Text>
         <FormField label="任务项" required value={title} onChange={setTitle} />
-        <FormField label="负责人用户 ID" required value={assignee} onChange={setAssignee} />
-        <Text className="form-field__label">成员：{members.map((m) => m.user_id).join('、')}</Text>
+        <View className="menu__row" style={{ padding: '10px 0' }} onClick={() => void pickAssignee()}>
+          <Text>负责人</Text>
+          <Text className="row-tag">{assignee ? nameOf(assignee) : '选择成员'}</Text>
+        </View>
         <Button className="btn-primary" size="mini" onClick={() => void create()}>
           新建任务
         </Button>
@@ -77,28 +100,55 @@ export default function CubeTaskPage() {
       <StateView loading={loading} error={error} empty={tasks.length === 0} emptyText="暂无任务" onRetry={() => void load()}>
         <View className="menu">
           {tasks.map((t) => (
-            <View key={t.id} className="menu__item menu__row">
-              <Text>
-                {t.title} · {STATUS[t.status] ?? t.status} · {t.progress}%
-              </Text>
+            <View key={t.id} className="menu__item">
+              <View className="menu__row">
+                <Text>{t.title} · {STATUS[t.status] ?? t.status} · {t.progress}%</Text>
+                <Text className="row-tag">负责人 {nameOf(t.assignee_id)}</Text>
+              </View>
+              {t.reject_reason ? <Text className="form-field__label">驳回原因：{t.reject_reason}</Text> : null}
               <View className="menu__row-extra">
-                {t.status === 0 ? (
-                  <Text className="row-action" onClick={() => void act(t, 'start')}>开始</Text>
-                ) : null}
-                {t.status === 1 ? (
-                  <Text className="row-action" onClick={() => void act(t, 'submit', { progress: 100 })}>提交</Text>
-                ) : null}
+                {t.status === 0 ? <Text className="row-action" onClick={() => void act(t, 'start')}>开始</Text> : null}
+                {t.status === 1 ? <Text className="row-action" onClick={() => void act(t, 'submit', { progress: 100 })}>提交</Text> : null}
                 {t.status === 2 ? (
-                  <Text className="row-action" onClick={() => void act(t, 'confirm', { approve: true })}>确认</Text>
+                  <>
+                    <Text className="row-action" onClick={() => setRejecting(t)}>驳回</Text>
+                    <Text className="row-action" onClick={() => void act(t, 'confirm', { approve: true })}>确认</Text>
+                  </>
                 ) : null}
-                {t.status === 3 ? (
-                  <Text className="row-action" onClick={() => void act(t, 'reopen')}>重开</Text>
-                ) : null}
+                {t.status === 3 ? <Text className="row-action" onClick={() => void act(t, 'reopen')}>重开</Text> : null}
               </View>
             </View>
           ))}
         </View>
       </StateView>
+
+      {rejecting ? (
+        <View className="auth-mask">
+          <View className="auth-modal">
+            <Text className="auth-modal__title">驳回任务</Text>
+            <Input className="search-row__input" value={reason} placeholder="请填写驳回原因" onInput={(e) => setReason(e.detail.value)} />
+            <View className="auth-modal__actions">
+              <Button className="btn-secondary auth-modal__btn" onClick={() => { setRejecting(null); setReason('') }}>
+                取消
+              </Button>
+              <Button
+                className="btn-danger auth-modal__btn"
+                onClick={() => {
+                  if (!reason.trim()) {
+                    Taro.showToast({ title: '请填写原因', icon: 'none' })
+                    return
+                  }
+                  void act(rejecting, 'confirm', { approve: false, reason: reason.trim() })
+                  setRejecting(null)
+                  setReason('')
+                }}
+              >
+                确认驳回
+              </Button>
+            </View>
+          </View>
+        </View>
+      ) : null}
     </View>
   )
 }

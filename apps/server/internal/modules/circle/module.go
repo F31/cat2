@@ -83,6 +83,7 @@ func (m *Module) Register(r *module.Registry) error {
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles", Handler: m.auth(m.handleCreate)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles", Handler: m.auth(m.handleListMine)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/discover", Handler: m.handleDiscover},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}", Handler: m.handleDetail},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/apply", Handler: m.auth(m.handleApply)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/invite", Handler: m.auth(m.handleInvite)},
@@ -90,6 +91,9 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/card", Handler: m.auth(m.handleCard)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/join", Handler: m.auth(m.handleJoin)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/members", Handler: m.auth(m.handleMembers)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/applications", Handler: m.auth(m.handleApplications)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/applications/{uid}/decide", Handler: m.auth(m.handleDecideApplication)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/feeds", Handler: m.auth(m.handleListFeeds)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/dissolve", Handler: m.auth(m.handleDissolve)},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/circles", Handler: m.auth(m.handleAdminList), Admin: true},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/circles/stats", Handler: m.auth(m.handleAdminStats), Admin: true},
@@ -101,11 +105,11 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/circles/batch", Handler: m.auth(m.handleBatchStatus), Admin: true, Perm: rbac.PermModeration},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/convert", Handler: m.auth(m.handleConvert)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/demands", Handler: m.auth(m.handlePublishDemand)},
-		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/demands", Handler: m.handleListDemands},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/demands", Handler: m.auth(m.handleListDemands)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/demands/{did}/renew", Handler: m.auth(m.handleRenewDemand)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/feeds", Handler: m.auth(m.handlePublishFeed)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/mounts", Handler: m.auth(m.handleMount)},
-		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/mounts", Handler: m.handleListMounts},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/mounts", Handler: m.auth(m.handleListMounts)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/mounts/{mid}/decide", Handler: m.auth(m.handleDecideMount)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/demands/{did}/to-cube", Handler: m.auth(m.handleToCube)},
 	)
@@ -200,8 +204,8 @@ func (m *Module) ExpireDemands(ctx context.Context) error { return m.svc.ExpireD
 func (m *Module) Mount(ctx context.Context, circleID, userID int64, itemRef string) (contract.Mount, bool, error) {
 	return m.svc.Mount(ctx, circleID, userID, itemRef)
 }
-func (m *Module) ListMounts(ctx context.Context, circleID int64) ([]contract.Mount, error) {
-	return m.svc.ListMounts(ctx, circleID)
+func (m *Module) ListMounts(ctx context.Context, circleID, viewerID int64) ([]contract.Mount, error) {
+	return m.svc.ListMounts(ctx, circleID, viewerID)
 }
 func (m *Module) DecideMount(ctx context.Context, mountID, userID int64, approve bool) error {
 	return m.svc.DecideMount(ctx, mountID, userID, approve)
@@ -212,6 +216,21 @@ func (m *Module) ToCube(ctx context.Context, circleID, demandID, cubeID, userID 
 
 func (m *Module) ContentMounted(ctx context.Context, circleID int64, itemRef string) (bool, error) {
 	return m.svc.ContentMounted(ctx, circleID, itemRef)
+}
+func (m *Module) Discover(ctx context.Context, viewerID int64, f contract.DiscoverFilter) ([]contract.CircleDiscoverItem, string, error) {
+	return m.svc.Discover(ctx, viewerID, f)
+}
+func (m *Module) MemberItems(ctx context.Context, circleID, viewerID int64) ([]contract.CircleMember, error) {
+	return m.svc.MemberItems(ctx, circleID, viewerID)
+}
+func (m *Module) ListFeeds(ctx context.Context, circleID, viewerID int64, limit int) ([]contract.CircleFeed, error) {
+	return m.svc.ListFeeds(ctx, circleID, viewerID, limit)
+}
+func (m *Module) ListApplications(ctx context.Context, circleID, ownerID int64, status int16) ([]contract.CircleApplication, error) {
+	return m.svc.ListApplications(ctx, circleID, ownerID, status)
+}
+func (m *Module) DecideApplication(ctx context.Context, circleID, ownerID, applicantID int64, approve bool, reason string) error {
+	return m.svc.DecideApplication(ctx, circleID, ownerID, applicantID, approve, reason)
 }
 
 // ProviderFor trust.ReviewSubjectProvider（circle.demand）。
@@ -281,16 +300,29 @@ func (m *Module) handleListMine(w http.ResponseWriter, req *http.Request) {
 	writeData(w, map[string]any{"items": items})
 }
 
+// handleDiscover 圈子发现（公开；登录后带加入/申请状态）。
+func (m *Module) handleDiscover(w http.ResponseWriter, req *http.Request) {
+	q := req.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	offset, _ := strconv.Atoi(q.Get("cursor"))
+	typ, _ := strconv.Atoi(q.Get("type"))
+	items, next, err := m.svc.Discover(req.Context(), m.optionalUserID(req), contract.DiscoverFilter{
+		Q: q.Get("q"), Region: q.Get("region"), Type: int16(typ), Sort: q.Get("sort"), Limit: limit, Offset: offset,
+	})
+	if err != nil {
+		writeCircleErr(w, err)
+		return
+	}
+	var cursor any
+	if next != "" {
+		cursor = next
+	}
+	writeData(w, map[string]any{"items": items, "next_cursor": cursor})
+}
+
 func (m *Module) handleDetail(w http.ResponseWriter, req *http.Request) {
 	id := pathID(req, "id")
-	viewer := int64(0)
-	if token := bearer(req); token != "" {
-		if uid, ver, err := m.deps.Identity.Authenticate(req.Context(), token); err == nil {
-			if b, err := m.deps.Identity.UserBrief(req.Context(), uid); err == nil && b.AuthzVer == ver {
-				viewer = uid
-			}
-		}
-	}
+	viewer := m.optionalUserID(req)
 	d, err := m.svc.Detail(req.Context(), viewer, id)
 	if err != nil {
 		writeCircleErr(w, err)
@@ -333,7 +365,50 @@ func (m *Module) handleJoin(w http.ResponseWriter, req *http.Request) {
 }
 
 func (m *Module) handleMembers(w http.ResponseWriter, req *http.Request) {
-	items, err := m.svc.Members(req.Context(), pathID(req, "id"))
+	items, err := m.svc.MemberItems(req.Context(), pathID(req, "id"), userIDFrom(req.Context()))
+	if err != nil {
+		writeCircleErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"items": items})
+}
+
+// handleApplications 圈主查看入圈申请（status=0/1/2；缺省待审）。
+func (m *Module) handleApplications(w http.ResponseWriter, req *http.Request) {
+	status := contract.ApplyPending
+	if v, err := strconv.Atoi(req.URL.Query().Get("status")); err == nil {
+		status = int16(v)
+	}
+	items, err := m.svc.ListApplications(req.Context(), pathID(req, "id"), userIDFrom(req.Context()), status)
+	if err != nil {
+		writeCircleErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"items": items})
+}
+
+// handleDecideApplication 圈主通过/拒绝入圈申请。
+func (m *Module) handleDecideApplication(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		Approve bool   `json:"approve"`
+		Reason  string `json:"reason"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	err := m.svc.DecideApplication(req.Context(), pathID(req, "id"), userIDFrom(req.Context()), pathID(req, "uid"), body.Approve, body.Reason)
+	if err != nil {
+		writeCircleErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"approved": body.Approve})
+}
+
+// handleListFeeds 圈内动态/公告（成员可见）。
+func (m *Module) handleListFeeds(w http.ResponseWriter, req *http.Request) {
+	limit, _ := strconv.Atoi(req.URL.Query().Get("limit"))
+	items, err := m.svc.ListFeeds(req.Context(), pathID(req, "id"), userIDFrom(req.Context()), limit)
 	if err != nil {
 		writeCircleErr(w, err)
 		return
@@ -789,15 +864,7 @@ func (m *Module) handlePublishDemand(w http.ResponseWriter, req *http.Request) {
 
 func (m *Module) handleListDemands(w http.ResponseWriter, req *http.Request) {
 	limit, _ := strconv.Atoi(req.URL.Query().Get("limit"))
-	viewer := int64(0)
-	if token := bearer(req); token != "" {
-		if uid, ver, err := m.deps.Identity.Authenticate(req.Context(), token); err == nil {
-			if b, err := m.deps.Identity.UserBrief(req.Context(), uid); err == nil && b.AuthzVer == ver {
-				viewer = uid
-			}
-		}
-	}
-	items, err := m.svc.ListDemands(req.Context(), pathID(req, "id"), viewer, limit)
+	items, err := m.svc.ListDemands(req.Context(), pathID(req, "id"), userIDFrom(req.Context()), limit)
 	if err != nil {
 		writeCircleErr(w, err)
 		return
@@ -850,7 +917,7 @@ func (m *Module) handleMount(w http.ResponseWriter, req *http.Request) {
 }
 
 func (m *Module) handleListMounts(w http.ResponseWriter, req *http.Request) {
-	items, err := m.svc.ListMounts(req.Context(), pathID(req, "id"))
+	items, err := m.svc.ListMounts(req.Context(), pathID(req, "id"), userIDFrom(req.Context()))
 	if err != nil {
 		writeCircleErr(w, err)
 		return
@@ -887,6 +954,22 @@ func (m *Module) handleToCube(w http.ResponseWriter, req *http.Request) {
 }
 
 // ---- 辅助 ----
+
+func (m *Module) optionalUserID(req *http.Request) int64 {
+	token := bearer(req)
+	if token == "" {
+		return 0
+	}
+	uid, ver, err := m.deps.Identity.Authenticate(req.Context(), token)
+	if err != nil {
+		return 0
+	}
+	b, err := m.deps.Identity.UserBrief(req.Context(), uid)
+	if err != nil || b.AuthzVer != ver || (b.Status != 0 && b.Status != 1) {
+		return 0
+	}
+	return uid
+}
 
 func (m *Module) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {

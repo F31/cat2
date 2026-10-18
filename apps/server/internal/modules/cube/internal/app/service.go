@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"strconv"
+	"strings"
 	"time"
 
 	"catcube/internal/kernel/db"
@@ -42,6 +43,7 @@ type Repo interface {
 	SetHoney(ctx context.Context, q infra.Querier, cubeID, honeyID int64) error
 	SetCubeStatus(ctx context.Context, q infra.Querier, cubeID int64, status int16) error
 	SetPlan(ctx context.Context, cubeID int64, level int16, expireAt time.Time) error
+	UpdateProfile(ctx context.Context, q infra.Querier, cubeID int64, name, region, chain, direction, resources, strength, cooperation string, industries []byte) error
 	ListExpiredPlans(ctx context.Context, limit int) ([]int64, error)
 	InsertInvite(ctx context.Context, inv infra.Invite) error
 	GetInviteByCode(ctx context.Context, code string) (infra.Invite, error)
@@ -284,6 +286,41 @@ func (s *Service) AdminRemoveMember(ctx context.Context, cubeID, targetID int64,
 	return s.identity.AuthzBump(ctx, targetID)
 }
 
+// SetHoneyByLeader 猫王指定猫蜜（需为在职成员，不能是猫王）。
+func (s *Service) SetHoneyByLeader(ctx context.Context, cubeID, leaderID, userID int64) error {
+	c, err := s.repo.GetCube(ctx, cubeID)
+	if err != nil {
+		return err
+	}
+	if c.LeaderID != leaderID {
+		return domain.ErrNoPermission
+	}
+	if userID == c.LeaderID {
+		return domain.ErrHoneyRequired
+	}
+	target, ok, err := s.repo.GetMember(ctx, cubeID, userID)
+	if err != nil || !ok || target.Status != contract.MemberActive {
+		return domain.ErrNoPermission
+	}
+	if err := s.pool.InTx(ctx, func(tx db.Tx) error {
+		if c.HoneyID != 0 && c.HoneyID != userID {
+			if err := s.repo.SetMemberRole(ctx, tx, cubeID, c.HoneyID, contract.RoleMember); err != nil {
+				return err
+			}
+		}
+		if err := s.repo.SetHoney(ctx, tx, cubeID, userID); err != nil {
+			return err
+		}
+		return s.repo.SetMemberRole(ctx, tx, cubeID, userID, contract.RoleHoney)
+	}); err != nil {
+		return err
+	}
+	if c.HoneyID != 0 && c.HoneyID != userID {
+		_ = s.identity.AuthzBump(ctx, c.HoneyID)
+	}
+	return s.identity.AuthzBump(ctx, userID)
+}
+
 // AdminSetHoney 平台指定猫蜜（需为在职成员，不能是猫王）。
 func (s *Service) AdminSetHoney(ctx context.Context, cubeID, userID int64) error {
 	c, err := s.repo.GetCube(ctx, cubeID)
@@ -368,7 +405,11 @@ func (s *Service) Transfer(ctx context.Context, cubeID, fromUserID, toUserID int
 		if err := s.repo.SetMemberRole(ctx, tx, cubeID, toUserID, contract.RoleLeader); err != nil {
 			return err
 		}
-		if err := s.repo.SetMemberRole(ctx, tx, cubeID, fromUserID, contract.RoleMember); err != nil {
+		fromRole := contract.RoleMember
+		if honeyID == fromUserID {
+			fromRole = contract.RoleHoney
+		}
+		if err := s.repo.SetMemberRole(ctx, tx, cubeID, fromUserID, fromRole); err != nil {
 			return err
 		}
 		return nil
@@ -483,7 +524,7 @@ func (s *Service) Detail(ctx context.Context, viewerID, cubeID int64) (contract.
 	}, nil
 }
 
-// Members 成员列表。
+// Members 成员列表（含昵称）。
 func (s *Service) Members(ctx context.Context, cubeID int64) ([]contract.Member, error) {
 	ms, err := s.repo.ListMembers(ctx, cubeID)
 	if err != nil {
@@ -491,9 +532,85 @@ func (s *Service) Members(ctx context.Context, cubeID int64) ([]contract.Member,
 	}
 	out := make([]contract.Member, 0, len(ms))
 	for _, m := range ms {
-		out = append(out, contract.Member{UserID: m.UserID, Role: m.Role, Status: m.Status, JoinedAt: m.JoinedAt})
+		item := contract.Member{UserID: m.UserID, Role: m.Role, Status: m.Status, JoinedAt: m.JoinedAt}
+		if s.identity != nil {
+			if b, err := s.identity.UserBrief(ctx, m.UserID); err == nil {
+				item.Nickname = b.Nickname
+			}
+		}
+		out = append(out, item)
 	}
 	return out, nil
+}
+
+// UpdateProfile 编辑关于我们（猫王/猫蜜）。
+func (s *Service) UpdateProfile(ctx context.Context, cubeID, userID int64, in contract.ProfileInput) error {
+	c, err := s.repo.GetCube(ctx, cubeID)
+	if err != nil {
+		return err
+	}
+	if c.Status != contract.CubeActive {
+		return domain.ErrNotFound
+	}
+	ok, err := s.canManage(ctx, cubeID, userID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.ErrNoPermission
+	}
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		name = c.Name
+	}
+	ind, _ := json.Marshal(in.IndustryCodes)
+	return s.repo.UpdateProfile(ctx, s.pool, cubeID, name, strings.TrimSpace(in.RegionCode),
+		strings.TrimSpace(in.ChainStage), strings.TrimSpace(in.Direction), strings.TrimSpace(in.Resources),
+		strings.TrimSpace(in.Strength), strings.TrimSpace(in.Cooperation), ind)
+}
+
+// EnsureCubeChat 进入猫立方工作群（仅成员）。
+func (s *Service) EnsureCubeChat(ctx context.Context, cubeID, userID int64) (msgcontract.Session, error) {
+	c, err := s.repo.GetCube(ctx, cubeID)
+	if err != nil {
+		return msgcontract.Session{}, err
+	}
+	if c.Status != contract.CubeActive {
+		return msgcontract.Session{}, domain.ErrNotFound
+	}
+	role, err := s.RoleOf(ctx, cubeID, userID)
+	if err != nil {
+		return msgcontract.Session{}, err
+	}
+	if role == contract.RoleNone {
+		return msgcontract.Session{}, domain.ErrNoPermission
+	}
+	if s.msg == nil {
+		return msgcontract.Session{}, domain.ErrInvalidInput
+	}
+	return s.msg.EnsureGroup(ctx, "cube:"+strconv.FormatInt(cubeID, 10), c.Name+"·协作", userID)
+}
+
+// EnsureProjectChat 进入项目群（仅立方成员）。
+func (s *Service) EnsureProjectChat(ctx context.Context, cubeID, projectID, userID int64) (msgcontract.Session, error) {
+	p, err := s.repo.GetProject(ctx, projectID)
+	if err != nil {
+		return msgcontract.Session{}, err
+	}
+	if p.CubeID != cubeID {
+		return msgcontract.Session{}, domain.ErrNotFound
+	}
+	role, err := s.RoleOf(ctx, cubeID, userID)
+	if err != nil {
+		return msgcontract.Session{}, err
+	}
+	if role == contract.RoleNone {
+		return msgcontract.Session{}, domain.ErrNoPermission
+	}
+	if s.msg == nil {
+		return msgcontract.Session{}, domain.ErrInvalidInput
+	}
+	return s.msg.EnsureGroup(ctx, "cube.project:"+strconv.FormatInt(projectID, 10), p.Name, userID)
 }
 
 // AdminList 后台立方列表（名称模糊）。

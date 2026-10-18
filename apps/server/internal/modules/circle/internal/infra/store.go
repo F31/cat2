@@ -51,6 +51,34 @@ type Member struct {
 	Status    int16
 }
 
+// MemberDetail 成员展示行。
+type MemberDetail struct {
+	UserID    int64
+	JoinedVia int16
+	JoinedAt  time.Time
+}
+
+// Application 入圈申请行。
+type Application struct {
+	ID          int64
+	CircleID    int64
+	ApplicantID int64
+	Status      int16 // 0待审/1已通过/2已拒绝
+	Reason      string
+	CreatedAt   time.Time
+}
+
+// Feed 圈内动态行。
+type Feed struct {
+	ID             int64
+	CircleID       int64
+	AuthorID       int64
+	Text           string
+	ImageFileIDs   []int64
+	IsAnnouncement bool
+	CreatedAt      time.Time
+}
+
 // Demand 需求行。
 type Demand struct {
 	ID         int64
@@ -134,6 +162,34 @@ func (s *Store) ListByUser(ctx context.Context, userID int64) ([]Circle, error) 
 	return scanCircles(rows)
 }
 
+// ListDiscover 公开圈子发现（仅进行中；支持名称/区域/类型筛选）。
+func (s *Store) ListDiscover(ctx context.Context, q, region string, typ int16, sort string, limit, offset int) ([]Circle, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	order := `c.member_count DESC, c.created_at DESC`
+	switch sort {
+	case "new":
+		order = `c.created_at DESC`
+	case "recommend":
+		order = `CASE WHEN c.recommendable_at <= now() THEN 0 ELSE 1 END, c.member_count DESC, c.created_at DESC`
+	}
+	rows, err := s.pool.Query(ctx, `SELECT `+circleCols+` FROM cir_circle c
+		WHERE c.status=0
+		  AND ($1 = '' OR c.name ILIKE '%' || $1 || '%' OR COALESCE(c.intro,'') ILIKE '%' || $1 || '%')
+		  AND ($2 = '' OR c.region_code=$2)
+		  AND ($3 = 0 OR c.type=$3)
+		ORDER BY `+order+` LIMIT $4 OFFSET $5`, q, region, typ, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanCircles(rows)
+}
+
 // CountCreatedToday 当日建圈数（配额：每人每日 ≤1）。
 func (s *Store) CountCreatedToday(ctx context.Context, userID int64) (int, error) {
 	var n int
@@ -203,6 +259,83 @@ func (s *Store) ListMembers(ctx context.Context, circleID int64) ([]int64, error
 		out = append(out, id)
 	}
 	return out, rows.Err()
+}
+
+// ListMemberDetails 成员展示列表（含加入时间/途径）。
+func (s *Store) ListMemberDetails(ctx context.Context, circleID int64) ([]MemberDetail, error) {
+	rows, err := s.pool.Query(ctx, `SELECT user_ref, joined_via, joined_at FROM cir_member
+		WHERE circle_id=$1 AND status=0 ORDER BY joined_at`, circleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]MemberDetail, 0)
+	for rows.Next() {
+		var m MemberDetail
+		if err := rows.Scan(&m.UserID, &m.JoinedVia, &m.JoinedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// ApplicationStatus 我的申请状态（0待审/1通过/2拒绝；无记录 found=false）。
+func (s *Store) ApplicationStatus(ctx context.Context, circleID, userID int64) (int16, bool, error) {
+	var st int16
+	err := s.pool.QueryRow(ctx, `SELECT status FROM cir_apply WHERE circle_id=$1 AND applicant_id=$2`,
+		circleID, userID).Scan(&st)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, nil
+	}
+	return st, err == nil, err
+}
+
+// UpsertApplication 提交/重新提交入圈申请（已通过或待审幂等；被拒后可重申）。
+func (s *Store) UpsertApplication(ctx context.Context, q Querier, id, circleID, userID int64) error {
+	_, err := q.Exec(ctx, `
+		INSERT INTO cir_apply (id, circle_id, applicant_id, status)
+		VALUES ($1,$2,$3,0)
+		ON CONFLICT (circle_id, applicant_id) DO UPDATE
+		SET status=0, reason=NULL, decided_by=NULL, decided_at=NULL, updated_at=now()
+		WHERE cir_apply.status=2`, id, circleID, userID)
+	return err
+}
+
+// ListApplications 圈主查看入圈申请（status<0 全部；否则按状态）。
+func (s *Store) ListApplications(ctx context.Context, circleID int64, status int16) ([]Application, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, circle_id, applicant_id, status, COALESCE(reason,''), created_at
+		FROM cir_apply WHERE circle_id=$1 AND ($2 < 0 OR status=$2)
+		ORDER BY created_at DESC LIMIT 100`, circleID, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Application, 0)
+	for rows.Next() {
+		var a Application
+		if err := rows.Scan(&a.ID, &a.CircleID, &a.ApplicantID, &a.Status, &a.Reason, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// DecideApplication 通过/拒绝待审申请（仅 status=0 生效）。
+func (s *Store) DecideApplication(ctx context.Context, q Querier, circleID, applicantID, decidedBy int64, approve bool, reason string) (bool, error) {
+	st := int16(2)
+	if approve {
+		st = 1
+	}
+	tag, err := q.Exec(ctx, `UPDATE cir_apply SET status=$4, reason=$5, decided_by=$3,
+		decided_at=now(), updated_at=now()
+		WHERE circle_id=$1 AND applicant_id=$2 AND status=0`, circleID, applicantID, decidedBy, st, nullStr(reason))
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // InsertInvite 新建邀请码（同一时间单圈单有效码）。
@@ -340,6 +473,32 @@ func (s *Store) CreateFeed(ctx context.Context, q Querier, id, circleID, authorI
 		_, _ = q.Exec(ctx, `UPDATE cir_circle SET feed_count=feed_count+1 WHERE id=$1`, circleID)
 	}
 	return err
+}
+
+// ListFeeds 圈内动态/公告列表。
+func (s *Store) ListFeeds(ctx context.Context, circleID int64, limit int) ([]Feed, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, circle_id, author_id, COALESCE(text,''), image_file_ids, is_announcement, created_at
+		FROM cir_feed WHERE circle_id=$1 AND status=0
+		ORDER BY is_announcement DESC, created_at DESC LIMIT $2`, circleID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Feed, 0)
+	for rows.Next() {
+		var f Feed
+		var images []byte
+		if err := rows.Scan(&f.ID, &f.CircleID, &f.AuthorID, &f.Text, &images, &f.IsAnnouncement, &f.CreatedAt); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal(images, &f.ImageFileIDs)
+		out = append(out, f)
+	}
+	return out, rows.Err()
 }
 
 // ListDueCircles 到期未处理的临时圈（SchedulerJob）。

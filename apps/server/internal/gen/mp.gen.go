@@ -254,6 +254,24 @@ func (e WechatLoginJSONBodyIdentityType) Valid() bool {
 	}
 }
 
+// Defines values for DiscoverCirclesParamsSort.
+const (
+	New       DiscoverCirclesParamsSort = "new"
+	Recommend DiscoverCirclesParamsSort = "recommend"
+)
+
+// Valid indicates whether the value is a known member of the DiscoverCirclesParamsSort enum.
+func (e DiscoverCirclesParamsSort) Valid() bool {
+	switch e {
+	case New:
+		return true
+	case Recommend:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListMyContentsParamsKind.
 const (
 	ListMyContentsParamsKindEvent   ListMyContentsParamsKind = "event"
@@ -545,6 +563,19 @@ type Circle struct {
 	Type int `json:"type"`
 }
 
+// CircleApplication defines model for CircleApplication.
+type CircleApplication struct {
+	ApplicantId string     `json:"applicant_id"`
+	CircleId    string     `json:"circle_id"`
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	Id          string     `json:"id"`
+	Nickname    *string    `json:"nickname,omitempty"`
+	Reason      *string    `json:"reason,omitempty"`
+
+	// Status 1 审核中 / 2 已通过 / 3 已拒绝
+	Status int `json:"status"`
+}
+
 // CircleCreateInput defines model for CircleCreateInput.
 type CircleCreateInput struct {
 	CoverFileId   *string                        `json:"cover_file_id,omitempty"`
@@ -607,6 +638,11 @@ type CircleDemandInput struct {
 
 // CircleDetail defines model for CircleDetail.
 type CircleDetail struct {
+	// ApplyReason 拒绝原因
+	ApplyReason *string `json:"apply_reason,omitempty"`
+
+	// ApplyStatus 0 未申请 / 1 审核中 / 2 已通过 / 3 已拒绝
+	ApplyStatus   *int       `json:"apply_status,omitempty"`
 	CoverFileId   *string    `json:"cover_file_id,omitempty"`
 	EndAt         *time.Time `json:"end_at,omitempty"`
 	Id            string     `json:"id"`
@@ -629,6 +665,50 @@ type CircleDetail struct {
 
 	// Type 1 常设 / 2 临时
 	Type int `json:"type"`
+}
+
+// CircleDiscoverItem defines model for CircleDiscoverItem.
+type CircleDiscoverItem struct {
+	ApplyStatus *int       `json:"apply_status,omitempty"`
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	EndAt       *time.Time `json:"end_at,omitempty"`
+	Id          string     `json:"id"`
+	Intro       *string    `json:"intro,omitempty"`
+	Joined      *bool      `json:"joined,omitempty"`
+	MemberCount int        `json:"member_count"`
+	Name        string     `json:"name"`
+	OwnerName   *string    `json:"owner_name,omitempty"`
+	OwnerUserId string     `json:"owner_user_id"`
+	RegionCode  *string    `json:"region_code,omitempty"`
+
+	// Status 0 进行中 / 1 已结束 / 2 已解散
+	Status int `json:"status"`
+
+	// Type 1 常设 / 2 临时
+	Type int `json:"type"`
+}
+
+// CircleFeed defines model for CircleFeed.
+type CircleFeed struct {
+	AuthorId       string    `json:"author_id"`
+	AuthorName     *string   `json:"author_name,omitempty"`
+	CircleId       string    `json:"circle_id"`
+	CreatedAt      time.Time `json:"created_at"`
+	Id             string    `json:"id"`
+	ImageFileIds   *[]string `json:"image_file_ids,omitempty"`
+	IsAnnouncement *bool     `json:"is_announcement,omitempty"`
+	Text           string    `json:"text"`
+}
+
+// CircleMember defines model for CircleMember.
+type CircleMember struct {
+	JoinedAt  *time.Time `json:"joined_at,omitempty"`
+	JoinedVia *int       `json:"joined_via,omitempty"`
+	Nickname  *string    `json:"nickname,omitempty"`
+
+	// Role 1 圈主 / 2 成员
+	Role   int    `json:"role"`
+	UserId string `json:"user_id"`
 }
 
 // CircleMount defines model for CircleMount.
@@ -818,6 +898,7 @@ type CubeLinkReq struct {
 // CubeMember defines model for CubeMember.
 type CubeMember struct {
 	JoinedAt *time.Time `json:"joined_at,omitempty"`
+	Nickname *string    `json:"nickname,omitempty"`
 	Role     int        `json:"role"`
 	Status   int        `json:"status"`
 	UserId   string     `json:"user_id"`
@@ -1460,6 +1541,19 @@ type ChannelOverviewParams struct {
 	Month *string `form:"month,omitempty" json:"month,omitempty"`
 }
 
+// DiscoverCirclesParams defines parameters for DiscoverCircles.
+type DiscoverCirclesParams struct {
+	Q      *string                    `form:"q,omitempty" json:"q,omitempty"`
+	Region *string                    `form:"region,omitempty" json:"region,omitempty"`
+	Type   *int                       `form:"type,omitempty" json:"type,omitempty"`
+	Sort   *DiscoverCirclesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+	Cursor *string                    `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int                       `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// DiscoverCirclesParamsSort defines parameters for DiscoverCircles.
+type DiscoverCirclesParamsSort string
+
 // JoinCircleJSONBody defines parameters for JoinCircle.
 type JoinCircleJSONBody struct {
 	Code string `json:"code"`
@@ -1470,6 +1564,17 @@ type DecideCircleMountJSONBody struct {
 	Approve bool `json:"approve"`
 }
 
+// ListCircleApplicationsParams defines parameters for ListCircleApplications.
+type ListCircleApplicationsParams struct {
+	Status *int `form:"status,omitempty" json:"status,omitempty"`
+}
+
+// DecideCircleApplicationJSONBody defines parameters for DecideCircleApplication.
+type DecideCircleApplicationJSONBody struct {
+	Approve bool    `json:"approve"`
+	Reason  *string `json:"reason,omitempty"`
+}
+
 // ListCircleDemandsParams defines parameters for ListCircleDemands.
 type ListCircleDemandsParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
@@ -1478,6 +1583,11 @@ type ListCircleDemandsParams struct {
 // DemandToCubeJSONBody defines parameters for DemandToCube.
 type DemandToCubeJSONBody struct {
 	CubeId string `json:"cube_id"`
+}
+
+// ListCircleFeedsParams defines parameters for ListCircleFeeds.
+type ListCircleFeedsParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // PublishCircleFeedJSONBody defines parameters for PublishCircleFeed.
@@ -1506,9 +1616,26 @@ type ListMyContentsParams struct {
 // ListMyContentsParamsKind defines parameters for ListMyContents.
 type ListMyContentsParamsKind string
 
+// LookupCubeHoneyParams defines parameters for LookupCubeHoney.
+type LookupCubeHoneyParams struct {
+	Phone string `form:"phone" json:"phone"`
+}
+
 // JoinCubeJSONBody defines parameters for JoinCube.
 type JoinCubeJSONBody struct {
 	Code string `json:"code"`
+}
+
+// UpdateCubeJSONBody defines parameters for UpdateCube.
+type UpdateCubeJSONBody struct {
+	ChainStage    *string   `json:"chain_stage,omitempty"`
+	Cooperation   *string   `json:"cooperation,omitempty"`
+	Direction     *string   `json:"direction,omitempty"`
+	IndustryCodes *[]string `json:"industry_codes,omitempty"`
+	Name          *string   `json:"name,omitempty"`
+	RegionCode    *string   `json:"region_code,omitempty"`
+	Resources     *string   `json:"resources,omitempty"`
+	Strength      *string   `json:"strength,omitempty"`
 }
 
 // InitiateApportionJSONBody defines parameters for InitiateApportion.
@@ -1530,6 +1657,11 @@ type ExitApportionJSONBody struct {
 // PledgeApportionJSONBody defines parameters for PledgeApportion.
 type PledgeApportionJSONBody struct {
 	GroupId string `json:"group_id"`
+}
+
+// SetCubeHoneyJSONBody defines parameters for SetCubeHoney.
+type SetCubeHoneyJSONBody struct {
+	UserId string `json:"user_id"`
 }
 
 // RequestCubeLinkJSONBody defines parameters for RequestCubeLink.
@@ -1813,6 +1945,9 @@ type JoinCircleJSONRequestBody JoinCircleJSONBody
 // DecideCircleMountJSONRequestBody defines body for DecideCircleMount for application/json ContentType.
 type DecideCircleMountJSONRequestBody DecideCircleMountJSONBody
 
+// DecideCircleApplicationJSONRequestBody defines body for DecideCircleApplication for application/json ContentType.
+type DecideCircleApplicationJSONRequestBody DecideCircleApplicationJSONBody
+
 // PublishCircleDemandJSONRequestBody defines body for PublishCircleDemand for application/json ContentType.
 type PublishCircleDemandJSONRequestBody = CircleDemandInput
 
@@ -1834,6 +1969,9 @@ type CreateCubeJSONRequestBody = CubeCreateInput
 // JoinCubeJSONRequestBody defines body for JoinCube for application/json ContentType.
 type JoinCubeJSONRequestBody JoinCubeJSONBody
 
+// UpdateCubeJSONRequestBody defines body for UpdateCube for application/json ContentType.
+type UpdateCubeJSONRequestBody UpdateCubeJSONBody
+
 // InitiateApportionJSONRequestBody defines body for InitiateApportion for application/json ContentType.
 type InitiateApportionJSONRequestBody InitiateApportionJSONBody
 
@@ -1842,6 +1980,9 @@ type ExitApportionJSONRequestBody ExitApportionJSONBody
 
 // PledgeApportionJSONRequestBody defines body for PledgeApportion for application/json ContentType.
 type PledgeApportionJSONRequestBody PledgeApportionJSONBody
+
+// SetCubeHoneyJSONRequestBody defines body for SetCubeHoney for application/json ContentType.
+type SetCubeHoneyJSONRequestBody SetCubeHoneyJSONBody
 
 // RequestCubeLinkJSONRequestBody defines body for RequestCubeLink for application/json ContentType.
 type RequestCubeLinkJSONRequestBody RequestCubeLinkJSONBody
@@ -2040,6 +2181,9 @@ type ServerInterface interface {
 	// RenewCircleDemand 需求到期续期 30 天（作者）
 	// (POST /circles/demands/{did}/renew)
 	RenewCircleDemand(w http.ResponseWriter, r *http.Request, did string)
+	// DiscoverCircles 发现圈子（公开；登录后带加入/申请状态）
+	// (GET /circles/discover)
+	DiscoverCircles(w http.ResponseWriter, r *http.Request, params DiscoverCirclesParams)
 	// JoinCircle 凭邀请链接/二维码加入（=授权凭证直接加入）
 	// (POST /circles/join)
 	JoinCircle(w http.ResponseWriter, r *http.Request)
@@ -2049,6 +2193,12 @@ type ServerInterface interface {
 	// GetCircle 圈详情（游客可看；非成员仅见关于本圈由前端裁剪）
 	// (GET /circles/{id})
 	GetCircle(w http.ResponseWriter, r *http.Request, id string)
+	// ListCircleApplications 圈主查看入圈申请（status=1 待审 / 2 通过 / 3 拒绝；缺省待审）
+	// (GET /circles/{id}/applications)
+	ListCircleApplications(w http.ResponseWriter, r *http.Request, id string, params ListCircleApplicationsParams)
+	// DecideCircleApplication 圈主通过/拒绝入圈申请（拒绝须填原因）
+	// (POST /circles/{id}/applications/{uid}/decide)
+	DecideCircleApplication(w http.ResponseWriter, r *http.Request, id string, uid string)
 	// ApplyCircle 申请加入（圈主审）
 	// (POST /circles/{id}/apply)
 	ApplyCircle(w http.ResponseWriter, r *http.Request, id string)
@@ -2070,6 +2220,9 @@ type ServerInterface interface {
 	// DissolveCircle 圈主解散（永久删除，通知全员）
 	// (POST /circles/{id}/dissolve)
 	DissolveCircle(w http.ResponseWriter, r *http.Request, id string)
+	// ListCircleFeeds 圈内动态/公告列表（成员可见）
+	// (GET /circles/{id}/feeds)
+	ListCircleFeeds(w http.ResponseWriter, r *http.Request, id string, params ListCircleFeedsParams)
 	// PublishCircleFeed 圈内动态/公告（公告仅圈主、每圈每日 ≤3 条不占个人额度）
 	// (POST /circles/{id}/feeds)
 	PublishCircleFeed(w http.ResponseWriter, r *http.Request, id string)
@@ -2079,7 +2232,7 @@ type ServerInterface interface {
 	// ResetCircleInvite 重置邀请（旧链接/二维码立即失效）
 	// (POST /circles/{id}/invite/reset)
 	ResetCircleInvite(w http.ResponseWriter, r *http.Request, id string)
-	// ListCircleMembers 成员列表
+	// ListCircleMembers 成员列表（含昵称与角色）
 	// (GET /circles/{id}/members)
 	ListCircleMembers(w http.ResponseWriter, r *http.Request, id string)
 	// ListCircleMounts 圈内挂载列表（引用不复制，点开进原详情）
@@ -2112,6 +2265,9 @@ type ServerInterface interface {
 	// CreateCube 创建猫立方（已实名个人；创建者=猫王，必配猫蜜）
 	// (POST /cubes)
 	CreateCube(w http.ResponseWriter, r *http.Request)
+	// LookupCubeHoney 按手机号精确查找猫蜜候选人（仅返回昵称）
+	// (GET /cubes/honey-lookup)
+	LookupCubeHoney(w http.ResponseWriter, r *http.Request, params LookupCubeHoneyParams)
 	// JoinCube 凭邀请码加入猫立方（已实名、未被移除过）
 	// (POST /cubes/join)
 	JoinCube(w http.ResponseWriter, r *http.Request)
@@ -2121,6 +2277,9 @@ type ServerInterface interface {
 	// GetCube 猫立方详情（含我的角色）
 	// (GET /cubes/{id})
 	GetCube(w http.ResponseWriter, r *http.Request, id string)
+	// UpdateCube 编辑「关于我们」（猫王/猫蜜）
+	// (PUT /cubes/{id})
+	UpdateCube(w http.ResponseWriter, r *http.Request, id string)
 	// InitiateApportion 发起分摊（猫王设人数 N，不设价；每人=档价÷N）
 	// (POST /cubes/{id}/apportion)
 	InitiateApportion(w http.ResponseWriter, r *http.Request, id string)
@@ -2130,9 +2289,15 @@ type ServerInterface interface {
 	// PledgeApportion 认筹下单（支付成功计数强一致成团）
 	// (POST /cubes/{id}/apportion/pledge)
 	PledgeApportion(w http.ResponseWriter, r *http.Request, id string)
+	// EnsureCubeChat 进入猫立方工作群（成员）
+	// (POST /cubes/{id}/chat)
+	EnsureCubeChat(w http.ResponseWriter, r *http.Request, id string)
 	// DissolveCube 解散猫立方（猫王）
 	// (POST /cubes/{id}/dissolve)
 	DissolveCube(w http.ResponseWriter, r *http.Request, id string)
+	// SetCubeHoney 猫王指定猫蜜（需为在职成员）
+	// (POST /cubes/{id}/honey)
+	SetCubeHoney(w http.ResponseWriter, r *http.Request, id string)
 	// InviteCube 生成邀请码（猫王/猫蜜；7 天有效）
 	// (POST /cubes/{id}/invites)
 	InviteCube(w http.ResponseWriter, r *http.Request, id string)
@@ -2163,6 +2328,9 @@ type ServerInterface interface {
 	// CreateCubeProject 新建立方内项目（猫王/猫蜜）
 	// (POST /cubes/{id}/projects)
 	CreateCubeProject(w http.ResponseWriter, r *http.Request, id string)
+	// EnsureCubeProjectChat 进入项目群（立方成员）
+	// (POST /cubes/{id}/projects/{pid}/chat)
+	EnsureCubeProjectChat(w http.ResponseWriter, r *http.Request, id string, pid string)
 	// CloseCubeProject 关闭项目（灰字保留，可重开）
 	// (POST /cubes/{id}/projects/{pid}/close)
 	CloseCubeProject(w http.ResponseWriter, r *http.Request, id string, pid string)
@@ -3269,6 +3437,104 @@ func (siw *ServerInterfaceWrapper) RenewCircleDemand(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// DiscoverCircles operation middleware
+func (siw *ServerInterfaceWrapper) DiscoverCircles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DiscoverCirclesParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "region" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "region", r.URL.Query(), &params.Region, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "region"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "region", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "type", r.URL.Query(), &params.Type, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DiscoverCircles(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // JoinCircle operation middleware
 func (siw *ServerInterfaceWrapper) JoinCircle(w http.ResponseWriter, r *http.Request) {
 
@@ -3326,6 +3592,83 @@ func (siw *ServerInterfaceWrapper) GetCircle(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCircle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCircleApplications operation middleware
+func (siw *ServerInterfaceWrapper) ListCircleApplications(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCircleApplicationsParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCircleApplications(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DecideCircleApplication operation middleware
+func (siw *ServerInterfaceWrapper) DecideCircleApplication(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "uid" -------------
+	var uid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "uid", r.PathValue("uid"), &uid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DecideCircleApplication(w, r, id, uid)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3533,6 +3876,48 @@ func (siw *ServerInterfaceWrapper) DissolveCircle(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DissolveCircle(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCircleFeeds operation middleware
+func (siw *ServerInterfaceWrapper) ListCircleFeeds(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCircleFeedsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCircleFeeds(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3908,6 +4293,39 @@ func (siw *ServerInterfaceWrapper) CreateCube(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// LookupCubeHoney operation middleware
+func (siw *ServerInterfaceWrapper) LookupCubeHoney(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LookupCubeHoneyParams
+
+	// ------------- Required query parameter "phone" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "phone", r.URL.Query(), &params.Phone, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "phone"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "phone", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LookupCubeHoney(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // JoinCube operation middleware
 func (siw *ServerInterfaceWrapper) JoinCube(w http.ResponseWriter, r *http.Request) {
 
@@ -3953,6 +4371,32 @@ func (siw *ServerInterfaceWrapper) GetCube(w http.ResponseWriter, r *http.Reques
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCube(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateCube operation middleware
+func (siw *ServerInterfaceWrapper) UpdateCube(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateCube(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4040,6 +4484,32 @@ func (siw *ServerInterfaceWrapper) PledgeApportion(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// EnsureCubeChat operation middleware
+func (siw *ServerInterfaceWrapper) EnsureCubeChat(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EnsureCubeChat(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DissolveCube operation middleware
 func (siw *ServerInterfaceWrapper) DissolveCube(w http.ResponseWriter, r *http.Request) {
 
@@ -4057,6 +4527,32 @@ func (siw *ServerInterfaceWrapper) DissolveCube(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DissolveCube(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetCubeHoney operation middleware
+func (siw *ServerInterfaceWrapper) SetCubeHoney(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetCubeHoney(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4351,6 +4847,41 @@ func (siw *ServerInterfaceWrapper) CreateCubeProject(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateCubeProject(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EnsureCubeProjectChat operation middleware
+func (siw *ServerInterfaceWrapper) EnsureCubeProjectChat(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "pid" -------------
+	var pid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "pid", r.PathValue("pid"), &pid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EnsureCubeProjectChat(w, r, id, pid)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6349,11 +6880,16 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes", wrapper.CreateCube)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/join", wrapper.JoinCube)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes/{id}", wrapper.GetCube)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/cubes/{id}", wrapper.UpdateCube)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes/honey-lookup", wrapper.LookupCubeHoney)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/chat", wrapper.EnsureCubeChat)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/projects/{pid}/chat", wrapper.EnsureCubeProjectChat)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/invites", wrapper.InviteCube)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes/{id}/members", wrapper.ListCubeMembers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/members/{uid}/remove", wrapper.RemoveCubeMember)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/leave", wrapper.LeaveCube)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/transfer", wrapper.TransferCube)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/honey", wrapper.SetCubeHoney)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/dissolve", wrapper.DissolveCube)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes/{id}/projects", wrapper.ListCubeProjects)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/projects", wrapper.CreateCubeProject)
@@ -6383,6 +6919,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes/{id}/projects/{pid}/publish", wrapper.PublishCubeProject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles", wrapper.ListMyCircles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles", wrapper.CreateCircle)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/discover", wrapper.DiscoverCircles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/join", wrapper.JoinCircle)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/{id}", wrapper.GetCircle)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/apply", wrapper.ApplyCircle)
@@ -6390,6 +6927,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/invite/reset", wrapper.ResetCircleInvite)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/{id}/card", wrapper.CircleCard)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/{id}/members", wrapper.ListCircleMembers)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/{id}/applications", wrapper.ListCircleApplications)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/applications/{uid}/decide", wrapper.DecideCircleApplication)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/dissolve", wrapper.DissolveCircle)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/convert", wrapper.ConvertCircle)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/{id}/demands", wrapper.ListCircleDemands)
@@ -6399,6 +6938,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/mounts", wrapper.MountCircleItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/mounts/{mid}/decide", wrapper.DecideCircleMount)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/demands/{did}/to-cube", wrapper.DemandToCube)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/{id}/feeds", wrapper.ListCircleFeeds)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/feeds", wrapper.PublishCircleFeed)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/notices", wrapper.ListNotices)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/notices/{id}/read", wrapper.ReadNotice)

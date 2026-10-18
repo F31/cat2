@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import Taro, { useDidShow, useRouter } from '@tarojs/taro'
+import Taro, { useDidShow, useRouter, useShareAppMessage } from '@tarojs/taro'
 import { View, Text, Button, Input } from '@tarojs/components'
 import type { CubePlan, CubeApportion } from '@catcube/api-client'
 import { api } from '../../services/request'
@@ -36,7 +36,13 @@ export default function CubePlanPage() {
 
   useDidShow(() => {
     void load()
+    void Taro.showShareMenu({ withShareTicket: true })
   })
+
+  useShareAppMessage(() => ({
+    title: app ? `猫立方分摊认筹：${app.target_n} 人成团` : '猫立方订阅与分摊',
+    path: `/pages/cube/plan?id=${id}`,
+  }))
 
   const initiate = async () => {
     try {
@@ -47,17 +53,11 @@ export default function CubePlanPage() {
     }
   }
 
-  const pledge = async () => {
+  const shareApportion = () => {
     if (!app) return
-    try {
-      const { order_id } = await api.pledgeApportion(id, app.id)
-      const params = await api.payOrder(order_id)
-      Taro.showToast({ title: `订单 ${params.out_trade_no} 已创建`, icon: 'none' })
-      void api.cubeApportion(app.id).then(setApp)
-    } catch (e) {
-      const code = e && typeof e === 'object' && 'code' in e ? (e as { code: number }).code : 0
-      Taro.showToast({ title: code === 130014 ? '分摊已结束/已成团' : '认筹失败', icon: 'none' })
-    }
+    const text = `猫立方分摊认筹：每人 ¥${(app.per_fen / 100).toFixed(2)}，目标 ${app.target_n} 人，截止 ${app.deadline.slice(0, 10)}。打开小程序进入猫立方「${id}」参与。`
+    Taro.setClipboardData({ data: text })
+    Taro.showToast({ title: '认筹信息已复制', icon: 'success' })
   }
 
   const exit = async () => {
@@ -86,7 +86,10 @@ export default function CubePlanPage() {
                   label="直接开通"
                   className="btn-secondary"
                   createOrder={async () => (await api.changeCubePlan(id, p.level, 1)).order_id}
-                  onPaid={() => Taro.showToast({ title: '已下单，支付后开通', icon: 'none' })}
+                  onPaid={() => {
+                    Taro.showToast({ title: '支付结果确认中', icon: 'none' })
+                    void load()
+                  }}
                 />
               ) : null}
             </View>
@@ -116,9 +119,21 @@ export default function CubePlanPage() {
                 <Button className="btn-secondary" onClick={() => void exit()}>
                   退出退款
                 </Button>
-                <Button className="btn-primary" onClick={() => void pledge()}>
-                  认筹
+                <Button className="btn-secondary" onClick={() => shareApportion()}>
+                  分享认筹
                 </Button>
+                <PayButton
+                  label="认筹"
+                  className="btn-primary"
+                  createOrder={async () => {
+                    const { order_id } = await api.pledgeApportion(id, app.id)
+                    return order_id
+                  }}
+                  onPaid={() => {
+                    Taro.showToast({ title: '支付结果确认中', icon: 'none' })
+                    void api.cubeApportion(app.id).then(setApp)
+                  }}
+                />
               </View>
             </View>
           ) : null}

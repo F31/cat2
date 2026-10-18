@@ -96,4 +96,19 @@ CREATE TABLE IF NOT EXISTS cir_mount (
 CREATE INDEX IF NOT EXISTS idx_cir_mount_circle ON cir_mount(circle_id, status);
 
 ALTER TABLE cir_demand ADD COLUMN IF NOT EXISTS transfer_ref varchar(64);
+
+CREATE TABLE IF NOT EXISTS cir_apply (
+	id bigint PRIMARY KEY,
+	circle_id bigint NOT NULL,
+	applicant_id bigint NOT NULL,
+	status smallint NOT NULL DEFAULT 0,      -- 0待审/1已通过/2已拒绝
+	reason varchar(200),
+	decided_by bigint,
+	decided_at timestamptz,
+	created_at timestamptz NOT NULL DEFAULT now(),
+	updated_at timestamptz NOT NULL DEFAULT now(),
+	UNIQUE (circle_id, applicant_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cir_apply_circle ON cir_apply(circle_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_cir_apply_user ON cir_apply(applicant_id, status);
 `

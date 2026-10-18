@@ -46,7 +46,9 @@ func emittedTopics() []string {
 		tradecontract.EventApportionFormed, tradecontract.EventApportionFailed,
 		// p3 circle
 		circlecontract.EventCircleCreated, circlecontract.EventCircleEnded, circlecontract.EventCircleDissolved,
-		circlecontract.EventMemberJoined, circlecontract.EventDemandPublished, circlecontract.EventDemandExpired,
+		circlecontract.EventMemberJoined, circlecontract.EventJoinApplied,
+		circlecontract.EventJoinApproved, circlecontract.EventJoinRejected,
+		circlecontract.EventDemandPublished, circlecontract.EventDemandExpired,
 	}
 }
 
@@ -64,8 +66,10 @@ func TestOpenAPIDeclaresP3Paths(t *testing.T) {
 		"/cubes/plans:", "/cubes/{id}/plan:", "/cubes/{id}/apportion:",
 		"/cubes/{id}/apportion/pledge:", "/cubes/{id}/apportion/exit:", "/cube-apportions/{groupID}:",
 		"/cubes/{id}/link-requests:", "/cubes/{id}/link-requests/{reqID}/decide:", "/cubes/{id}/projects/{pid}/publish:",
-		"/circles:", "/circles/{id}:", "/circles/{id}/apply:", "/circles/{id}/invite:", "/circles/join:",
+		"/circles:", "/circles/discover:", "/circles/{id}:", "/circles/{id}/apply:", "/circles/{id}/invite:", "/circles/join:",
 		"/circles/{id}/dissolve:", "/circles/{id}/demands:", "/circles/{id}/feeds:",
+		"/circles/{id}/applications:", "/circles/{id}/applications/{uid}/decide:",
+		"/cubes/honey-lookup:", "/cubes/{id}/chat:", "/cubes/{id}/projects/{pid}/chat:", "/cubes/{id}/honey:",
 		"/notices:", "/notices/{id}/read:", "/notice-preferences:", "/subscribe-quota/apply:",
 		"/circles/{id}/mounts:", "/circles/mounts/{mid}/decide:", "/circles/{id}/demands/{did}/to-cube:",
 		"/aggregate/cube-home:", "/aggregate/circle-detail:",

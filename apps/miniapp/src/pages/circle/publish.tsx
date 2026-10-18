@@ -9,6 +9,7 @@ import { ensureLogin } from '../../services/auth'
 export default function CirclePublish() {
   const router = useRouter()
   const id = router.params.id ?? ''
+  const isOwner = router.params.owner === '1'
   const [tab, setTab] = useState<'demand' | 'feed'>('demand')
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
@@ -69,10 +70,12 @@ export default function CirclePublish() {
       ) : (
         <>
           <FormField label="内容" required value={content} onChange={setContent} />
-          <View className="agreement" onClick={() => setAnnouncement(!announcement)}>
-            <Text className={announcement ? 'checkbox checkbox--on' : 'checkbox'}>{announcement ? '✓' : ''}</Text>
-            <Text className="agreement__text">作为圈务公告（仅圈主）</Text>
-          </View>
+          {isOwner ? (
+            <View className="agreement" onClick={() => setAnnouncement(!announcement)}>
+              <Text className={announcement ? 'checkbox checkbox--on' : 'checkbox'}>{announcement ? '✓' : ''}</Text>
+              <Text className="agreement__text">作为圈务公告（仅圈主）</Text>
+            </View>
+          ) : null}
         </>
       )}
       <Button className="btn-primary" loading={saving} onClick={() => void submit()}>

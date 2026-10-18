@@ -870,8 +870,60 @@ export interface paths {
         };
         /** 猫立方详情（含我的角色） */
         get: operations["getCube"];
+        /** 编辑「关于我们」（猫王/猫蜜） */
+        put: operations["updateCube"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/honey-lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 按手机号精确查找猫蜜候选人（仅返回昵称） */
+        get: operations["lookupCubeHoney"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 进入猫立方工作群（成员） */
+        post: operations["ensureCubeChat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/projects/{pid}/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 进入项目群（立方成员） */
+        post: operations["ensureCubeProjectChat"];
         delete?: never;
         options?: never;
         head?: never;
@@ -957,6 +1009,23 @@ export interface paths {
         put?: never;
         /** 转让猫王（仅猫王；目标须为成员） */
         post: operations["transferCube"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cubes/{id}/honey": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 猫王指定猫蜜（需为在职成员） */
+        post: operations["setCubeHoney"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1360,6 +1429,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/circles/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 发现圈子（公开；登录后带加入/申请状态） */
+        get: operations["discoverCircles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/circles/join": {
         parameters: {
             query?: never;
@@ -1469,10 +1555,44 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 成员列表 */
+        /** 成员列表（含昵称与角色） */
         get: operations["listCircleMembers"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/circles/{id}/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 圈主查看入圈申请（status=1 待审 / 2 通过 / 3 拒绝；缺省待审） */
+        get: operations["listCircleApplications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/circles/{id}/applications/{uid}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 圈主通过/拒绝入圈申请（拒绝须填原因） */
+        post: operations["decideCircleApplication"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1607,7 +1727,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** 圈内动态/公告列表（成员可见） */
+        get: operations["listCircleFeeds"];
         put?: never;
         /** 圈内动态/公告（公告仅圈主、每圈每日 ≤3 条不占个人额度） */
         post: operations["publishCircleFeed"];
@@ -2093,6 +2214,7 @@ export interface components {
         };
         CubeMember: {
             user_id: string;
+            nickname?: string;
             role: number;
             status: number;
             /** Format: date-time */
@@ -2260,6 +2382,50 @@ export interface components {
             joined?: boolean;
             /** @description 新圈 7 天内不进推荐流 */
             recommendable?: boolean;
+            /** @description 0 未申请 / 1 审核中 / 2 已通过 / 3 已拒绝 */
+            apply_status?: number;
+            /** @description 拒绝原因 */
+            apply_reason?: string;
+        };
+        CircleDiscoverItem: components["schemas"]["Circle"] & {
+            intro?: string;
+            region_code?: string;
+            owner_name?: string;
+            joined?: boolean;
+            apply_status?: number;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        CircleMember: {
+            user_id: string;
+            nickname?: string;
+            /** @description 1 圈主 / 2 成员 */
+            role: number;
+            joined_via?: number;
+            /** Format: date-time */
+            joined_at?: string;
+        };
+        CircleFeed: {
+            id: string;
+            circle_id: string;
+            author_id: string;
+            author_name?: string;
+            text: string;
+            image_file_ids?: string[];
+            is_announcement?: boolean;
+            /** Format: date-time */
+            created_at: string;
+        };
+        CircleApplication: {
+            id: string;
+            circle_id: string;
+            applicant_id: string;
+            nickname?: string;
+            /** @description 1 审核中 / 2 已通过 / 3 已拒绝 */
+            status: number;
+            reason?: string;
+            /** Format: date-time */
+            created_at?: string;
         };
         CircleCreateInput: {
             name: string;
@@ -4436,6 +4602,129 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    updateCube: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    region_code?: string;
+                    industry_codes?: string[];
+                    chain_stage?: string;
+                    direction?: string;
+                    resources?: string;
+                    strength?: string;
+                    cooperation?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            updated?: boolean;
+                        };
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    lookupCubeHoney: {
+        parameters: {
+            query: {
+                phone: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 查找结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            found?: boolean;
+                            user_id?: string;
+                            nickname?: string;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    ensureCubeChat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 会话 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            session_id?: string;
+                            title?: string;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    ensureCubeProjectChat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                pid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 会话 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            session_id?: string;
+                            title?: string;
+                        };
+                    };
+                };
+            };
+        };
+    };
     inviteCube: {
         parameters: {
             query?: never;
@@ -4573,6 +4862,39 @@ export interface operations {
                     "application/json": components["schemas"]["Envelope"] & {
                         data?: {
                             transferred?: boolean;
+                        };
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setCubeHoney: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    user_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            honey_id?: string;
                         };
                     };
                 };
@@ -5432,6 +5754,38 @@ export interface operations {
             400: components["responses"]["BadRequest"];
         };
     };
+    discoverCircles: {
+        parameters: {
+            query?: {
+                q?: string;
+                region?: string;
+                type?: number;
+                sort?: "recommend" | "new";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 圈子列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["CircleDiscoverItem"][];
+                            next_cursor?: string | null;
+                        };
+                    };
+                };
+            };
+        };
+    };
     joinCircle: {
         parameters: {
             query?: never;
@@ -5599,7 +5953,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 成员 ID 列表 */
+            /** @description 成员列表 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5607,11 +5961,75 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Envelope"] & {
                         data?: {
-                            items?: string[];
+                            items?: components["schemas"]["CircleMember"][];
                         };
                     };
                 };
             };
+        };
+    };
+    listCircleApplications: {
+        parameters: {
+            query?: {
+                status?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 申请列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["CircleApplication"][];
+                        };
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    decideCircleApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    approve: boolean;
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            approved?: boolean;
+                        };
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
         };
     };
     dissolveCircle: {
@@ -5871,6 +6289,35 @@ export interface operations {
                     "application/json": components["schemas"]["Envelope"] & {
                         data?: {
                             project_id?: string;
+                        };
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listCircleFeeds: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 动态列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["CircleFeed"][];
                         };
                     };
                 };

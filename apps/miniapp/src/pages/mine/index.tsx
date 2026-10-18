@@ -69,6 +69,15 @@ export default function Mine() {
         </View>
 
         <View className="menu">
+          <View className="menu__item" onClick={() => Taro.switchTab({ url: '/pages/circle/index' })}>
+            <Text>我的圈子</Text>
+          </View>
+          <View className="menu__item" onClick={() => Taro.switchTab({ url: '/pages/cube/index' })}>
+            <Text>我的猫立方</Text>
+          </View>
+          <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/msg/notices' })}>
+            <Text>系统通知</Text>
+          </View>
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/card/edit' })}>
             <Text>完善资料 / 编辑名片</Text>
           </View>

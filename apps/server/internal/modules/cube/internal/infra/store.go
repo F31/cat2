@@ -276,6 +276,16 @@ func (s *Store) SetPlan(ctx context.Context, cubeID int64, level int16, expireAt
 	return err
 }
 
+// UpdateProfile 更新猫立方画像（关于我们）。
+func (s *Store) UpdateProfile(ctx context.Context, q Querier, cubeID int64, name, region, chain, direction, resources, strength, cooperation string, industries []byte) error {
+	_, err := q.Exec(ctx, `UPDATE cub_cube SET name=$2, region_code=$3, industry_codes=$4,
+		chain_stage=$5, direction=$6, resources=$7, strength=$8, cooperation=$9,
+		version=version+1, updated_at=now() WHERE id=$1`,
+		cubeID, name, nullStr(region), industries, nullStr(chain), nullStr(direction),
+		nullStr(resources), nullStr(strength), nullStr(cooperation))
+	return err
+}
+
 // ListExpiredPlans 到期未回落的立方（SchedulerJob）。
 func (s *Store) ListExpiredPlans(ctx context.Context, limit int) ([]int64, error) {
 	rows, err := s.pool.Query(ctx, `SELECT id FROM cub_cube

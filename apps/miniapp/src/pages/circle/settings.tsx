@@ -78,6 +78,9 @@ export default function CircleSettings() {
                 转常设圈（不再到期）
               </Button>
             ) : null}
+            <Button className="btn-secondary" onClick={() => Taro.navigateTo({ url: `/pages/circle/applications?id=${id}` })}>
+              审核入圈申请
+            </Button>
             {circle.status === 0 ? (
               <Button className="btn-secondary" onClick={() => void resetInvite()}>
                 重置邀请（旧链接/二维码失效）

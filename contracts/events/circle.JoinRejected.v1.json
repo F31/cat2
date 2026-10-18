@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://catcube.dev/contracts/events/circle.JoinRejected.v1.json",
+  "title": "circle.JoinRejected.v1",
+  "description": "circle 圈子领域事件：入圈申请被拒绝。",
+  "type": "object",
+  "required": ["event_id", "topic", "occurred_at", "space_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "topic": { "const": "circle.JoinRejected.v1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "space_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "required": ["circle_id","user_id","reason"],
+      "properties": { "circle_id": { "type": "string" },"name": { "type": "string" },"user_id": { "type": "string" },"owner_id": { "type": "string" },"reason": { "type": "string" } }
+    }
+  },
+  "additionalProperties": false
+}

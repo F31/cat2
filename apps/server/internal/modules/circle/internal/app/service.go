@@ -4,6 +4,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +32,7 @@ type Repo interface {
 	CreateCircle(ctx context.Context, q infra.Querier, c infra.Circle) error
 	GetCircle(ctx context.Context, id int64) (infra.Circle, error)
 	ListByUser(ctx context.Context, userID int64) ([]infra.Circle, error)
+	ListDiscover(ctx context.Context, q, region string, typ int16, sort string, limit, offset int) ([]infra.Circle, error)
 	CountCreatedToday(ctx context.Context, userID int64) (int, error)
 	CountOwned(ctx context.Context, userID int64) (int, error)
 	SetStatus(ctx context.Context, q infra.Querier, id int64, status int16, dissolved bool) error
@@ -38,6 +40,11 @@ type Repo interface {
 	AddMember(ctx context.Context, q infra.Querier, id, circleID, userID int64, via int16) (bool, error)
 	IsMember(ctx context.Context, circleID, userID int64) (bool, error)
 	ListMembers(ctx context.Context, circleID int64) ([]int64, error)
+	ListMemberDetails(ctx context.Context, circleID int64) ([]infra.MemberDetail, error)
+	ApplicationStatus(ctx context.Context, circleID, userID int64) (int16, bool, error)
+	UpsertApplication(ctx context.Context, q infra.Querier, id, circleID, userID int64) error
+	ListApplications(ctx context.Context, circleID int64, status int16) ([]infra.Application, error)
+	DecideApplication(ctx context.Context, q infra.Querier, circleID, applicantID, decidedBy int64, approve bool, reason string) (bool, error)
 	InsertInvite(ctx context.Context, q infra.Querier, id, circleID, createdBy int64, code string, expire time.Time) error
 	GetInvite(ctx context.Context, code string) (int64, time.Time, error)
 	CreateDemand(ctx context.Context, q infra.Querier, d infra.Demand, contactEnc []byte) error
@@ -48,6 +55,7 @@ type Repo interface {
 	RenewDemand(ctx context.Context, q infra.Querier, id int64, expire time.Time) error
 	ExpireDueDemands(ctx context.Context, limit int) ([]int64, error)
 	CreateFeed(ctx context.Context, q infra.Querier, id, circleID, authorID int64, text string, images []byte, announce bool) error
+	ListFeeds(ctx context.Context, circleID int64, limit int) ([]infra.Feed, error)
 	ListDueCircles(ctx context.Context, limit int) ([]int64, error)
 	CreateMount(ctx context.Context, q infra.Querier, id, circleID int64, itemRef string, mountedBy int64, mountType, approval int16) error
 	CountMounts(ctx context.Context, circleID int64) (int, error)
@@ -187,11 +195,209 @@ func (s *Service) Detail(ctx context.Context, viewerID, circleID int64) (contrac
 	if err != nil {
 		return contract.CircleDetail{}, err
 	}
+	apply, reason := contract.ApplyNone, ""
+	if viewerID > 0 && !joined {
+		if st, found, err := s.repo.ApplicationStatus(ctx, circleID, viewerID); err == nil && found {
+			apply = contractApplyStatus(st)
+			if st == 2 {
+				apps, _ := s.repo.ListApplications(ctx, circleID, 2)
+				for _, a := range apps {
+					if a.ApplicantID == viewerID {
+						reason = a.Reason
+						break
+					}
+				}
+			}
+		}
+	}
 	return contract.CircleDetail{
 		CircleBrief: toBrief(c), Intro: c.Intro, CoverFileID: c.CoverFileID, RegionCode: c.RegionCode,
 		IndustryCodes: c.Industry, MyRole: role, Joined: joined,
 		Recommendable: !time.Now().UTC().Before(c.RecommendableAt),
+		ApplyStatus:   apply, ApplyReason: reason,
 	}, nil
+}
+
+// Discover 圈子发现（公开；登录用户带加入/申请状态）。
+func (s *Service) Discover(ctx context.Context, viewerID int64, f contract.DiscoverFilter) ([]contract.CircleDiscoverItem, string, error) {
+	if f.Limit <= 0 || f.Limit > 50 {
+		f.Limit = 20
+	}
+	if f.Offset < 0 {
+		f.Offset = 0
+	}
+	rows, err := s.repo.ListDiscover(ctx, strings.TrimSpace(f.Q), strings.TrimSpace(f.Region), f.Type, f.Sort, f.Limit, f.Offset)
+	if err != nil {
+		return nil, "", err
+	}
+	out := make([]contract.CircleDiscoverItem, 0, len(rows))
+	for _, c := range rows {
+		item := contract.CircleDiscoverItem{
+			CircleBrief: toBrief(c), Intro: c.Intro, RegionCode: c.RegionCode, CreatedAt: c.CreatedAt,
+		}
+		if s.identity != nil {
+			if b, err := s.identity.UserBrief(ctx, c.OwnerUserID); err == nil {
+				item.OwnerName = b.Nickname
+			}
+		}
+		if viewerID > 0 {
+			if c.OwnerUserID == viewerID {
+				item.Joined, item.ApplyStatus = true, contract.ApplyApproved
+			} else if m, _ := s.repo.IsMember(ctx, c.ID, viewerID); m {
+				item.Joined, item.ApplyStatus = true, contract.ApplyApproved
+			} else if st, found, _ := s.repo.ApplicationStatus(ctx, c.ID, viewerID); found {
+				item.ApplyStatus = contractApplyStatus(st)
+			}
+		}
+		out = append(out, item)
+	}
+	next := ""
+	if len(rows) == f.Limit {
+		next = strconv.Itoa(f.Offset + f.Limit)
+	}
+	return out, next, nil
+}
+
+// MemberItems 成员展示列表（含圈主与昵称）。
+func (s *Service) MemberItems(ctx context.Context, circleID, viewerID int64) ([]contract.CircleMember, error) {
+	c, err := s.repo.GetCircle(ctx, circleID)
+	if err != nil {
+		return nil, err
+	}
+	if ok, err := s.isMemberOrOwner(ctx, circleID, viewerID); err != nil || !ok {
+		return nil, domain.ErrNoPermission
+	}
+	rows, err := s.repo.ListMemberDetails(ctx, circleID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contract.CircleMember, 0, len(rows)+1)
+	seenOwner := false
+	add := func(uid int64, role, via int16, at time.Time) {
+		nick := ""
+		if s.identity != nil {
+			if b, err := s.identity.UserBrief(ctx, uid); err == nil {
+				nick = b.Nickname
+			}
+		}
+		out = append(out, contract.CircleMember{UserID: uid, Nickname: nick, Role: role, JoinedVia: via, JoinedAt: at})
+		if uid == c.OwnerUserID {
+			seenOwner = true
+		}
+	}
+	add(c.OwnerUserID, 1, contract.ViaOrg, c.CreatedAt)
+	for _, m := range rows {
+		if m.UserID == c.OwnerUserID {
+			if !seenOwner {
+				add(m.UserID, 1, m.JoinedVia, m.JoinedAt)
+			}
+			continue
+		}
+		add(m.UserID, 2, m.JoinedVia, m.JoinedAt)
+	}
+	return out, nil
+}
+
+// ListFeeds 圈内动态（仅成员/圈主）。
+func (s *Service) ListFeeds(ctx context.Context, circleID, viewerID int64, limit int) ([]contract.CircleFeed, error) {
+	if ok, err := s.isMemberOrOwner(ctx, circleID, viewerID); err != nil || !ok {
+		return nil, domain.ErrNoPermission
+	}
+	rows, err := s.repo.ListFeeds(ctx, circleID, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contract.CircleFeed, 0, len(rows))
+	for _, f := range rows {
+		item := contract.CircleFeed{ID: f.ID, CircleID: f.CircleID, AuthorID: f.AuthorID, Text: f.Text,
+			ImageFileIDs: f.ImageFileIDs, IsAnnouncement: f.IsAnnouncement, CreatedAt: f.CreatedAt}
+		if s.identity != nil {
+			if b, err := s.identity.UserBrief(ctx, f.AuthorID); err == nil {
+				item.AuthorName = b.Nickname
+			}
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+// ListApplications 圈主查看入圈申请。
+func (s *Service) ListApplications(ctx context.Context, circleID, ownerID int64, status int16) ([]contract.CircleApplication, error) {
+	c, err := s.repo.GetCircle(ctx, circleID)
+	if err != nil {
+		return nil, err
+	}
+	if c.OwnerUserID != ownerID {
+		return nil, domain.ErrNoPermission
+	}
+	rawStatus := int16(-1)
+	switch status {
+	case contract.ApplyPending:
+		rawStatus = 0
+	case contract.ApplyApproved:
+		rawStatus = 1
+	case contract.ApplyRejected:
+		rawStatus = 2
+	}
+	rows, err := s.repo.ListApplications(ctx, circleID, rawStatus)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contract.CircleApplication, 0, len(rows))
+	for _, a := range rows {
+		item := contract.CircleApplication{ID: a.ID, CircleID: a.CircleID, ApplicantID: a.ApplicantID,
+			Status: contractApplyStatus(a.Status), Reason: a.Reason, CreatedAt: a.CreatedAt}
+		if s.identity != nil {
+			if b, err := s.identity.UserBrief(ctx, a.ApplicantID); err == nil {
+				item.Nickname = b.Nickname
+			}
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+// DecideApplication 圈主通过/拒绝入圈申请。
+func (s *Service) DecideApplication(ctx context.Context, circleID, ownerID, applicantID int64, approve bool, reason string) error {
+	c, err := s.repo.GetCircle(ctx, circleID)
+	if err != nil {
+		return err
+	}
+	if c.OwnerUserID != ownerID {
+		return domain.ErrNoPermission
+	}
+	if !approve && strings.TrimSpace(reason) == "" {
+		return domain.ErrInvalidInput
+	}
+	err = s.pool.InTx(ctx, func(tx db.Tx) error {
+		ok, err := s.repo.DecideApplication(ctx, tx, circleID, applicantID, ownerID, approve, reason)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return domain.ErrInvalidState
+		}
+		if !approve {
+			return s.publish(ctx, tx, contract.NewJoinRejected(ids.New().String(), contract.ApplyPayload{
+				CircleID: circleID, Name: c.Name, UserID: applicantID, OwnerID: ownerID, Reason: reason,
+			}))
+		}
+		if _, err := s.repo.AddMember(ctx, tx, int64(ids.New()), circleID, applicantID, contract.ViaApply); err != nil {
+			return err
+		}
+		if err := s.publish(ctx, tx, contract.NewMemberJoined(ids.New().String(), contract.MemberPayload{
+			CircleID: circleID, UserID: applicantID, Via: contract.ViaApply,
+		})); err != nil {
+			return err
+		}
+		return s.publish(ctx, tx, contract.NewJoinApproved(ids.New().String(), contract.ApplyPayload{
+			CircleID: circleID, Name: c.Name, UserID: applicantID, OwnerID: ownerID,
+		}))
+	})
+	if err != nil {
+		slog.Error("circle 审核入圈失败", "circle", circleID, "applicant", applicantID, "err", err)
+	}
+	return err
 }
 
 // Apply 申请加入（圈主审）。
@@ -206,26 +412,28 @@ func (s *Service) Apply(ctx context.Context, circleID, userID int64) error {
 	if err := s.requireRealname(ctx, userID); err != nil {
 		return err
 	}
-	// 申请记录：一期以成员行 status 表达（0 待审/…）；简化：直接入成员（圈主审可在后台处理）
-	if _, err := s.repo.AddMember(ctx, s.pool, int64(ids.New()), circleID, userID, contract.ViaApply); err != nil {
+	if ok, err := s.isMemberOrOwner(ctx, circleID, userID); err != nil || ok {
 		return err
 	}
-	return s.emitMemberJoined(ctx, circleID, userID, contract.ViaApply)
+	if st, found, err := s.repo.ApplicationStatus(ctx, circleID, userID); err != nil {
+		return err
+	} else if found && st != 2 {
+		return nil // 待审/已通过幂等
+	}
+	err = s.pool.InTx(ctx, func(tx db.Tx) error {
+		if err := s.repo.UpsertApplication(ctx, tx, int64(ids.New()), circleID, userID); err != nil {
+			return err
+		}
+		return s.publish(ctx, tx, contract.NewJoinApplied(ids.New().String(), contract.ApplyPayload{
+			CircleID: circleID, Name: c.Name, UserID: userID, OwnerID: c.OwnerUserID,
+		}))
+	})
+	return err
 }
 
 // ApproveApply 圈主通过申请（与 Apply 幂等结合使用）。
 func (s *Service) ApproveApply(ctx context.Context, circleID, ownerID, applicantID int64) error {
-	c, err := s.repo.GetCircle(ctx, circleID)
-	if err != nil {
-		return err
-	}
-	if c.OwnerUserID != ownerID {
-		return domain.ErrNoPermission
-	}
-	if _, err := s.repo.AddMember(ctx, s.pool, int64(ids.New()), circleID, applicantID, contract.ViaApply); err != nil {
-		return err
-	}
-	return s.emitMemberJoined(ctx, circleID, applicantID, contract.ViaApply)
+	return s.DecideApplication(ctx, circleID, ownerID, applicantID, true, "")
 }
 
 // InviteCode 生成邀请码（=圈剩余存续期；可重置旧链作废；圈主与成员均可生成）。
@@ -553,6 +761,9 @@ func (s *Service) PublishDemand(ctx context.Context, circleID, userID int64, in 
 
 // ListDemands 需求列表（联系方式会员可见）。
 func (s *Service) ListDemands(ctx context.Context, circleID, viewerID int64, limit int) ([]contract.Demand, error) {
+	if ok, err := s.isMemberOrOwner(ctx, circleID, viewerID); err != nil || !ok {
+		return nil, domain.ErrNoPermission
+	}
 	rows, err := s.repo.ListDemands(ctx, circleID, limit)
 	if err != nil {
 		return nil, err
@@ -717,6 +928,19 @@ func (s *Service) repoDemandContact(ctx context.Context, demandID int64) ([]byte
 	return enc, err
 }
 
+func contractApplyStatus(st int16) int16 {
+	switch st {
+	case 0:
+		return contract.ApplyPending
+	case 1:
+		return contract.ApplyApproved
+	case 2:
+		return contract.ApplyRejected
+	default:
+		return contract.ApplyNone
+	}
+}
+
 func toBrief(c infra.Circle) contract.CircleBrief {
 	return contract.CircleBrief{ID: c.ID, Name: c.Name, Type: c.Type, Status: c.Status,
 		OwnerUserID: c.OwnerUserID, MemberCount: c.MemberCount, EndAt: c.EndAt}
@@ -772,7 +996,10 @@ func (s *Service) Mount(ctx context.Context, circleID, userID int64, itemRef str
 }
 
 // ListMounts 圈内挂载列表。
-func (s *Service) ListMounts(ctx context.Context, circleID int64) ([]contract.Mount, error) {
+func (s *Service) ListMounts(ctx context.Context, circleID, viewerID int64) ([]contract.Mount, error) {
+	if ok, err := s.isMemberOrOwner(ctx, circleID, viewerID); err != nil || !ok {
+		return nil, domain.ErrNoPermission
+	}
 	rows, err := s.repo.ListMounts(ctx, circleID)
 	if err != nil {
 		return nil, err

@@ -29,6 +29,14 @@ const (
 	ViaEvent  int16 = 4
 )
 
+// 入圈申请状态。
+const (
+	ApplyNone     int16 = 0
+	ApplyPending  int16 = 1
+	ApplyApproved int16 = 2
+	ApplyRejected int16 = 3
+)
+
 // 圈内需求状态（状态机 #11）。
 const (
 	DemandValid   int16 = 0
@@ -57,6 +65,61 @@ type CircleDetail struct {
 	MyRole        int16    `json:"my_role"` // 0非成员/1圈主/2成员
 	Joined        bool     `json:"joined"`
 	Recommendable bool     `json:"recommendable"` // 新圈 7 天内不进推荐流
+	ApplyStatus   int16    `json:"apply_status"`  // 0未申请/1审核中/2已通过/3已拒绝
+	ApplyReason   string   `json:"apply_reason,omitempty"`
+}
+
+// DiscoverFilter 圈子发现筛选。
+type DiscoverFilter struct {
+	Q      string
+	Region string
+	Type   int16
+	Sort   string // recommend/new
+	Limit  int
+	Offset int
+}
+
+// CircleDiscoverItem 圈子发现卡片。
+type CircleDiscoverItem struct {
+	CircleBrief
+	Intro       string    `json:"intro,omitempty"`
+	RegionCode  string    `json:"region_code,omitempty"`
+	OwnerName   string    `json:"owner_name,omitempty"`
+	Joined      bool      `json:"joined"`
+	ApplyStatus int16     `json:"apply_status"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// CircleMember 圈子成员展示项。
+type CircleMember struct {
+	UserID    int64     `json:"user_id,string"`
+	Nickname  string    `json:"nickname"`
+	Role      int16     `json:"role"` // 1圈主/2成员
+	JoinedVia int16     `json:"joined_via,omitempty"`
+	JoinedAt  time.Time `json:"joined_at"`
+}
+
+// CircleFeed 圈内动态/公告。
+type CircleFeed struct {
+	ID             int64     `json:"id,string"`
+	CircleID       int64     `json:"circle_id,string"`
+	AuthorID       int64     `json:"author_id,string"`
+	AuthorName     string    `json:"author_name,omitempty"`
+	Text           string    `json:"text"`
+	ImageFileIDs   []int64   `json:"image_file_ids"`
+	IsAnnouncement bool      `json:"is_announcement"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+// CircleApplication 入圈申请。
+type CircleApplication struct {
+	ID          int64     `json:"id,string"`
+	CircleID    int64     `json:"circle_id,string"`
+	ApplicantID int64     `json:"applicant_id,string"`
+	Nickname    string    `json:"nickname,omitempty"`
+	Status      int16     `json:"status"`
+	Reason      string    `json:"reason,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // Demand 圈内需求。
@@ -127,11 +190,18 @@ type Facade interface {
 
 	// 挂载与到猫立方里办（§6.6/6.7）
 	Mount(ctx context.Context, circleID, userID int64, itemRef string) (Mount, bool, error)
-	ListMounts(ctx context.Context, circleID int64) ([]Mount, error)
+	ListMounts(ctx context.Context, circleID, viewerID int64) ([]Mount, error)
 	DecideMount(ctx context.Context, mountID, userID int64, approve bool) error
 	ToCube(ctx context.Context, circleID, demandID, cubeID, userID int64) (int64, error)
 	// ContentMounted 内容是否已挂载到该圈（分享归属校验，防伪造「来自 XX 圈」）。
 	ContentMounted(ctx context.Context, circleID int64, itemRef string) (bool, error)
+
+	// 发现、动态与申请审核（小程序闭环）。
+	Discover(ctx context.Context, viewerID int64, f DiscoverFilter) ([]CircleDiscoverItem, string, error)
+	MemberItems(ctx context.Context, circleID, viewerID int64) ([]CircleMember, error)
+	ListFeeds(ctx context.Context, circleID, viewerID int64, limit int) ([]CircleFeed, error)
+	ListApplications(ctx context.Context, circleID, ownerID int64, status int16) ([]CircleApplication, error)
+	DecideApplication(ctx context.Context, circleID, ownerID, applicantID int64, approve bool, reason string) error
 }
 
 // Mount 挂载记录。

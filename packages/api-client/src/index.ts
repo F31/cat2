@@ -238,6 +238,9 @@ export interface Session {
   peer?: { user_id: string; title?: string; cover?: string }
   last_seq: number
   unread: number
+  title?: string
+  last_preview?: string
+  last_sender_id?: string
   last_message_at?: string | null
 }
 
@@ -345,10 +348,17 @@ export interface Cube {
   region_code?: string
   my_role?: number
   intro?: string
+  industry_codes?: string[]
+  chain_stage?: string
+  direction?: string
+  resources?: string
+  strength?: string
+  cooperation?: string
 }
 
 export interface CubeMember {
   user_id: string
+  nickname?: string
   role: number
   status: number
   joined_at: string
@@ -360,12 +370,16 @@ export interface CubeProject {
   type: number
   content_project_id?: string
   name: string
+  related_ref?: string
   related_customer?: string
   leader_id: string
+  participants?: string[]
   progress: number
   todo_count: number
   status: number
+  source_ref?: string
   platform_status?: string
+  created_at?: string
 }
 
 export interface CubeTask {
@@ -436,6 +450,55 @@ export interface Circle {
   my_role?: number
   joined?: boolean
   recommendable?: boolean
+  apply_status?: number
+  apply_reason?: string
+  created_at?: string
+}
+
+export interface CircleDiscoverItem extends Circle {
+  intro?: string
+  region_code?: string
+  owner_name?: string
+  created_at?: string
+}
+
+export interface CircleMember {
+  user_id: string
+  nickname?: string
+  role: number
+  joined_via?: number
+  joined_at: string
+}
+
+export interface CircleFeed {
+  id: string
+  circle_id: string
+  author_id: string
+  author_name?: string
+  text: string
+  image_file_ids?: string[]
+  is_announcement: boolean
+  created_at: string
+}
+
+export interface CircleApplication {
+  id: string
+  circle_id: string
+  applicant_id: string
+  nickname?: string
+  status: number
+  reason?: string
+  created_at: string
+}
+
+export interface CubeLinkRequest {
+  id: string
+  cube_id: string
+  content_project_id: string
+  initiator_id: string
+  target_role: number
+  status: number
+  created_at: string
 }
 
 export interface CircleDemand {
@@ -825,6 +888,18 @@ export function createClient(opts: ClientOptions) {
     cubeDetail(id: string) {
       return call<Cube>('GET', `/cubes/${id}`)
     },
+    updateCube(id: string, body: Record<string, unknown>) {
+      return call<{ updated: boolean }>('PUT', `/cubes/${id}`, body)
+    },
+    lookupCubeHoney(phone: string) {
+      return call<{ found: boolean; user_id?: string; nickname?: string }>('GET', `/cubes/honey-lookup${qs({ phone })}`)
+    },
+    ensureCubeChat(id: string) {
+      return call<{ session_id: string; title: string }>('POST', `/cubes/${id}/chat`)
+    },
+    ensureCubeProjectChat(id: string, pid: string) {
+      return call<{ session_id: string; title: string }>('POST', `/cubes/${id}/projects/${pid}/chat`)
+    },
     cubeInvite(id: string) {
       return call<{ code: string; expire_at: string }>('POST', `/cubes/${id}/invites`)
     },
@@ -842,6 +917,9 @@ export function createClient(opts: ClientOptions) {
     },
     transferCube(id: string, toUserId: string) {
       return call<{ transferred: boolean }>('POST', `/cubes/${id}/transfer`, { to_user_id: toUserId })
+    },
+    setCubeHoney(id: string, userId: string) {
+      return call<{ honey_id: string }>('POST', `/cubes/${id}/honey`, { user_id: userId })
     },
     dissolveCube(id: string) {
       return call<{ dissolved: boolean }>('POST', `/cubes/${id}/dissolve`)
@@ -904,7 +982,7 @@ export function createClient(opts: ClientOptions) {
       return call<{ direct: boolean; project_id: string; request_id: string }>('POST', `/cubes/${id}/link-requests`, { content_project_id: contentProjectId })
     },
     cubeLinkRequests(id: string) {
-      return call<{ items: unknown[] }>('GET', `/cubes/${id}/link-requests`)
+      return call<{ items: CubeLinkRequest[] }>('GET', `/cubes/${id}/link-requests`)
     },
     decideCubeLink(id: string, reqId: string, approve: boolean) {
       return call<{ project_id: string; approved: boolean }>('POST', `/cubes/${id}/link-requests/${reqId}/decide`, { approve })
@@ -916,6 +994,12 @@ export function createClient(opts: ClientOptions) {
     // ---- 圈子 ----
     listCircles() {
       return call<{ items: Circle[] }>('GET', '/circles')
+    },
+    discoverCircles(p: { q?: string; region?: string; type?: number; sort?: string; cursor?: string; limit?: number } = {}) {
+      return call<{ items: CircleDiscoverItem[]; next_cursor: string | null }>(
+        'GET',
+        `/circles/discover${qs({ q: p.q, region: p.region, type: p.type, sort: p.sort, cursor: p.cursor, limit: p.limit })}`,
+      )
     },
     circleDetail(id: string) {
       return call<Circle>('GET', `/circles/${id}`)
@@ -950,7 +1034,16 @@ export function createClient(opts: ClientOptions) {
       return call<Circle>('POST', '/circles/join', { code })
     },
     circleMembers(id: string) {
-      return call<{ items: string[] }>('GET', `/circles/${id}/members`)
+      return call<{ items: CircleMember[] }>('GET', `/circles/${id}/members`)
+    },
+    listCircleFeeds(id: string, limit = 30) {
+      return call<{ items: CircleFeed[] }>('GET', `/circles/${id}/feeds${qs({ limit })}`)
+    },
+    listCircleApplications(id: string, status = 1) {
+      return call<{ items: CircleApplication[] }>('GET', `/circles/${id}/applications${qs({ status })}`)
+    },
+    decideCircleApplication(id: string, uid: string, approve: boolean, reason = '') {
+      return call<{ approved: boolean }>('POST', `/circles/${id}/applications/${uid}/decide`, { approve, reason })
     },
     dissolveCircle(id: string) {
       return call<{ dissolved: boolean }>('POST', `/circles/${id}/dissolve`)

@@ -55,6 +55,9 @@ var Templates = []domain.Template{
 	{Code: "circle.CircleEnded.v1", Module: "circle", EventCode: "circle.CircleEnded.v1", TitleTpl: "圈子已到期", ContentTpl: "「{name}」已到期转为只读，可转常设。", Channels: []string{"inapp", "subscribe"}, ReceiverRule: "payload.owner_id", Closeable: false},
 	{Code: "circle.CircleDissolved.v1", Module: "circle", EventCode: "circle.CircleDissolved.v1", TitleTpl: "圈子已解散", ContentTpl: "「{name}」已解散。", Channels: []string{"inapp"}, ReceiverRule: "payload.user_id", Closeable: false},
 	{Code: "circle.MemberJoined.v1", Module: "circle", EventCode: "circle.MemberJoined.v1", TitleTpl: "新成员加入圈子", ContentTpl: "有新成员加入圈子。", Channels: []string{"inapp"}, ReceiverRule: "payload.user_id", Closeable: true},
+	{Code: "circle.JoinApplied.v1", Module: "circle", EventCode: "circle.JoinApplied.v1", TitleTpl: "新的入圈申请", ContentTpl: "有人申请加入「{name}」，请及时审核。", Channels: []string{"inapp"}, ReceiverRule: "payload.owner_id", Closeable: true},
+	{Code: "circle.JoinApproved.v1", Module: "circle", EventCode: "circle.JoinApproved.v1", TitleTpl: "入圈申请已通过", ContentTpl: "你已加入「{name}」。", Channels: []string{"inapp", "subscribe"}, ReceiverRule: "payload.user_id", Closeable: false},
+	{Code: "circle.JoinRejected.v1", Module: "circle", EventCode: "circle.JoinRejected.v1", TitleTpl: "入圈申请未通过", ContentTpl: "「{name}」的入圈申请未通过：{reason}。", Channels: []string{"inapp"}, ReceiverRule: "payload.user_id", Closeable: false},
 	{Code: "circle.DemandPublished.v1", Module: "circle", EventCode: "circle.DemandPublished.v1", TitleTpl: "圈内新需求", ContentTpl: "圈内发布了新需求「{title}」。", Channels: []string{"inapp"}, ReceiverRule: "payload.author_id", MergeRule: domain.MergeSameCircleDay, Closeable: true},
 	{Code: "circle.DemandExpired.v1", Module: "circle", EventCode: "circle.DemandExpired.v1", TitleTpl: "需求已过期", ContentTpl: "你的需求「{title}」已过期，可一键续期。", Channels: []string{"inapp"}, ReceiverRule: "payload.author_id", Closeable: true},
 }

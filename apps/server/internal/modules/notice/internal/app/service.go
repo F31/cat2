@@ -135,11 +135,22 @@ func (s *Service) Handle(ctx context.Context, e eventbus.Event) error {
 	}
 	return s.repo.InsertNotice(ctx, s.pool, infra.Notice{
 		ID: int64(ids.New()), UserID: userID, TemplateCode: tpl.Code,
-		Title: title, Content: content, Ref: e.ID, Channel: channel,
+		Title: title, Content: content, Ref: noticeRef(payload, e.ID), Channel: channel,
 	})
 }
 
 // RunDigest 日结：同圈同日合并为一条（本人不收）。
+// noticeRef 站内信落地引用：圈子/猫立方事件指向业务对象，其余保留事件 ID。
+func noticeRef(payload map[string]any, eventID string) string {
+	if id := nestedID(payload, "circle_id"); id != 0 {
+		return "circle:" + itoa(id)
+	}
+	if id := nestedID(payload, "cube_id"); id != 0 {
+		return "cube:" + itoa(id)
+	}
+	return eventID
+}
+
 func (s *Service) RunDigest(ctx context.Context) error {
 	idsDue, err := s.repo.DueDigests(ctx, 200)
 	if err != nil {

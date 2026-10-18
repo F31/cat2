@@ -68,9 +68,22 @@ type CubeDetail struct {
 // Member 成员。
 type Member struct {
 	UserID   int64     `json:"user_id,string"`
+	Nickname string    `json:"nickname,omitempty"`
 	Role     int16     `json:"role"`
 	Status   int16     `json:"status"`
 	JoinedAt time.Time `json:"joined_at"`
+}
+
+// ProfileInput 猫立方关于我们编辑入参（猫王/猫蜜）。
+type ProfileInput struct {
+	Name          string
+	RegionCode    string
+	IndustryCodes []string
+	ChainStage    string
+	Direction     string
+	Resources     string
+	Strength      string
+	Cooperation   string
 }
 
 // CreateInput 创建入参。

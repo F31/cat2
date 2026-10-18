@@ -21,6 +21,8 @@ export default function CubeReportPage() {
   const [contact, setContact] = useState('')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
+  const [rejecting, setRejecting] = useState<CubeReport | null>(null)
+  const [reason, setReason] = useState('')
 
   const load = async () => {
     setLoading(true)
@@ -61,10 +63,11 @@ export default function CubeReportPage() {
     }
   }
 
-  const decide = async (r: CubeReport, approve: boolean) => {
+  const decide = async (r: CubeReport, approve: boolean, why = '') => {
     try {
-      const reason = approve ? '' : '信息不全'
-      await api.decideCubeReport(id, r.id, approve, reason)
+      await api.decideCubeReport(id, r.id, approve, why)
+      setRejecting(null)
+      setReason('')
       void load()
     } catch (e) {
       const code = e && typeof e === 'object' && 'code' in e ? (e as { code: number }).code : 0
@@ -87,16 +90,17 @@ export default function CubeReportPage() {
       <StateView loading={loading} error={error} empty={items.length === 0} emptyText="暂无报备" onRetry={() => void load()}>
         <View className="menu">
           {items.map((r) => (
-            <View key={r.id} className="menu__item menu__row">
-              <Text>
-                {r.customer_name} · {STATUS[r.status] ?? r.status}
-              </Text>
+            <View key={r.id} className="menu__item">
+              <View className="menu__row">
+                <Text>{r.customer_name} · {STATUS[r.status] ?? r.status}</Text>
+              </View>
+              {r.reject_reason ? <Text className="form-field__label">驳回原因：{r.reject_reason}</Text> : null}
               {r.status === 0 ? (
                 <View className="menu__row-extra">
                   <Text className="row-action" onClick={() => void decide(r, true)}>
                     确认
                   </Text>
-                  <Text className="row-action" onClick={() => void decide(r, false)}>
+                  <Text className="row-action" onClick={() => setRejecting(r)}>
                     驳回
                   </Text>
                 </View>
@@ -105,6 +109,33 @@ export default function CubeReportPage() {
           ))}
         </View>
       </StateView>
+
+      {rejecting ? (
+        <View className="auth-mask">
+          <View className="auth-modal">
+            <Text className="auth-modal__title">驳回报备</Text>
+            <Text className="auth-modal__row">客户：{rejecting.customer_name}</Text>
+            <FormField label="驳回原因" value={reason} onChange={setReason} />
+            <View className="auth-modal__actions">
+              <Button className="btn-secondary auth-modal__btn" onClick={() => { setRejecting(null); setReason('') }}>
+                取消
+              </Button>
+              <Button
+                className="btn-danger auth-modal__btn"
+                onClick={() => {
+                  if (!reason.trim()) {
+                    Taro.showToast({ title: '请填写原因', icon: 'none' })
+                    return
+                  }
+                  void decide(rejecting, false, reason.trim())
+                }}
+              >
+                确认驳回
+              </Button>
+            </View>
+          </View>
+        </View>
+      ) : null}
     </View>
   )
 }
