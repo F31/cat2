@@ -2,8 +2,13 @@ import Taro from '@tarojs/taro'
 import { createClient } from '@catcube/api-client'
 import { getToken } from '../utils/token'
 
-// 后端 MP 网关（dev；生产由构建注入）。
-const BASE_URL = 'http://127.0.0.1:8080/api/mp/v1'
+declare const process: { env: { NODE_ENV?: string } }
+
+// 后端 MP 网关：开发直连本机，生产走域名 HTTPS（微信服务器域名白名单需同步配置）。
+const BASE_URL =
+  process.env.NODE_ENV === 'development'
+    ? 'http://127.0.0.1:8080/api/mp/v1'
+    : 'https://cat2.mindbase.fun/api/mp/v1'
 
 interface FetchInit {
   method?: string
