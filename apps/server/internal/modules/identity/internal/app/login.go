@@ -116,6 +116,15 @@ func (s *Service) AdminStepUpRequired(ctx context.Context, userID int64) (bool, 
 
 // SendStepUpCode 向账号绑定手机号发送二次验证码（复用登录短信码通道）。
 func (s *Service) SendStepUpCode(ctx context.Context, userID int64) error {
+	return s.sendSMSCodeToUser(ctx, userID, "login")
+}
+
+// SendPasswordResetCode 向账号绑定手机号发送找回密码验证码。
+func (s *Service) SendPasswordResetCode(ctx context.Context, userID int64) error {
+	return s.sendSMSCodeToUser(ctx, userID, "reset_password")
+}
+
+func (s *Service) sendSMSCodeToUser(ctx context.Context, userID int64, templateID string) error {
 	u, err := s.repo.UserByID(ctx, userID)
 	if err != nil {
 		return domain.ErrPhoneRequired
@@ -124,11 +133,20 @@ func (s *Service) SendStepUpCode(ctx context.Context, userID int64) error {
 	if err != nil || phone == "" {
 		return domain.ErrPhoneRequired
 	}
-	return s.RequestSMSCode(ctx, phone)
+	return s.requestSMSCode(ctx, phone, templateID)
 }
 
 // VerifyStepUpCode 校验二次验证码；成功记录一次成功尝试（清除失败计数）。
 func (s *Service) VerifyStepUpCode(ctx context.Context, userID int64, code string) error {
+	return s.verifySMSCode(ctx, userID, code)
+}
+
+// VerifyPasswordResetCode 校验找回密码验证码；成功记录一次成功尝试。
+func (s *Service) VerifyPasswordResetCode(ctx context.Context, userID int64, code string) error {
+	return s.verifySMSCode(ctx, userID, code)
+}
+
+func (s *Service) verifySMSCode(ctx context.Context, userID int64, code string) error {
 	if code == "" {
 		return domain.ErrCodeInvalid
 	}
@@ -339,6 +357,10 @@ func (s *Service) Refresh(ctx context.Context, refreshPlain string) (contract.To
 
 // RequestSMSCode 发送验证码（同号历史未用码作废，5 分钟有效）。
 func (s *Service) RequestSMSCode(ctx context.Context, phone string) error {
+	return s.requestSMSCode(ctx, phone, "login")
+}
+
+func (s *Service) requestSMSCode(ctx context.Context, phone, templateID string) error {
 	if !domain.ValidPhone(phone) {
 		return domain.ErrPhoneRequired
 	}
@@ -351,7 +373,7 @@ func (s *Service) RequestSMSCode(ctx context.Context, phone string) error {
 		return err
 	}
 	if s.notify != nil {
-		if err := s.notify.SendSMS(ctx, phone, "login", map[string]string{"code": code}); err != nil {
+		if err := s.notify.SendSMS(ctx, phone, templateID, map[string]string{"code": code}); err != nil {
 			return err
 		}
 		return nil

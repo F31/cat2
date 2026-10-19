@@ -156,6 +156,16 @@ func (m *Module) VerifyStepUpCode(ctx context.Context, userID int64, code string
 	return m.svc.VerifyStepUpCode(ctx, userID, code)
 }
 
+// SendPasswordResetCode 发送后台找回密码验证码。
+func (m *Module) SendPasswordResetCode(ctx context.Context, userID int64) error {
+	return m.svc.SendPasswordResetCode(ctx, userID)
+}
+
+// VerifyPasswordResetCode 校验后台找回密码验证码。
+func (m *Module) VerifyPasswordResetCode(ctx context.Context, userID int64, code string) error {
+	return m.svc.VerifyPasswordResetCode(ctx, userID, code)
+}
+
 // GrantAdmin 授予/取消平台管理员。
 func (m *Module) GrantAdmin(ctx context.Context, userID int64, admin bool) error {
 	r := 0

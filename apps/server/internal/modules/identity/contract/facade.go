@@ -54,6 +54,10 @@ type Facade interface {
 	SendStepUpCode(ctx context.Context, userID int64) error
 	// VerifyStepUpCode 校验后台二次验证码；成功清除失败计数。
 	VerifyStepUpCode(ctx context.Context, userID int64, code string) error
+	// SendPasswordResetCode 发送后台找回密码验证码。
+	SendPasswordResetCode(ctx context.Context, userID int64) error
+	// VerifyPasswordResetCode 校验后台找回密码验证码（一次性）。
+	VerifyPasswordResetCode(ctx context.Context, userID int64, code string) error
 	// GrantAdmin 授予/取消平台管理员（运维引导）。
 	GrantAdmin(ctx context.Context, userID int64, admin bool) error
 	// Authenticate 校验 Access Token，返回用户 ID 与授权版本。

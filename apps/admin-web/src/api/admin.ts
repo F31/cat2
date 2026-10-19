@@ -139,6 +139,25 @@ export const adminApi = {
     })
   },
 
+  changePassword(oldPassword: string, newPassword: string) {
+    return call<{ changed: boolean }>('POST', '/admin/v1/auth/password/change', {
+      old_password: oldPassword,
+      new_password: newPassword,
+    })
+  },
+
+  resetPasswordCode(phone: string) {
+    return call<{ sent: boolean }>('POST', '/admin/v1/auth/password/reset/code', { phone })
+  },
+
+  resetPassword(phone: string, code: string, newPassword: string) {
+    return call<{ changed: boolean }>('POST', '/admin/v1/auth/password/reset', {
+      phone,
+      code,
+      new_password: newPassword,
+    })
+  },
+
   login(phone: string) {
     return call<{ user_id: string; tokens: { access_token: string } }>('POST', '/mp/v1/auth/wechat', {
       code: phone,

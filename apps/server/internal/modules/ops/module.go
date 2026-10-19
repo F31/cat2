@@ -147,6 +147,8 @@ var Schemas = []settings.Schema{
 	{Key: "admin.security.password_min_len", Type: settings.TypeInt, Default: "8", Description: "后台密码最小长度"},
 	{Key: "admin.security.password_policy", Type: settings.TypeString, Default: "upper,lower,digit",
 		Description: "后台密码复杂度（逗号分隔：upper/lower/digit/symbol）"},
+	// 主管理员口令哈希：DB 覆盖 env；只能通过「修改密码」接口写入
+	{Key: settings.AdminPasswordHashKey, Type: settings.TypeString, Default: "", Description: "后台主管理员口令哈希（内部）", Sensitive: true, Hidden: true},
 
 	// 系统设置 · 短信网关
 	{Key: "sms.gateway.provider", Type: settings.TypeString, Default: "dev", Description: "短信网关供应商（dev=日志模拟）"},
@@ -354,6 +356,9 @@ func (m *Module) handleSettings(w http.ResponseWriter, req *http.Request) {
 	}
 	items := make([]map[string]any, 0)
 	for _, sc := range m.deps.Settings.Schemas() {
+		if sc.Hidden {
+			continue
+		}
 		cur, err := m.deps.Settings.Get(req.Context(), 1, sc.Key)
 		value := sc.Default
 		if err == nil {
@@ -377,8 +382,13 @@ func (m *Module) handleSetSetting(w http.ResponseWriter, req *http.Request) {
 		writeErr(w, 1, "参数错误")
 		return
 	}
-	if _, err := m.deps.Settings.GetSchema(key); err != nil {
+	sc, err := m.deps.Settings.GetSchema(key)
+	if err != nil {
 		writeErr(w, 1, "未登记的配置项")
+		return
+	}
+	if sc.Hidden {
+		writeErr(w, 3, "该配置项不可在配置中心修改")
 		return
 	}
 	var body struct {
@@ -397,7 +407,6 @@ func (m *Module) handleSetSetting(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	before, _ := m.deps.Settings.Get(req.Context(), 1, key)
-	sc, _ := m.deps.Settings.GetSchema(key)
 	if err := m.deps.Settings.Set(req.Context(), 1, key, body.Value, op); err != nil {
 		m.recordSetting(req, op, key, sc, before, body.Value, audit.ResultFailed)
 		writeErr(w, 9, "服务错误")

@@ -19,6 +19,9 @@ const (
 	TypeString ValueType = "string"
 )
 
+// AdminPasswordHashKey 后台主管理员口令哈希（DB 覆盖 env；不在配置中心展示/修改）。
+const AdminPasswordHashKey = "admin.security.password_hash"
+
 // Schema 配置项声明。
 type Schema struct {
 	Key         string
@@ -26,6 +29,7 @@ type Schema struct {
 	Default     string
 	Description string
 	Sensitive   bool // 敏感配置（值在后台脱敏展示）
+	Hidden      bool // 不在配置中心展示，也不能通过配置接口修改
 }
 
 // Entry 一条配置值。

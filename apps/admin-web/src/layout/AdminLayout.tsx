@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Layout, Menu, Button, Space, Dropdown, Modal, Descriptions, Tag, theme } from 'antd'
+import { Layout, Menu, Button, Space, Dropdown, Modal, Descriptions, Tag, Form, Input, message, theme } from 'antd'
 import type { MenuProps } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { clearToken } from '../auth'
@@ -9,6 +9,7 @@ const { Header, Sider, Content } = Layout
 
 type GroupInfo = { key: string; label: string; order: number }
 type Me = { user_id: string; nickname: string; super: boolean; roles: Array<{ code: string; name: string }> }
+type PasswordForm = { old_password: string; new_password: string; confirm_password: string }
 
 // 拉取失败时的静态兜底（首页不占菜单；仅保证基本可用）。
 const FALLBACK: AdminMenu[] = [
@@ -100,6 +101,9 @@ export default function AdminLayout() {
   const [me, setMe] = useState<Me | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [passwordOpen, setPasswordOpen] = useState(false)
+  const [passwordSaving, setPasswordSaving] = useState(false)
+  const [passwordForm] = Form.useForm<PasswordForm>()
 
   const loadGroup = useCallback(
     async (key: string, goFirst: boolean) => {
@@ -160,11 +164,33 @@ export default function AdminLayout() {
     navigate('/login', { replace: true })
   }
 
+  const openPassword = () => {
+    passwordForm.resetFields()
+    setPasswordOpen(true)
+  }
+
+  const submitPassword = async (v: PasswordForm) => {
+    setPasswordSaving(true)
+    try {
+      await adminApi.changePassword(v.old_password, v.new_password)
+      message.success('密码已修改，请重新登录')
+      setPasswordOpen(false)
+      passwordForm.resetFields()
+      clearToken()
+      navigate('/login', { replace: true })
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '修改密码失败')
+    } finally {
+      setPasswordSaving(false)
+    }
+  }
+
   const roleText = me?.super ? '超级管理员' : me?.roles?.map((r) => r.name).join(' / ') || '后台用户'
   const displayName = me?.nickname || (me ? `用户#${me.user_id}` : '未登录')
 
   const userMenu: MenuProps['items'] = [
     { key: 'info', label: '用户信息' },
+    { key: 'password', label: '修改密码' },
     { key: 'about', label: '关于' },
     { type: 'divider' },
     { key: 'logout', label: '退出登录' },
@@ -203,6 +229,7 @@ export default function AdminLayout() {
             onClick: ({ key }) => {
               if (key === 'logout') logout()
               else if (key === 'info') setInfoOpen(true)
+              else if (key === 'password') openPassword()
               else if (key === 'about') setAboutOpen(true)
             },
           }}
@@ -250,6 +277,53 @@ export default function AdminLayout() {
             {me?.super ? '隐含全部权限' : '按角色权限点与数据范围生效'}
           </Descriptions.Item>
         </Descriptions>
+      </Modal>
+
+      <Modal
+        title="修改密码"
+        open={passwordOpen}
+        onCancel={() => {
+          setPasswordOpen(false)
+          passwordForm.resetFields()
+        }}
+        onOk={() => passwordForm.submit()}
+        confirmLoading={passwordSaving}
+        okText="确认修改"
+        cancelText="取消"
+        destroyOnClose
+      >
+        <Form form={passwordForm} layout="vertical" onFinish={submitPassword} preserve={false}>
+          <Form.Item name="old_password" label="当前密码" rules={[{ required: true, message: '请输入当前密码' }]}>
+            <Input.Password autoComplete="current-password" placeholder="请输入当前密码" />
+          </Form.Item>
+          <Form.Item
+            name="new_password"
+            label="新密码"
+            rules={[
+              { required: true, message: '请输入新密码' },
+              { min: 8, message: '新密码至少 8 位' },
+              { max: 128, message: '新密码过长' },
+            ]}
+          >
+            <Input.Password autoComplete="new-password" placeholder="至少 8 位" />
+          </Form.Item>
+          <Form.Item
+            name="confirm_password"
+            label="确认新密码"
+            dependencies={['new_password']}
+            rules={[
+              { required: true, message: '请再次输入新密码' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('new_password') === value) return Promise.resolve()
+                  return Promise.reject(new Error('两次输入的新密码不一致'))
+                },
+              }),
+            ]}
+          >
+            <Input.Password autoComplete="new-password" placeholder="再次输入新密码" />
+          </Form.Item>
+        </Form>
       </Modal>
 
       <Modal title="关于" open={aboutOpen} onCancel={() => setAboutOpen(false)} footer={null}>

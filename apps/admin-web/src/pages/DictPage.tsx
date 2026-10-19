@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Button, Select, Space, Table, Tag, message } from 'antd'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Button, Input, Select, Space, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { adminApi, type DictOption, type DictSubjectType } from '../api/admin'
 import DataTable from '../components/DataTable'
@@ -19,6 +19,7 @@ export default function DictPage() {
   const [types, setTypes] = useState<DictSubjectType[]>([])
   const [opts, setOpts] = useState<DictOption[]>([])
   const [dimension, setDimension] = useState('industry')
+  const [keyword, setKeyword] = useState('')
   const [loading, setLoading] = useState(false)
 
   const load = useCallback(async () => {
@@ -38,6 +39,24 @@ export default function DictPage() {
     void load()
   }, [load])
 
+  const filteredOpts = useMemo(() => {
+    const kw = keyword.trim().toLowerCase()
+    if (!kw) return opts
+    return opts.filter((o) =>
+      [o.code, o.label, o.parent_code ?? ''].some((v) => String(v).toLowerCase().includes(kw)),
+    )
+  }, [opts, keyword])
+
+  const levelOf = (code: string) => {
+    if (dimension === 'industry') {
+      return code.length === 1 ? '门类' : code.length === 2 ? '大类' : code.length === 3 ? '中类' : '小类'
+    }
+    if (dimension === 'region') {
+      return code.endsWith('0000') ? '省级' : code.endsWith('00') ? '市级' : '区县级'
+    }
+    return '—'
+  }
+
   const typeCols: ColumnsType<DictSubjectType> = [
     { title: '编码', dataIndex: 'code' },
     { title: '名称', dataIndex: 'name' },
@@ -50,15 +69,23 @@ export default function DictPage() {
   const optCols: ColumnsType<DictOption> = [
     { title: '编码', dataIndex: 'code' },
     { title: '名称', dataIndex: 'label' },
+    { title: '层级', dataIndex: 'code', width: 90, render: (v: string) => levelOf(v) },
     { title: '父级', dataIndex: 'parent_code', render: (v?: string) => v || '—' },
-    { title: '排序', dataIndex: 'sort' },
-    { title: '启用', dataIndex: 'enabled', render: (v: boolean) => (v ? <Tag>启用</Tag> : <Tag color="red">停用</Tag>) },
+    { title: '排序', dataIndex: 'sort', width: 80 },
+    { title: '启用', dataIndex: 'enabled', width: 80, render: (v: boolean) => (v ? <Tag>启用</Tag> : <Tag color="red">停用</Tag>) },
   ]
 
   return (
     <>
       <Space style={{ marginBottom: 16 }}>
         <Select style={{ width: 180 }} value={dimension} onChange={setDimension} options={DIMENSIONS} />
+        <Input
+          allowClear
+          style={{ width: 260 }}
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          placeholder="搜索编码 / 名称 / 父级"
+        />
         <Button onClick={() => void load()} loading={loading}>
           刷新
         </Button>
@@ -66,8 +93,17 @@ export default function DictPage() {
       </Space>
       <h3>主体类型</h3>
       <DataTable rowKey="code" loading={loading} columns={typeCols} dataSource={types} pagination={false} />
-      <h3 style={{ marginTop: 24 }}>选项（{DIMENSIONS.find((d) => d.value === dimension)?.label}）</h3>
-      <DataTable rowKey="code" loading={loading} columns={optCols} dataSource={opts} pagination={false} />
+      <h3 style={{ marginTop: 24 }}>
+        选项（{DIMENSIONS.find((d) => d.value === dimension)?.label}，共 {filteredOpts.length} 条）
+      </h3>
+      <DataTable
+        rowKey="code"
+        loading={loading}
+        columns={optCols}
+        dataSource={filteredOpts}
+        scroll={{ x: 760 }}
+        pagination={{ pageSize: 50, showSizeChanger: true, showTotal: (n) => `共 ${n} 条` }}
+      />
     </>
   )
 }

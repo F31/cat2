@@ -41,10 +41,13 @@ export default function TaxonomyPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dimension, parentCode])
 
-  const shown = useMemo(() => {
+  const needsSearch = searchable || dimension === 'region' || dimension === 'industry'
+  const filtered = useMemo(() => {
     const kw = keyword.trim()
     return kw ? items.filter((it) => it.name.includes(kw) || it.code.includes(kw)) : items
   }, [items, keyword])
+  const shown = useMemo(() => filtered.slice(0, 80), [filtered])
+  const hidden = filtered.length - shown.length
 
   const toggle = (code: string) => {
     if (!multiple) {
@@ -65,7 +68,7 @@ export default function TaxonomyPicker({
         {label}
         {max ? `（最多 ${max}）` : ''}
       </Text>
-      {searchable ? (
+      {needsSearch ? (
         <Input
           className="search-row__input"
           value={keyword}
@@ -84,6 +87,11 @@ export default function TaxonomyPicker({
           </Text>
         ))}
       </View>
+      {hidden > 0 ? (
+        <Text style={{ color: '#888', fontSize: '24rpx', marginTop: '12rpx', display: 'block' }}>
+          共 {filtered.length} 条，已显示前 {shown.length} 条，请输入关键词搜索
+        </Text>
+      ) : null}
     </View>
   )
 }

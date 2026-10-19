@@ -7,7 +7,7 @@
 
 - Ubuntu 22.04/24.04，4 vCPU / 8G / 80G+ SSD；公网带宽按初期流量 5Mbps 起。
 - 安全组/防火墙：仅开放 `22`、`80`、`443`；**不开放** 5432/6379/8080。
-- 安装 Docker Engine + Compose v2、Nginx、Certbot；建议加 2G swap 防瞬时内存峰值。
+- 安装 Docker Engine + Compose v2、Nginx、acme.sh、socat；建议加 2G swap 防瞬时内存峰值。
 - 域名解析到该机器；完成 ICP 备案（国内）与小程序服务器域名白名单。
 
 ## 2. 获取代码与配置
@@ -45,9 +45,12 @@ curl -s --noproxy '*' http://127.0.0.1:8080/readyz
 ```bash
 docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-compose.single.yml \
   exec api catcube migrate
-# 首次导入字典/敏感词种子（幂等）
+# 首次导入字典/敏感词种子（幂等；区域/行业数据在 contracts/seeds/dict/*.json）
 docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-compose.single.yml \
   exec api catcube seed
+# 无应用容器时，也可直接用 SQL 初始化区域/行业（幂等）
+docker exec -i compose-db-1 psql -U catcube -d catcube \
+  < deploy/sql/init_dict_region_industry.sql
 ```
 
 ## 3.1 小程序接入信息（后台热配置）
@@ -65,7 +68,8 @@ docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-co
 ## 4. 后台前端与 Nginx
 
 > 无域名/证书的初始部署：使用 `deploy/nginx/catcube-http.conf`（HTTP，后台走应用层登录页）。
-> 域名就绪后切换 `catcube.conf` + Certbot。后台令牌走 `X-Admin-Token`，与标准 Bearer 兼容。
+> 域名就绪后执行 `deploy/scripts/setup-tls.sh` 切换 `catcube.conf`。后台令牌走 `X-Admin-Token`，与标准 Bearer 兼容。
+> 若 80 端口被腾讯云备案拦截，脚本使用 TLS-ALPN-01（443）签发，不依赖 HTTP-01；域名仍需完成 ICP 备案后才能对国内用户正常提供 HTTP 访问。
 
 ```bash
 # 在 CI 或本机构建（Node 20 + pnpm）
@@ -74,17 +78,11 @@ pnpm --filter admin-web build
 sudo mkdir -p /var/www/catcube-admin
 sudo cp -r apps/admin-web/dist/* /var/www/catcube-admin/
 
-# Nginx
-sudo cp deploy/nginx/catcube.conf /etc/nginx/sites-available/catcube.conf
-# 修改 server_name 与证书路径后启用
-sudo ln -s /etc/nginx/sites-available/catcube.conf /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-
-# 首次证书
-sudo certbot --nginx -d admin.example.com
+# 首次证书 + Nginx HTTPS（TLS-ALPN-01，80 被备案拦截时也可用）
+sudo ACME_EMAIL=ops@example.com bash deploy/scripts/setup-tls.sh
 ```
 
-访问 `https://admin.example.com`，用手机号登录后，在服务器上授予超管：
+访问 `https://cat2.mindbase.fun`，用手机号登录后，在服务器上授予超管：
 
 ```bash
 docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-compose.single.yml \
@@ -93,7 +91,7 @@ docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-co
 
 > 注意：当前 admin-web 登录走开发态微信适配器（手机号当 code）。**若配置了真实 WECHAT_APPID/SECRET，后台登录会失败**；生产前需补后台账号体系（密码/SSO/短信），这是上公网前的阻塞项。
 
-> 域名已接入 EdgeOne/CDN 时，HTTP-01 验证可能被 CDN 拦截（LE 会看到 CDN IP）。需先暂停该子域名的 CDN/代理或让 `/.well-known/acme-challenge` 回源，再执行 Certbot；也可改用 DNS-01。
+> 域名已接入 EdgeOne/CDN 时，TLS-ALPN 或 HTTP-01 验证可能被 CDN 拦截。需先暂停该子域名的 CDN/代理，或改用 DNS-01。
 
 ## 5. 备份与恢复
 

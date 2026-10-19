@@ -36,6 +36,7 @@ func (m *Module) Facade() contract.Facade { return m.svc }
 func (m *Module) Register(r *module.Registry) error {
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/dict/options", Handler: m.handleOptions},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/dict/{dimension}", Handler: m.handleListDict},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/dict/subject-types", Handler: m.handleSubjectTypes},
 	)
 	return nil
@@ -57,6 +58,48 @@ func (m *Module) handleOptions(w http.ResponseWriter, req *http.Request) {
 func (m *Module) handleSubjectTypes(w http.ResponseWriter, req *http.Request) {
 	ts, err := m.svc.SubjectTypes(req.Context())
 	writeJSON(w, ts, err)
+}
+
+// handleListDict 小程序字典选择器：/dict/{dimension}?parent_code=...
+// 返回契约 DictItem（name/parent_code），与后台 /dict/options 的 label 结构分开。
+func (m *Module) handleListDict(w http.ResponseWriter, req *http.Request) {
+	dimension := req.PathValue("dimension")
+	parent := req.URL.Query().Get("parent_code")
+	type item struct {
+		Code       string `json:"code"`
+		Name       string `json:"name"`
+		ParentCode string `json:"parent_code,omitempty"`
+		Sort       int    `json:"sort"`
+	}
+	if dimension == "subject_type" {
+		ts, err := m.svc.SubjectTypes(req.Context())
+		if err != nil {
+			writeJSON(w, nil, err)
+			return
+		}
+		items := make([]item, 0, len(ts))
+		for _, t := range ts {
+			if !t.Enabled || (parent != "" && t.Code != parent) {
+				continue
+			}
+			items = append(items, item{Code: t.Code, Name: t.Name, Sort: t.Sort})
+		}
+		writeJSON(w, map[string]any{"items": items}, nil)
+		return
+	}
+	opts, err := m.svc.Options(req.Context(), dimension)
+	if err != nil {
+		writeJSON(w, nil, err)
+		return
+	}
+	items := make([]item, 0, len(opts))
+	for _, o := range opts {
+		if parent != "" && o.ParentCode != parent {
+			continue
+		}
+		items = append(items, item{Code: o.Code, Name: o.Label, ParentCode: o.ParentCode, Sort: o.Sort})
+	}
+	writeJSON(w, map[string]any{"items": items}, nil)
 }
 
 func writeJSON(w http.ResponseWriter, v any, err error) {

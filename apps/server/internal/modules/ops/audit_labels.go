@@ -3,6 +3,9 @@ package ops
 // auditActionLabels 审计动作中文名（后台展示；未登记的动作回退原始 action）。
 var auditActionLabels = map[string]string{
 	"admin:login:password":           "后台密码登录",
+	"admin:password:change":          "修改后台密码",
+	"admin:password:reset:code":      "找回密码发送验证码",
+	"admin:password:reset":           "短信找回后台密码",
 	"identity:login:locked":          "登录锁定拒绝",
 	"identity:user:create":           "新增用户",
 	"identity:user:update":           "编辑用户",

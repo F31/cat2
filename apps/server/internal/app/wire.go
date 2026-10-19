@@ -305,6 +305,9 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	// 后台治理（RBAC）审计点（内核接口，非模块路由；p4 §5.4 admin/内核）
 	a.AuditPoints = append(a.AuditPoints,
 		audit.Point{Action: "admin:login:password", Path: "/api/admin/v1/auth/password", Required: true, LogFailed: true, Module: "ops"},
+		audit.Point{Action: "admin:password:change", Path: "/api/admin/v1/auth/password/change", Required: true, LogFailed: true, Module: "ops"},
+		audit.Point{Action: "admin:password:reset:code", Path: "/api/admin/v1/auth/password/reset/code", Required: true, LogFailed: true, Module: "ops"},
+		audit.Point{Action: "admin:password:reset", Path: "/api/admin/v1/auth/password/reset", Required: true, LogFailed: true, Module: "ops"},
 		audit.Point{Action: "ops:rbac:role:set", Path: "/api/admin/v1/roles/{code}/permissions", Required: true, LogFailed: true, Module: "ops"},
 		audit.Point{Action: "ops:rbac:role:scope", Path: "/api/admin/v1/roles/{code}/scope", Required: true, LogFailed: true, Module: "ops"},
 		audit.Point{Action: "ops:rbac:role:create", Path: "/api/admin/v1/roles", Required: true, LogFailed: true, Module: "ops"},
@@ -643,7 +646,10 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 
 	// 后台口令登录（生产主路径；手机号+密码，PBKDF2 哈希经 env 注入）
 	adminLoginLimiter := newLoginLimiter()
-	a.Mux.HandleFunc("POST /api/admin/v1/auth/password", adminPasswordLogin(identityMod.Facade(), cfg, a.Audit, adminLoginLimiter))
+	resetCodeLimiter := newSMSSendLimiter()
+	a.Mux.HandleFunc("POST /api/admin/v1/auth/password", adminPasswordLogin(identityMod.Facade(), cfg, settingsReg, a.Audit, adminLoginLimiter))
+	a.Mux.HandleFunc("POST /api/admin/v1/auth/password/reset/code", adminPasswordResetCode(identityMod.Facade(), cfg, a.Audit, resetCodeLimiter))
+	a.Mux.HandleFunc("POST /api/admin/v1/auth/password/reset", adminPasswordReset(identityMod.Facade(), cfg, settingsReg, a.Audit, adminLoginLimiter))
 
 	// 后台短信二次验证（p4 §3.4）：仅需已登录（令牌有效），不经后台准入/权限门禁
 	adminTokenAuth := func(next http.HandlerFunc) http.HandlerFunc {
@@ -661,6 +667,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 			next(w, req.WithContext(context.WithValue(req.Context(), adminCtxKey{}, uid)))
 		}
 	}
+	a.Mux.HandleFunc("POST /api/admin/v1/auth/password/change", adminTokenAuth(adminPasswordChange(identityMod.Facade(), cfg, settingsReg, a.Audit, adminLoginLimiter)))
 	a.Mux.HandleFunc("POST /api/admin/v1/auth/step-up/code", adminTokenAuth(func(w http.ResponseWriter, req *http.Request) {
 		uid, _ := adminUID(req)
 		if err := identityMod.Facade().SendStepUpCode(req.Context(), uid); err != nil {
