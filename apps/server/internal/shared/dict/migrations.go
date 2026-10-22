@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS dct_field_template (
 	updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- 历史主体类型停用（只停用不删除；六类主题改用 service_org）
+UPDATE dct_subject_type SET status=0 WHERE code='gov_service';
+
 CREATE TABLE IF NOT EXISTS dct_field_def (
 	field varchar(64) PRIMARY KEY, -- 代码侧登记的字段池（随版本发布）
 	label varchar(64) NOT NULL,

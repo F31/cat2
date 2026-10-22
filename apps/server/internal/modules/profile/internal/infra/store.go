@@ -19,6 +19,7 @@ var ErrNotFound = errors.New("infra: 名片不存在")
 type Card struct {
 	UserID           int64
 	SubjectTypeCode  string
+	OrgTypeCode      string
 	IdentityType     int16
 	Name             string
 	AvatarFileID     int64
@@ -46,7 +47,7 @@ type Store struct{ pool *db.Pool }
 
 func NewStore(pool *db.Pool) *Store { return &Store{pool: pool} }
 
-const cols = `user_id, subject_type_code, identity_type, COALESCE(name,''),
+const cols = `user_id, subject_type_code, COALESCE(org_type_code,''), identity_type, COALESCE(name,''),
 	COALESCE(avatar_file_id,0), COALESCE(region_code,''), COALESCE(industry_codes,''),
 	COALESCE(need_codes,''), COALESCE(offer_codes,''), COALESCE(advantage_field,''),
 	COALESCE(background,''), COALESCE(target_customers,''), COALESCE(target_channels,''),
@@ -57,7 +58,7 @@ func scan(row pgx.Row) (Card, error) {
 	var c Card
 	var industry, need, offer string
 	var qualRaw, visRaw, lockRaw []byte
-	err := row.Scan(&c.UserID, &c.SubjectTypeCode, &c.IdentityType, &c.Name,
+	err := row.Scan(&c.UserID, &c.SubjectTypeCode, &c.OrgTypeCode, &c.IdentityType, &c.Name,
 		&c.AvatarFileID, &c.RegionCode, &industry, &need, &offer, &c.AdvantageField,
 		&c.Background, &c.TargetCustomers, &c.TargetChannels, &qualRaw, &c.CoreStrength, &c.Intro,
 		&c.ContactPhoneEnc, &visRaw, &c.ProfileTier, &c.SearchDocVersion, &lockRaw, &c.Version)
@@ -118,14 +119,14 @@ func (s *Store) Save(ctx context.Context, tx db.Tx, c Card) error {
 	vis, _ := json.Marshal(c.Visibility)
 	lock, _ := json.Marshal(c.LockedFields)
 	_, err := tx.Exec(ctx, `
-		INSERT INTO prf_card (user_id, subject_type_code, identity_type, name, avatar_file_id,
+		INSERT INTO prf_card (user_id, subject_type_code, org_type_code, identity_type, name, avatar_file_id,
 			region_code, industry_codes, need_codes, offer_codes, advantage_field, background,
 			target_customers, target_channels, qualification_file_ids, core_strength, intro,
 			contact_phone_enc, visibility_settings, profile_tier, search_doc_version, locked_fields,
 			created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,now(),now())
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,now(),now())
 		ON CONFLICT (user_id) DO UPDATE SET
-			subject_type_code=EXCLUDED.subject_type_code, identity_type=EXCLUDED.identity_type,
+			subject_type_code=EXCLUDED.subject_type_code, org_type_code=EXCLUDED.org_type_code, identity_type=EXCLUDED.identity_type,
 			name=EXCLUDED.name, avatar_file_id=EXCLUDED.avatar_file_id, region_code=EXCLUDED.region_code,
 			industry_codes=EXCLUDED.industry_codes, need_codes=EXCLUDED.need_codes,
 			offer_codes=EXCLUDED.offer_codes, advantage_field=EXCLUDED.advantage_field,
@@ -135,7 +136,7 @@ func (s *Store) Save(ctx context.Context, tx db.Tx, c Card) error {
 			contact_phone_enc=EXCLUDED.contact_phone_enc, visibility_settings=EXCLUDED.visibility_settings,
 			profile_tier=EXCLUDED.profile_tier, search_doc_version=EXCLUDED.search_doc_version,
 			locked_fields=EXCLUDED.locked_fields, version=prf_card.version+1, updated_at=now()`,
-		c.UserID, c.SubjectTypeCode, c.IdentityType, c.Name, c.AvatarFileID,
+		c.UserID, c.SubjectTypeCode, c.OrgTypeCode, c.IdentityType, c.Name, c.AvatarFileID,
 		c.RegionCode, domain.JoinCodes(c.IndustryCodes), domain.JoinCodes(c.NeedCodes),
 		domain.JoinCodes(c.OfferCodes), c.AdvantageField, c.Background,
 		c.TargetCustomers, c.TargetChannels, qual, c.CoreStrength, c.Intro,

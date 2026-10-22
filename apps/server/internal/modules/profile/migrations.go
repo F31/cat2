@@ -32,4 +32,7 @@ CREATE TABLE IF NOT EXISTS prf_card (
 );
 
 CREATE INDEX IF NOT EXISTS idx_prf_card_tier ON prf_card(owner_space_id, profile_tier);
+
+-- 组织分类（六类主题，运营后台维护；与 person/organ 的 subject_type_code 分离）
+ALTER TABLE prf_card ADD COLUMN IF NOT EXISTS org_type_code varchar(64) NOT NULL DEFAULT '';
 `

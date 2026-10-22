@@ -5,6 +5,7 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+	"time"
 
 	"catcube/internal/kernel/statemachine"
 )
@@ -50,6 +51,27 @@ var idCardRe = regexp.MustCompile(`^\d{17}[\dXx]$`)
 
 // ValidIDCard 身份证号（18 位，末位数字或 X）。
 func ValidIDCard(s string) bool { return idCardRe.MatchString(strings.TrimSpace(s)) }
+
+var idCardWeights = [17]int{7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2}
+
+// ValidIDCardStrict 本地严格校验：格式 + 出生日期 + GB 11643 校验位。
+// 仅用于人工审核模式的前置校验；不替代权威二要素核验。
+func ValidIDCardStrict(s string) bool {
+	s = strings.ToUpper(strings.TrimSpace(s))
+	if !idCardRe.MatchString(s) {
+		return false
+	}
+	birth, err := time.Parse("20060102", s[6:14])
+	if err != nil || birth.Year() < 1900 || birth.After(time.Now()) {
+		return false
+	}
+	sum := 0
+	for i := 0; i < 17; i++ {
+		sum += int(s[i]-'0') * idCardWeights[i]
+	}
+	check := "10X98765432"[sum%11]
+	return s[17] == check
+}
 
 // ValidName 真实姓名（非空且 ≤64 字符）。
 func ValidName(s string) bool {

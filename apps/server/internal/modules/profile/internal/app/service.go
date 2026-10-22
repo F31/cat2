@@ -102,6 +102,63 @@ func (s *Service) GetMyCard(ctx context.Context, userID int64) (prfcontract.Card
 	return toContract(c), nil
 }
 
+// AdminCardOf 后台读取完整名片（不做对外展示过滤）。
+func (s *Service) AdminCardOf(ctx context.Context, userID int64) (prfcontract.Card, error) {
+	return s.GetMyCard(ctx, userID)
+}
+
+// AdminUpdateOrgCard 后台维护组织名片字段：跳过认证锁定，保留联系方式/资质材料。
+func (s *Service) AdminUpdateOrgCard(ctx context.Context, userID int64, in prfcontract.AdminOrgInput) (prfcontract.Card, error) {
+	cur, err := s.repo.GetByUserID(ctx, userID)
+	if errors.Is(err, infra.ErrNotFound) {
+		if _, e := s.EnsureCard(ctx, userID); e != nil {
+			return prfcontract.Card{}, e
+		}
+		cur, err = s.repo.GetByUserID(ctx, userID)
+	}
+	if err != nil {
+		return prfcontract.Card{}, err
+	}
+	next := cur
+	if name := strings.TrimSpace(in.Name); name != "" {
+		next.Name = name
+	}
+	if in.OrgTypeCode != "" {
+		next.OrgTypeCode = in.OrgTypeCode
+	}
+	next.RegionCode = in.RegionCode
+	next.IndustryCodes = in.IndustryCodes
+	next.NeedCodes = in.NeedCodes
+	next.OfferCodes = in.OfferCodes
+	next.CoreStrength = in.CoreStrength
+	next.Intro = in.Intro
+	if err := domain.Validate(toDomain(next)); err != nil {
+		return prfcontract.Card{}, err
+	}
+	if s.dict != nil {
+		if err := s.dict.ValidateTagSet(ctx, dictcontract.TagSet{
+			Industry: in.IndustryCodes, Region: in.RegionCode, Need: in.NeedCodes, Offer: in.OfferCodes,
+		}); err != nil {
+			return prfcontract.Card{}, fmt.Errorf("%w: %v", domain.ErrInvalidTag, err)
+		}
+	}
+	_, _, tier := domain.Completion(toDomain(next))
+	next.ProfileTier = tier
+	next.SearchDocVersion = cur.SearchDocVersion + 1
+	if err := s.pool.InTx(ctx, func(tx db.Tx) error {
+		if err := s.repo.Save(ctx, tx, next); err != nil {
+			return err
+		}
+		if s.bus == nil {
+			return nil
+		}
+		return s.bus.Publish(ctx, tx, buildEvent(next))
+	}); err != nil {
+		return prfcontract.Card{}, err
+	}
+	return toContract(next), nil
+}
+
 // UpdateCard 更新名片（校验 → 锁定检查 → 标签校验 → 加密 → 保存 → 同事务发事件）。
 func (s *Service) UpdateCard(ctx context.Context, userID int64, in UpdateInput) (prfcontract.Card, error) {
 	cur, err := s.repo.GetByUserID(ctx, userID)
@@ -361,7 +418,7 @@ func toDomain(c infra.Card) domain.Card {
 
 func toContract(c infra.Card) prfcontract.Card {
 	return prfcontract.Card{
-		UserID: c.UserID, SubjectTypeCode: c.SubjectTypeCode, IdentityType: c.IdentityType,
+		UserID: c.UserID, SubjectTypeCode: c.SubjectTypeCode, OrgTypeCode: c.OrgTypeCode, IdentityType: c.IdentityType,
 		Name: c.Name, AvatarFileID: c.AvatarFileID, RegionCode: c.RegionCode,
 		IndustryCodes: c.IndustryCodes, NeedCodes: c.NeedCodes, OfferCodes: c.OfferCodes,
 		AdvantageField: c.AdvantageField, Background: c.Background,

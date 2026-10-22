@@ -39,6 +39,7 @@ export default function Verify() {
   // 实名表单
   const [name, setName] = useState('')
   const [idNo, setIdNo] = useState('')
+  const [idFiles, setIdFiles] = useState<string[]>([])
   const [agreed, setAgreed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
@@ -81,12 +82,17 @@ export default function Verify() {
   })
 
   const realname = certs.find((c) => c.cert_type === 1) ?? null
+  const realnamePending = realname?.status === 0
   const passed = realname?.status === 1
   const rejected = realname?.status === 2
 
   const submitRealname = async () => {
     if (!name.trim() || !idNo.trim()) {
       Taro.showToast({ title: '请填写姓名与身份证号', icon: 'none' })
+      return
+    }
+    if (idFiles.length !== 2) {
+      Taro.showToast({ title: '请上传身份证正反面两张图片', icon: 'none' })
       return
     }
     if (!agreed) {
@@ -96,12 +102,27 @@ export default function Verify() {
     setSubmitting(true)
     try {
       await ensureLogin()
-      const res = await api.submitCert({ cert_type: 1, real_name: name.trim(), id_card_no: idNo.trim(), agreed })
-      Taro.showToast({ title: res.status === 1 ? '实名认证通过' : '已提交审核', icon: 'success' })
+      const res = await api.submitCert({
+        cert_type: 1,
+        real_name: name.trim(),
+        id_card_no: idNo.trim(),
+        agreed,
+        material_file_ids: idFiles.map((id) => Number(id)).filter((n) => n > 0),
+      })
+      Taro.showToast({ title: res.status === 1 ? '实名认证通过' : '已提交，等待运营审核', icon: 'success' })
+      setIdFiles([])
       void load()
     } catch (e) {
       const code = e && typeof e === 'object' && 'code' in e ? (e as { code: number }).code : 0
-      Taro.showToast({ title: code === 100002 ? '姓名与证件号不一致' : '认证失败，请核对信息', icon: 'none' })
+      Taro.showToast({
+        title:
+          code === 100010
+            ? '实名认证审核中，请勿重复提交'
+            : code === 100002
+              ? '姓名与证件号不一致'
+              : '认证失败，请核对信息并上传身份证正反面',
+        icon: 'none',
+      })
     } finally {
       setSubmitting(false)
     }
@@ -122,7 +143,7 @@ export default function Verify() {
       await api.submitCert({
         cert_type: kind,
         agreed: true,
-        material_file_ids: materials,
+        material_file_ids: materials.map(Number),
         target_org_id: kind === 3 ? targetOrg.trim() : undefined,
         extra: extra ? { note: extra } : undefined,
       })
@@ -198,7 +219,12 @@ export default function Verify() {
     <View className="page">
       <StateView loading={loading} error={error} onRetry={() => void load()}>
         {/* 1. 实名 */}
-        {passed ? (
+        {realnamePending ? (
+          <View className="detail-block">
+            <Text className="detail-block__title">实名认证审核中</Text>
+            <Text className="detail-block__body">已提交身份证材料，请等待运营管理员审核；审核通过后可发布内容、创建圈子与猫立方。</Text>
+          </View>
+        ) : passed ? (
           <View className="detail-block">
             <Text className="detail-block__title">已实名认证</Text>
             <Text className="detail-block__body">你已完成实名认证，可发布内容、创建圈子与猫立方。</Text>
@@ -218,6 +244,12 @@ export default function Verify() {
             ) : null}
             <FormField label="真实姓名" required value={name} onChange={setName} />
             <FormField label="身份证号" required value={idNo} onChange={setIdNo} />
+            <Uploader
+              label="身份证正反面（人像面 + 国徽面）"
+              max={2}
+              value={idFiles}
+              onChange={setIdFiles}
+            />
             <View className="agreement" onClick={() => setAgreed(!agreed)}>
               <Text className={agreed ? 'checkbox checkbox--on' : 'checkbox'}>{agreed ? '✓' : ''}</Text>
               <Text className="agreement__text">我已阅读并同意《实名认证服务协议》</Text>
@@ -269,7 +301,7 @@ export default function Verify() {
         {/* 3. 单位归属（一人多单位） */}
         <View className="detail-block">
           <Text className="detail-block__title">单位归属（一人多单位）</Text>
-          <Text className="detail-block__body">核验通过后展示红框标识；未核验置灰。可设唯一主单位。</Text>
+          <Text className="detail-block__body">仅已实名用户可申请；核验通过后展示红框标识，未核验置灰。可设唯一主单位。</Text>
         </View>
         {affs.map((a) => (
           <View key={String(a.id)} className="list-row">

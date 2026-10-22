@@ -8,7 +8,7 @@ func TestDefaultPermissionMatrix(t *testing.T) {
 		RoleOps: setOf(
 			PermUserRead, PermUserRestrict, PermModeration, PermCertReview, PermBadgeSet, PermBroadcast,
 			PermCommissionSet, PermOperatorFeeSet, PermExportCreate, PermAuditRead, PermSettingsRead,
-			PermSettingsSet, PermJobRun, PermDashboardRead, PermRBACManage,
+			PermSettingsSet, PermJobRun, PermDashboardRead, PermRBACManage, PermOrgManage,
 		),
 		RoleAuditor: setOf(PermUserRead, PermModeration, PermCertReview, PermDashboardRead),
 		RoleFinance: setOf(

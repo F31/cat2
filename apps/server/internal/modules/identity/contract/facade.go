@@ -28,6 +28,9 @@ type AdminUserRow struct {
 	IdentityType   int16  `json:"identity_type"`
 	RealnameStatus int16  `json:"realname_status"`
 	PhoneMasked    string `json:"phone_masked"`
+	RealName       string `json:"real_name,omitempty"`
+	IDCardMasked   string `json:"id_card_masked,omitempty"`
+	RegionCode     string `json:"region_code,omitempty"`
 	CreatedAt      int64  `json:"created_at"`
 }
 

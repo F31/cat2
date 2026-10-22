@@ -117,7 +117,7 @@ docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-co
 | 实名核验 | 仅 DevClient | 真实实名不可用 |
 | 短信 | 仅开发固定码 | 后台二次验证/通知短信不可用 |
 | 内容安全 | 微信适配器未装配、图片异步 TODO | 生产内容合规不达标 |
-| 对象存储 | 预签名/签名 TODO | 文件直传与 CDN 不可用 |
+| 对象存储 | 预签名/签名 TODO；后台组织资质材料有 `med_blob` 本地兜底 | 小程序直传与 CDN 不可用 |
 | 小程序审核/发版 | 外部 | 用户无法正式使用 |
 
 **结论**：该单机编排适合“内测/试运行 + 生产基础设施预演”；在补齐上述适配器与后台登录前，不要直接对外收取真实资金。
@@ -133,3 +133,17 @@ docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-co
 ```
 
 迁移遵循 expand → migrate → contract；回滚前确认新迁移向后兼容。
+
+## 9. 实名认证（人工审核模式）
+
+- 生产默认 `CATCUBE_REALNAME_MANUAL_REVIEW=true`：小程序上传身份证正反面（2 张）+ 姓名/身份证号，本地做格式、出生日期、GB 11643 校验位校验，进入平台待审。
+- 运营/审核员在「内容管理 → 认证审核」查看材料并审批；通过后回写 `realname_status=1` 并授予实名 Badge，驳回回写 `2`。
+- 开发/自动化测试可设 `CATCUBE_REALNAME_MANUAL_REVIEW=false` 继续使用 DevClient 直通；生产禁止关闭。
+- 未配置 OSS 时材料落 `med_blob`（≤5MB/张），生产仍建议接 OSS。
+
+## 10. 组织管理与资质材料
+
+- 组织管理在「运营管理 → 组织管理」，六类主体：合作圈、商协会/校友会、大学/科研、服务机构、企业、商务人士。
+- 组织认证审批需要 `verify:cert:review`；组织维护/成员辅助加入需要 `governance:org:manage`（默认授予运营角色，超管隐含全部）。
+- 未配置对象存储时，后台资质材料通过 `POST /api/admin/v1/media/upload` 落入 `med_blob`（单文件 ≤5MB），读取走受后台令牌保护的 `/api/admin/v1/media/{id}/raw`；生产仍建议接入 OSS。
+- `catcube seed` 会导入六类主体配置；历史 `gov_service` 仅停用不删除。

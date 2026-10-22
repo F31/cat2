@@ -23,6 +23,7 @@ type Cert struct {
 	CertType     int16
 	TargetOrgID  int64
 	MaterialIDs  []int64
+	Extra        map[string]string
 	RealNameEnc  []byte
 	IDNoEnc      []byte
 	Status       int16
@@ -50,12 +51,12 @@ func (s *Store) Insert(ctx context.Context, tx db.Tx, c Cert) error {
 }
 
 const certCols = `id, user_id, cert_type, COALESCE(target_org_id,0), COALESCE(material_file_ids,'[]'::jsonb),
-	real_name_enc, id_no_enc, status, COALESCE(reject_reason,''), submitted_at, reviewed_at`
+	COALESCE(extra,'{}'::jsonb), real_name_enc, id_no_enc, status, COALESCE(reject_reason,''), submitted_at, reviewed_at`
 
 func scanCert(row pgx.Row) (Cert, error) {
 	var c Cert
-	var material []byte
-	err := row.Scan(&c.ID, &c.UserID, &c.CertType, &c.TargetOrgID, &material,
+	var material, extra []byte
+	err := row.Scan(&c.ID, &c.UserID, &c.CertType, &c.TargetOrgID, &material, &extra,
 		&c.RealNameEnc, &c.IDNoEnc, &c.Status, &c.RejectReason, &c.SubmitterAt, &c.ReviewedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, ErrNotFound
@@ -66,6 +67,9 @@ func scanCert(row pgx.Row) (Cert, error) {
 	if len(material) > 0 {
 		_ = json.Unmarshal(material, &c.MaterialIDs)
 	}
+	if len(extra) > 0 {
+		_ = json.Unmarshal(extra, &c.Extra)
+	}
 	return c, nil
 }
 
@@ -74,6 +78,31 @@ func (s *Store) LatestRealname(ctx context.Context, userID int64) (Cert, error) 
 	return scanCert(s.pool.QueryRow(ctx,
 		`SELECT `+certCols+` FROM vfy_certification
 		 WHERE user_id=$1 AND cert_type=1 ORDER BY submitted_at DESC, id DESC LIMIT 1`, userID))
+}
+
+// LatestApprovedRealnames 批量查询多个账号最近一条已通过实名记录（用于后台列表展示）。
+func (s *Store) LatestApprovedRealnames(ctx context.Context, userIDs []int64) ([]Cert, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT ON (user_id) `+certCols+`
+		  FROM vfy_certification
+		 WHERE cert_type=1 AND status=1 AND user_id = ANY($1)
+		 ORDER BY user_id, submitted_at DESC, id DESC`, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Cert
+	for rows.Next() {
+		c, err := scanCert(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 // CertsOf 某账号全部认证记录（新→旧）。

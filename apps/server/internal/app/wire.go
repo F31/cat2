@@ -181,7 +181,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	trustMod := trust.New(trust.Deps{Pool: pool, Moderation: moderationClient, Bus: bus, Auth: authFunc, Audit: auditRec,
 		AlertReviewBacklog: cfg.AlertReviewBacklog})
 	dictMod := dict.New(pool)
-	mediaMod := media.New(pool, storage)
+	mediaMod := media.New(pool, storage, identityMod.Facade())
 	entityReg := entityref.NewRegistry()
 	profileMod := profile.New(profile.Deps{
 		Pool: pool, Bus: bus, Media: mediaMod.Facade(), Dict: dictMod.Facade(),
@@ -191,6 +191,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	verifyMod := verify.New(verify.Deps{
 		Pool: pool, Bus: bus, Verify: realname.NewDevClient(),
 		Identity: identityMod.Facade(), Encryptor: encryptor, Audit: auditRec,
+		ManualReview: cfg.RealnameManualReview,
 	})
 	contentMod := content.New(content.Deps{
 		Pool: pool, Bus: bus, Dict: dictMod.Facade(), Trust: trustMod.Facade(), Media: mediaMod.Facade(),
@@ -969,7 +970,24 @@ func RunMigrations(ctx context.Context, pool *db.Pool, mods []module.Module) err
 
 // seedRBAC 幂等写入后台五角色与默认权限矩阵（p4 §3，ADR-002）。
 func seedRBAC(ctx context.Context, pool *db.Pool) error {
-	return rbac.New(pool).Seed(ctx)
+	if err := rbac.New(pool).Seed(ctx); err != nil {
+		return err
+	}
+	// 新增权限一次性回填：仅当全系统尚无任何角色持有该权限时，授予内置运营角色。
+	// 避免每次启动覆盖运营后续的权限调整。
+	var n int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(1) FROM sys_admin_role_permission WHERE perm=$1`, rbac.PermOrgManage).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		_, err := pool.Exec(ctx, `
+			INSERT INTO sys_admin_role_permission (role_id, perm)
+			SELECT id, $1 FROM sys_admin_role WHERE code=$2
+			ON CONFLICT DO NOTHING`, rbac.PermOrgManage, rbac.RoleOps)
+		return err
+	}
+	return nil
 }
 
 // Serve 启动 HTTP（api/admin 角色）。

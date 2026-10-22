@@ -754,8 +754,163 @@ paths:
         - { name: limit, in: query, schema: { type: integer } }
         - { name: offset, in: query, schema: { type: integer } }
       responses:
-        '200': { description: 列表, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '200':
+          description: 列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/AdminGovernanceUser' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /orgs:
+    get:
+      tags: [admin-org]
+      summary: 组织列表（六类主体；运营管理）
+      operationId: adminOrgs
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { type: string, enum: [cooperation_circle, association, research, service_org, company, business_person] } }
+        - { name: status, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer, default: 100, maximum: 200 } }
+      responses:
+        '200':
+          description: 组织列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items: { type: array, items: { $ref: '#/components/schemas/AdminOrg' } }
+                          total: { type: integer }
+  /orgs/{id}:
+    get:
+      tags: [admin-org]
+      summary: 组织详情（账号/名片/认证/成员/管理员）
+      operationId: adminOrgDetail
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 详情, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /orgs/{id}/certifications:
+    post:
+      tags: [admin-org]
+      summary: 平台代组织提交企业/机构认证（资质材料；运营管理权限）
+      operationId: adminSubmitOrgCert
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminOrgCertInput' }
+      responses:
+        '200': { description: 已提交, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /orgs/{id}/members:
+    get:
+      tags: [admin-org]
+      summary: 组织成员列表
+      operationId: adminOrgMembers
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 成员, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+    post:
+      tags: [admin-org]
+      summary: 管理端辅助加入组织（成员须已实名，直接核验通过）
+      operationId: adminAddOrgMember
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminOrgMemberInput' }
+      responses:
+        '200': { description: 已加入, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /orgs/{id}/members/{uid}:
+    delete:
+      tags: [admin-org]
+      summary: 移除组织成员
+      operationId: adminRemoveOrgMember
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: uid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 已移除, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /orgs/{id}/admins:
+    get:
+      tags: [admin-org]
+      summary: 组织管理员列表
+      operationId: adminOrgAdmins
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 管理员, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /media/uploads:
+    post:
+      tags: [admin-org]
+      summary: 后台申请资质材料预签名上传（JPG/PNG ≤5MB）
+      operationId: adminMediaUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [filename, content_type, size]
+              properties:
+                filename: { type: string }
+                content_type: { type: string }
+                size: { type: integer }
+      responses:
+        '200': { description: 上传凭证, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /media/upload:
+    post:
+      tags: [admin-org]
+      summary: 后台上传资质材料（multipart/form-data，JPG/PNG ≤5MB）
+      operationId: adminMediaUploadFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200': { description: 文件ID, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /media/{id}:
+    get:
+      tags: [admin-org]
+      summary: 后台获取材料访问地址
+      operationId: adminMediaURL
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 访问地址, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /media/{id}/raw:
+    get:
+      tags: [admin-org]
+      summary: 后台读取本地落库材料（需后台令牌）
+      operationId: adminMediaRaw
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 文件二进制, content: { image/jpeg: { schema: { type: string, format: binary } }, image/png: { schema: { type: string, format: binary } } } }
   /users/{id}/restrict:
     post:
       tags: [admin-governance]
@@ -1127,6 +1282,9 @@ paths:
                 nickname: { type: string, maxLength: 32 }
                 phone: { type: string }
                 identity_type: { type: integer, enum: [1, 2] }
+                real_name: { type: string, maxLength: 64 }
+                id_card_no: { type: string, maxLength: 18 }
+                region_code: { type: string, maxLength: 12 }
       responses:
         '200': { description: 已创建, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -1148,9 +1306,42 @@ paths:
                 nickname: { type: string, maxLength: 32 }
                 phone: { type: string }
                 identity_type: { type: integer, enum: [1, 2] }
+                real_name: { type: string, maxLength: 64 }
+                id_card_no: { type: string, maxLength: 18 }
+                region_code: { type: string, maxLength: 12 }
       responses:
         '200': { description: 已更新, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      tags: [admin-identity]
+      summary: 软删除/注销用户（保留历史数据，禁止登录）
+      operationId: adminDeleteUser
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 已删除, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /users/{id}/card:
+    get:
+      tags: [admin-governance]
+      summary: 后台读取用户/组织名片（不做对外展示过滤）
+      operationId: adminGetUserCard
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 名片, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+    put:
+      tags: [admin-governance]
+      summary: 后台维护组织名片（跳过认证锁定；保留联系方式和资质材料）
+      operationId: adminUpdateOrgCard
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminOrgCardInput' }
+      responses:
+        '200': { description: 已保存, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
   /users/{id}/ban:
     post:
       tags: [admin-identity]
@@ -1453,6 +1644,25 @@ paths:
                             type: array
                             items: { $ref: '#/components/schemas/AdminMember' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /certs/{id}/realname:
+    get:
+      tags: [admin-verify]
+      summary: 实名审核详情（姓名/证件号/正反面材料；需认证审核权限，查看写审计）
+      operationId: adminRealnameDetail
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 实名详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RealnameDetail' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /certs/{id}/review:
     post:
       tags: [admin-governance]
@@ -1626,6 +1836,81 @@ components:
         realname_status: { type: integer }
         phone_masked: { type: string }
         created_at: { type: string, format: date-time }
+    AdminGovernanceUser:
+      type: object
+      properties:
+        id: { type: string }
+        nickname: { type: string }
+        status: { type: integer, description: '0 正常 / 1 限制 / 2 停用 / 3 注销' }
+        identity_type: { type: integer, description: '1 个人 / 2 组织' }
+        realname_status: { type: integer, description: '0 未实名 / 1 已实名 / 2 核验失败' }
+        real_name: { type: string, description: 姓名（已通过实名优先，否则为后台录入） }
+        id_card_masked: { type: string, description: 身份证号脱敏（前 4 后 4） }
+        phone_masked: { type: string }
+        region_code: { type: string }
+        industry_codes: { type: array, items: { type: string } }
+        created_at: { type: integer, description: Unix 秒 }
+        member_level: { type: integer }
+        member_active: { type: boolean }
+    RealnameDetail:
+      type: object
+      properties:
+        cert_id: { type: string }
+        user_id: { type: string }
+        real_name: { type: string }
+        id_card_no: { type: string, description: 仅认证审核权限可见 }
+        material_file_ids: { type: array, items: { type: integer } }
+        status: { type: integer }
+        submitted_at: { type: string, format: date-time }
+    AdminOrg:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        nickname: { type: string }
+        status: { type: integer }
+        realname_status: { type: integer }
+        phone_masked: { type: string }
+        real_name: { type: string }
+        id_card_masked: { type: string }
+        category: { type: string }
+        category_label: { type: string }
+        region_code: { type: string }
+        industry_codes: { type: array, items: { type: string } }
+        cert_status: { type: integer }
+        cert_type: { type: integer }
+        cert_submitted_at: { type: string, format: date-time }
+        member_count: { type: integer }
+        member_pending: { type: integer }
+        admin_count: { type: integer }
+        created_at: { type: integer }
+    AdminOrgCardInput:
+      type: object
+      required: [org_type_code, name]
+      properties:
+        org_type_code: { type: string }
+        name: { type: string, maxLength: 128 }
+        region_code: { type: string, maxLength: 12 }
+        industry_codes: { type: array, items: { type: string } }
+        need_codes: { type: array, items: { type: string } }
+        offer_codes: { type: array, items: { type: string } }
+        core_strength: { type: string, maxLength: 2000 }
+        intro: { type: string, maxLength: 5000 }
+    AdminOrgCertInput:
+      type: object
+      required: [cert_type, agreed, material_file_ids]
+      properties:
+        cert_type: { type: integer, enum: [4, 5] }
+        agreed: { type: boolean }
+        material_file_ids: { type: array, items: { type: integer }, minItems: 1, maxItems: 3 }
+        extra: { type: object, additionalProperties: { type: string } }
+    AdminOrgMemberInput:
+      type: object
+      required: [user_id]
+      properties:
+        user_id: { type: string }
+        role: { type: string, maxLength: 64 }
+        proof_file_ids: { type: array, items: { type: integer }, maxItems: 3 }
     TagSet:
       type: object
       properties:

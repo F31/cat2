@@ -22,7 +22,7 @@ import (
 // 真实模块（nil 依赖）装载拓扑：dict/media 先于 identity/trust，Register 全通过。
 func TestRealModulesLoad(t *testing.T) {
 	mods := []module.Module{
-		media.New(nil, nil),
+		media.New(nil, nil, nil),
 		identity.New(identity.Deps{}),
 		trust.New(trust.Deps{}),
 		dict.New(nil),

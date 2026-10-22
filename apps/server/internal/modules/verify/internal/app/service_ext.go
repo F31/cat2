@@ -24,6 +24,11 @@ var (
 	ErrOrgAdminExists    = errors.New("verify: 该成员已是组织管理员")
 	ErrInviteNotFound    = errors.New("verify: 邀请不存在或已确认")
 	ErrOrgIDRequired     = errors.New("verify: 缺少目标组织")
+	ErrRealnameRequired  = errors.New("verify: 请先完成实名认证")
+	ErrOrgNotReady       = errors.New("verify: 组织不存在、已停用或尚未通过认证")
+	ErrAffAlreadyExists  = errors.New("verify: 该用户已是组织成员")
+	ErrCertPending       = errors.New("verify: 实名认证审核中，请勿重复提交")
+	ErrIDCardMaterials   = errors.New("verify: 请上传身份证正反面两张图片")
 )
 
 // maxMaterials 每类认证/核验最多材料数（PRD 8.4）。
@@ -139,6 +144,15 @@ func (s *Service) ReviewCert(ctx context.Context, certID, reviewerID int64, revi
 	}); err != nil {
 		return err
 	}
+	if c.CertType == contract.CertRealname {
+		rs := int16(2)
+		if pass {
+			rs = 1
+		}
+		if err := s.identity.MarkRealname(ctx, c.UserID, rs); err != nil {
+			return err
+		}
+	}
 	obs.Default().Inc("catcube_cert_reviewed_total")
 	return nil
 }
@@ -164,6 +178,12 @@ func (s *Service) ApplyAffiliation(ctx context.Context, userID, orgID int64, rol
 	if len(proofFileIDs) > maxMaterials {
 		return contract.Affiliation{}, ErrMaterialsRequired
 	}
+	if ok, err := s.IsRealname(ctx, userID); err != nil || !ok {
+		return contract.Affiliation{}, ErrRealnameRequired
+	}
+	if err := s.requireOrgReady(ctx, orgID); err != nil {
+		return contract.Affiliation{}, err
+	}
 	// 状态机 #4：仅已驳回的归属重新申请时才走 rejected→pending 转移
 	if prev, err := s.repo.GetAffiliationByUserOrg(ctx, userID, orgID); err == nil && prev.Status == contract.AffRejected {
 		if _, err := s.engine.Apply(ctx, domain.MachineAffiliation, prev.ID, domain.AffStateRejected, domain.AffEventApply, "user"); err != nil {
@@ -184,6 +204,76 @@ func (s *Service) ApplyAffiliation(ctx context.Context, userID, orgID int64, rol
 		return contract.Affiliation{}, err
 	}
 	return toAffiliation(a), nil
+}
+
+// AffiliationsOfOrg 组织成员列表（后台组织管理）。
+func (s *Service) AffiliationsOfOrg(ctx context.Context, orgID int64) ([]contract.Affiliation, error) {
+	rows, err := s.repo.AffiliationsOfOrg(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contract.Affiliation, 0, len(rows))
+	for _, a := range rows {
+		out = append(out, toAffiliation(a))
+	}
+	return out, nil
+}
+
+// AssistAffiliation 管理端辅助加入组织：成员须已实名；运营方直接核验通过。
+func (s *Service) AssistAffiliation(ctx context.Context, orgID, userID int64, role string, proofFileIDs []int64, operatorID int64) (contract.Affiliation, error) {
+	if orgID == 0 || userID == 0 {
+		return contract.Affiliation{}, ErrOrgIDRequired
+	}
+	if len(proofFileIDs) > maxMaterials {
+		return contract.Affiliation{}, ErrMaterialsRequired
+	}
+	if ok, err := s.IsRealname(ctx, userID); err != nil || !ok {
+		return contract.Affiliation{}, ErrRealnameRequired
+	}
+	b, err := s.identity.UserBrief(ctx, orgID)
+	if err != nil || b.Status != 0 {
+		return contract.Affiliation{}, ErrOrgNotReady
+	}
+	a := infra.Affiliation{ID: int64(ids.New()), UserID: userID, OrgID: orgID, Role: role, ProofIDs: proofFileIDs, Status: contract.AffVerified}
+	if err := s.pool.InTx(ctx, func(tx db.Tx) error {
+		if err := s.repo.InsertVerifiedAffiliation(ctx, tx, a, operatorID); err != nil {
+			return err
+		}
+		if s.bus == nil {
+			return nil
+		}
+		payload := contract.AffiliationPayload{AffiliationID: a.ID, UserID: userID, OrgID: orgID, Status: contract.AffVerified}
+		return s.bus.Publish(ctx, tx, contract.NewAffiliationVerified(ids.New().String(), payload))
+	}); err != nil {
+		return contract.Affiliation{}, err
+	}
+	return toAffiliation(a), nil
+}
+
+// RemoveAffiliation 管理端移除组织成员。
+func (s *Service) RemoveAffiliation(ctx context.Context, orgID, userID, operatorID int64) error {
+	ok, err := s.repo.RemoveAffiliation(ctx, orgID, userID, operatorID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrAffNotFound
+	}
+	return nil
+}
+
+// requireOrgReady 组织必须存在且已通过企业/机构认证（平台侧辅助加入不强制认证）。
+func (s *Service) requireOrgReady(ctx context.Context, orgID int64) error {
+	b, err := s.identity.UserBrief(ctx, orgID)
+	if err != nil || b.Status != 0 {
+		return ErrOrgNotReady
+	}
+	for _, t := range []int16{contract.CertEnterprise, contract.CertInstitution} {
+		if c, err := s.repo.LatestOfType(ctx, orgID, t); err == nil && c.Status == contract.CertApproved {
+			return nil
+		}
+	}
+	return ErrOrgNotReady
 }
 
 // AffiliationsOf 归属列表（一人多单位：置灰/红框由 status 驱动）。

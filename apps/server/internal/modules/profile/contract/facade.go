@@ -7,6 +7,7 @@ import "context"
 type Card struct {
 	UserID          int64    `json:"user_id,string"`
 	SubjectTypeCode string   `json:"subject_type_code,omitempty"`
+	OrgTypeCode     string   `json:"org_type_code,omitempty"`
 	IdentityType    int16    `json:"identity_type"` // 1个人/2组织
 	Name            string   `json:"name"`
 	AvatarFileID    int64    `json:"avatar_file_id,string,omitempty"`
@@ -22,6 +23,18 @@ type Card struct {
 	Intro           string   `json:"intro,omitempty"`
 	ProfileTier     int16    `json:"profile_tier"`
 	HasContact      bool     `json:"has_contact"` // 是否已配置联系方式（明文永不下发）
+}
+
+// AdminOrgInput 后台维护组织名片字段（不触碰联系方式/资质材料，避免误清空）。
+type AdminOrgInput struct {
+	OrgTypeCode   string   `json:"org_type_code"`
+	Name          string   `json:"name"`
+	RegionCode    string   `json:"region_code"`
+	IndustryCodes []string `json:"industry_codes"`
+	NeedCodes     []string `json:"need_codes"`
+	OfferCodes    []string `json:"offer_codes"`
+	CoreStrength  string   `json:"core_strength"`
+	Intro         string   `json:"intro"`
 }
 
 // Completion 画像完成度（第二层五项任一为空即未完成）。
@@ -43,6 +56,10 @@ type OrgBrief struct {
 type Facade interface {
 	// CardOf 取名片（对外只读视图，敏感字段已过滤）。
 	CardOf(ctx context.Context, userID int64) (Card, error)
+	// AdminCardOf 后台取完整名片视图（不做展示过滤；仍不含联系方式/证件号明文）。
+	AdminCardOf(ctx context.Context, userID int64) (Card, error)
+	// AdminUpdateOrgCard 后台维护组织名片字段（跳过认证锁定，保留联系方式和资质材料）。
+	AdminUpdateOrgCard(ctx context.Context, userID int64, in AdminOrgInput) (Card, error)
 	// CompletionOf 取画像完成度。
 	CompletionOf(ctx context.Context, userID int64) (Completion, error)
 	// OrgBrief 取摘要（引用解析/展示用）。

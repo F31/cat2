@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Taro from '@tarojs/taro'
 import { View, Text } from '@tarojs/components'
-import { api } from '../services/request'
+import { uploadMedia } from '../services/request'
 import { ensureLogin } from '../services/auth'
 
 export interface UploaderProps {
@@ -45,10 +45,8 @@ export default function Uploader({ label, value, max = 1, onChange }: UploaderPr
           Taro.showToast({ title: '图片需 ≤5MB', icon: 'none' })
           continue
         }
-        const filename = path.split('/').pop() ?? 'upload.jpg'
-        const ticket = await api.createUpload(filename, contentType, file.size)
-        await Taro.uploadFile({ url: ticket.upload_url, filePath: path, name: 'file' })
-        ids.push(ticket.file_id)
+        const fileID = await uploadMedia(path)
+        ids.push(fileID)
       }
       onChange(ids)
     } catch {

@@ -41,8 +41,7 @@ func defaultAdminMenus() []menu.Item {
 
 		// 交易与会员（直接二级页面）
 		trade("trade.orders", "订单管理", "/orders", "trade", 1),
-		trade("membership.members", "会员管理", "/members", "membership", 2),
-		trade("ops.exports", "导出中心", "/exports", "ops", 3),
+		trade("ops.exports", "导出中心", "/exports", "ops", 2),
 
 		// 圈子与立方
 		collab("cube.cubes", "猫立方管理", "/cubes", "cube", 1),
@@ -54,7 +53,9 @@ func defaultAdminMenus() []menu.Item {
 		operation("channel.settlements", "operation.channel", "渠道结算", "/channel-settlements", "channel", 2),
 		operation("ops.channel_settings", "operation.channel", "渠道与佣金", "/channel-settings", "ops", 3),
 		operation("ops.membership_pricing", "operation.channel", "会员价格", "/membership-pricing", "ops", 4),
-		operation("operation.tools", "", "运营工具", "/m/operation/tools", "ops", 2),
+		operation("operation.orgs", "", "组织管理", "/organizations", "ops", 2),
+		operation("membership.members", "", "会员管理", "/members", "ops", 3),
+		operation("operation.tools", "", "运营工具", "/m/operation/tools", "ops", 4),
 		operation("ops.governance", "operation.tools", "代操作", "/governance", "ops", 1),
 		operation("ai.prompts", "operation.tools", "AI 提示词与用量", "/ai-prompts", "ai", 2),
 
@@ -81,6 +82,12 @@ func defaultAdminMenus() []menu.Item {
 			items[i].RequiredPerm = "ops:settings:read"
 		case "system.miniapp":
 			items[i].SuperOnly = true
+		case "operation.orgs":
+			items[i].RequiredPerm = "governance:org:manage"
+		case "verify.certs":
+			items[i].RequiredPerm = "verify:cert:review"
+		case "verify.badges":
+			items[i].RequiredPerm = "verify:badge:set"
 		}
 	}
 	return items
@@ -120,6 +127,32 @@ func seedAdminMenus(ctx context.Context, pool *db.Pool) error {
 	}
 	// 一级「圈子与立方」更名为「广场」。
 	if _, err := pool.Exec(ctx, `UPDATE sys_admin_menu SET group_label='广场' WHERE group_key='collab'`); err != nil {
+		return err
+	}
+	// 会员管理从「交易与会员」迁到「运营管理」；组织管理紧随渠道管理。
+	if _, err := pool.Exec(ctx, `
+		UPDATE sys_admin_menu SET group_key='operation', group_label='运营管理', group_order=5,
+			parent_key='', item_order=3, required_perm='', module='ops'
+		WHERE key='membership.members'`); err != nil {
+		return err
+	}
+	// 运营管理顺序：渠道管理 → 组织管理 → 会员管理 → 运营工具。
+	if _, err := pool.Exec(ctx, `
+		UPDATE sys_admin_menu SET item_order=CASE key
+			WHEN 'membership.members' THEN 3
+			WHEN 'operation.tools' THEN 4
+		END
+		WHERE key IN ('membership.members','operation.tools')`); err != nil {
+		return err
+	}
+	// 权限点迁移：认证审核/标识配置/组织管理按菜单级权限过滤。
+	if _, err := pool.Exec(ctx, `
+		UPDATE sys_admin_menu SET required_perm=CASE key
+			WHEN 'verify.certs' THEN 'verify:cert:review'
+			WHEN 'verify.badges' THEN 'verify:badge:set'
+			WHEN 'operation.orgs' THEN 'governance:org:manage'
+		END
+		WHERE key IN ('verify.certs','verify.badges','operation.orgs')`); err != nil {
 		return err
 	}
 	// 系统管理固定为第 6 个一级分组（兼容旧库遗留的 7）。

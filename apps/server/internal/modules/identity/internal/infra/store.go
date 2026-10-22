@@ -23,6 +23,9 @@ type User struct {
 	PhoneEnc       []byte
 	PhoneHMAC      []byte
 	Nickname       string
+	RealNameEnc    []byte
+	IDCardNoEnc    []byte
+	RegionCode     string
 	AuthzVer       int
 	Status         domain.UserStatus
 	RealnameStatus int16
@@ -44,11 +47,13 @@ func NewStore(pool *db.Pool) *Store { return &Store{pool: pool} }
 // Pool 暴露连接池（module 层装配事务用）。
 func (s *Store) Pool() *db.Pool { return s.pool }
 
-const userCols = `id, COALESCE(wechat_openid,''), phone_enc, phone_hmac, COALESCE(nickname,''), authz_ver, status, realname_status, identity_type`
+const userCols = `id, COALESCE(wechat_openid,''), phone_enc, phone_hmac, COALESCE(nickname,''),
+	id_card_name_enc, id_card_no_enc, COALESCE(region_code,''), authz_ver, status, realname_status, identity_type`
 
 func scanUser(row pgx.Row) (User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.OpenID, &u.PhoneEnc, &u.PhoneHMAC, &u.Nickname, &u.AuthzVer, &u.Status, &u.RealnameStatus, &u.IdentityType)
+	err := row.Scan(&u.ID, &u.OpenID, &u.PhoneEnc, &u.PhoneHMAC, &u.Nickname,
+		&u.RealNameEnc, &u.IDCardNoEnc, &u.RegionCode, &u.AuthzVer, &u.Status, &u.RealnameStatus, &u.IdentityType)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return u, ErrNotFound
 	}
@@ -73,6 +78,9 @@ type AdminUser struct {
 	IdentityType   int16
 	RealnameStatus int16
 	PhoneEnc       []byte
+	RealNameEnc    []byte
+	IDCardNoEnc    []byte
+	RegionCode     string
 	CreatedAt      time.Time
 }
 
@@ -101,7 +109,8 @@ func (s *Store) AdminSearchUsers(ctx context.Context, f AdminUserFilter) ([]Admi
 		f.Limit = 50
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, COALESCE(nickname,''), status, identity_type, COALESCE(realname_status,0), phone_enc, created_at
+		SELECT id, COALESCE(nickname,''), status, identity_type, COALESCE(realname_status,0), phone_enc,
+		       id_card_name_enc, id_card_no_enc, COALESCE(region_code,''), created_at
 		  FROM idn_user
 		 WHERE ($1 < 0 OR status=$1)
 		   AND ($2 = '' OR nickname ILIKE '%'||$2||'%')
@@ -120,7 +129,8 @@ func (s *Store) AdminSearchUsers(ctx context.Context, f AdminUserFilter) ([]Admi
 	var out []AdminUser
 	for rows.Next() {
 		var u AdminUser
-		if err := rows.Scan(&u.ID, &u.Nickname, &u.Status, &u.IdentityType, &u.RealnameStatus, &u.PhoneEnc, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Nickname, &u.Status, &u.IdentityType, &u.RealnameStatus, &u.PhoneEnc,
+			&u.RealNameEnc, &u.IDCardNoEnc, &u.RegionCode, &u.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, u)

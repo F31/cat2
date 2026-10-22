@@ -54,14 +54,36 @@ const (
 
 // Cert 认证申请。
 type Cert struct {
-	ID           int64      `json:"id,string"`
-	UserID       int64      `json:"user_id,string"`
-	CertType     int16      `json:"cert_type"`
-	TargetOrgID  int64      `json:"target_org_id,string,omitempty"`
-	Status       int16      `json:"status"`
-	RejectReason string     `json:"reject_reason,omitempty"`
-	SubmittedAt  time.Time  `json:"submitted_at"`
-	ReviewedAt   *time.Time `json:"reviewed_at,omitempty"`
+	ID              int64             `json:"id,string"`
+	UserID          int64             `json:"user_id,string"`
+	CertType        int16             `json:"cert_type"`
+	TargetOrgID     int64             `json:"target_org_id,string,omitempty"`
+	Status          int16             `json:"status"`
+	RejectReason    string            `json:"reject_reason,omitempty"`
+	MaterialFileIDs []int64           `json:"material_file_ids,omitempty"`
+	Extra           map[string]string `json:"extra,omitempty"`
+	SubmittedAt     time.Time         `json:"submitted_at"`
+	ReviewedAt      *time.Time        `json:"reviewed_at,omitempty"`
+}
+
+// RealnameDetail 审核详情：仅认证审核权限可读，包含待核对的姓名/证件号。
+type RealnameDetail struct {
+	CertID          int64     `json:"cert_id,string"`
+	UserID          int64     `json:"user_id,string"`
+	RealName        string    `json:"real_name"`
+	IDCardNo        string    `json:"id_card_no"`
+	MaterialFileIDs []int64   `json:"material_file_ids,omitempty"`
+	Status          int16     `json:"status"`
+	SubmittedAt     time.Time `json:"submitted_at"`
+}
+
+// RealnameInfo 后台展示用实名摘要：仅取已通过记录，证件号必须先脱敏。
+type RealnameInfo struct {
+	UserID       int64     `json:"user_id,string"`
+	RealName     string    `json:"real_name"`
+	IDCardMasked string    `json:"id_card_masked"`
+	Status       int16     `json:"status"`
+	SubmittedAt  time.Time `json:"submitted_at"`
 }
 
 // CertifyInput 认证申请入参（一期实名：姓名 + 身份证号 + 协议勾选）。
@@ -114,6 +136,10 @@ type Facade interface {
 	Certify(ctx context.Context, userID int64, in CertifyInput) (Cert, error)
 	// CertsOf 某账号的认证记录。
 	CertsOf(ctx context.Context, userID int64) ([]Cert, error)
+	// RealnameInfos 批量查询最近一条已通过实名记录的后台摘要（证件号已脱敏）。
+	RealnameInfos(ctx context.Context, userIDs []int64) ([]RealnameInfo, error)
+	// RealnameDetail 实名审核详情（姓名/证件号/正反面材料；调用方必须做权限与审计）。
+	RealnameDetail(ctx context.Context, certID int64) (RealnameDetail, error)
 	// BadgeDefs 标识定义列表。
 	BadgeDefs(ctx context.Context) ([]BadgeDef, error)
 	// UpsertBadgeDef 新增/更新标识定义。
@@ -134,6 +160,12 @@ type Facade interface {
 	ApplyAffiliation(ctx context.Context, userID, orgID int64, role string, proofFileIDs []int64) (Affiliation, error)
 	// AffiliationsOf 某账号的归属（含置灰/红框标识所需状态）。
 	AffiliationsOf(ctx context.Context, userID int64) ([]Affiliation, error)
+	// AffiliationsOfOrg 某组织的成员归属列表（后台组织管理）。
+	AffiliationsOfOrg(ctx context.Context, orgID int64) ([]Affiliation, error)
+	// AssistAffiliation 管理端辅助加入组织（直接核验通过；要求成员已实名）。
+	AssistAffiliation(ctx context.Context, orgID, userID int64, role string, proofFileIDs []int64, operatorID int64) (Affiliation, error)
+	// RemoveAffiliation 管理端移除组织成员。
+	RemoveAffiliation(ctx context.Context, orgID, userID, operatorID int64) error
 	// VerifyAffiliation 核验归属（组织管理员；先到先处理）。
 	VerifyAffiliation(ctx context.Context, affID, reviewerID int64, pass bool, reason string) error
 	// SetPrimaryAffiliation 设为主单位（唯一）。

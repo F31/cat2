@@ -66,6 +66,9 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cards/{ref}", Handler: m.handlePublicCard},
 		// 后台：画像字段模板（字段池 + 各主体类型渲染结果；p4 §8.1）
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/profile-templates", Handler: m.auth(m.handleAdminTemplates), Admin: true},
+		// 后台：组织名片维护（运营管理 → 组织管理）
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/users/{id}/card", Handler: m.auth(m.handleAdminCard), Admin: true},
+		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/users/{id}/card", Handler: m.auth(m.handleAdminPutCard), Admin: true},
 	)
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "profile:identity:modify:denied", Path: "/api/mp/v1/cards/me", Required: true, LogFailed: true, Module: "profile"},
@@ -91,6 +94,14 @@ func (m *Module) Migrations() string { return migrations }
 
 // Facade 对外契约。
 func (m *Module) Facade() contract.Facade { return m }
+
+func (m *Module) AdminCardOf(ctx context.Context, userID int64) (contract.Card, error) {
+	return m.svc.AdminCardOf(ctx, userID)
+}
+
+func (m *Module) AdminUpdateOrgCard(ctx context.Context, userID int64, in contract.AdminOrgInput) (contract.Card, error) {
+	return m.svc.AdminUpdateOrgCard(ctx, userID, in)
+}
 
 // ---- contract.Facade 实现 ----
 
@@ -202,6 +213,50 @@ func (m *Module) handleAdminTemplates(w http.ResponseWriter, req *http.Request) 
 		items = append(items, map[string]any{"code": t.Code, "name": t.Name, "fields": fields})
 	}
 	writeData(w, map[string]any{"items": items, "field_pool": defs})
+}
+
+// handleAdminCard 后台读取指定用户/组织名片。
+func (m *Module) handleAdminCard(w http.ResponseWriter, req *http.Request) {
+	id, err := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	if err != nil || id == 0 {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	card, err := m.svc.AdminCardOf(req.Context(), id)
+	if err != nil {
+		writeCardErr(w, err)
+		return
+	}
+	writeData(w, card)
+}
+
+// handleAdminPutCard 后台维护组织名片字段（运营管理员；写审计）。
+func (m *Module) handleAdminPutCard(w http.ResponseWriter, req *http.Request) {
+	id, err := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	if err != nil || id == 0 {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	var in contract.AdminOrgInput
+	if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	before, _ := m.svc.AdminCardOf(req.Context(), id)
+	card, err := m.svc.AdminUpdateOrgCard(req.Context(), id, in)
+	if err != nil {
+		writeCardErr(w, err)
+		return
+	}
+	if m.deps.Audit != nil {
+		_ = m.deps.Audit.Record(req.Context(), nil, audit.Entry{
+			ActorID: userIDFrom(req.Context()), ActorType: audit.ActorAdmin, Channel: "admin",
+			Action: "profile:admin:org:update", TargetRef: fmt.Sprintf(`{"type":"user","id":"%d"}`, id),
+			Detail: map[string]any{"before": before, "after": card}, Result: audit.ResultOK,
+			IP: audit.ClientIP(req), UserAgent: req.UserAgent(), RequestID: audit.RequestIDOf(req.Context()),
+		})
+	}
+	writeData(w, card)
 }
 
 func (m *Module) handleCompletion(w http.ResponseWriter, req *http.Request) {

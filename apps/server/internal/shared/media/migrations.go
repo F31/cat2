@@ -17,4 +17,11 @@ CREATE TABLE IF NOT EXISTS med_file (
 	created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_med_file_orphan ON med_file(status) WHERE status=0;
+
+-- 无对象存储时的后台资质材料本地落库（生产接 OSS 后仍可保留作兜底）
+CREATE TABLE IF NOT EXISTS med_blob (
+	file_id bigint PRIMARY KEY REFERENCES med_file(id) ON DELETE CASCADE,
+	data bytea NOT NULL,
+	created_at timestamptz NOT NULL DEFAULT now()
+);
 `

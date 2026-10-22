@@ -13,6 +13,7 @@ import (
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
+	"catcube/internal/kernel/rbac"
 	"catcube/internal/kernel/sensitive"
 	idcontract "catcube/internal/modules/identity/contract"
 	"catcube/internal/modules/verify/contract"
@@ -25,12 +26,13 @@ import (
 
 // Deps 装配依赖。
 type Deps struct {
-	Pool      *db.Pool
-	Bus       *eventbus.Bus
-	Verify    ports.RealnameVerify
-	Identity  idcontract.Facade
-	Encryptor *sensitive.Encryptor
-	Audit     *audit.Recorder
+	Pool         *db.Pool
+	Bus          *eventbus.Bus
+	Verify       ports.RealnameVerify
+	Identity     idcontract.Facade
+	Encryptor    *sensitive.Encryptor
+	Audit        *audit.Recorder
+	ManualReview bool
 }
 
 // Module verify 模块。
@@ -51,7 +53,7 @@ func (m *Module) Register(r *module.Registry) error {
 	m.store = infra.NewStore(m.deps.Pool)
 	m.svc = app.New(app.Options{
 		Repo: m.store, Pool: m.deps.Pool, Bus: m.deps.Bus, Verify: m.deps.Verify,
-		Identity: m.deps.Identity, Encrypt: m.deps.Encryptor,
+		Identity: m.deps.Identity, Encrypt: m.deps.Encryptor, ManualReview: m.deps.ManualReview,
 	})
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/certs", Handler: m.auth(m.handleCertify)},
@@ -59,8 +61,9 @@ func (m *Module) Register(r *module.Registry) error {
 		// 企业/组织审核（个人企业身份由企业管理员审）
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/certs/{id}/review", Handler: m.auth(m.handleOrgReviewCert)},
 		// 平台审核认证（全类型）
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/certs/{id}/review", Handler: m.auth(m.handlePlatformReviewCert), Admin: true},
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/certs/pending", Handler: m.auth(m.handlePendingCerts), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/certs/{id}/review", Handler: m.auth(m.handlePlatformReviewCert), Admin: true, Perm: rbac.PermCertReview},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/certs/pending", Handler: m.auth(m.handlePendingCerts), Admin: true, Perm: rbac.PermCertReview},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/certs/{id}/realname", Handler: m.auth(m.handleAdminRealnameDetail), Admin: true, Perm: rbac.PermCertReview},
 		// 一人多单位（归属核验）
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/affiliations", Handler: m.auth(m.handleApplyAffiliation)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/affiliations/mine", Handler: m.auth(m.handleMyAffiliations)},
@@ -74,6 +77,12 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/badges/grant", Handler: m.auth(m.handleGrantBadge), Admin: true},
 		// 平台代处理：超期未核验归属（p4 §4.4）
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/affiliations/overdue", Handler: m.auth(m.handleOverdueAffiliations), Admin: true},
+		// 组织管理（运营）：认证提交、成员辅助加入/移除、管理员查看
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/orgs/{id}/certifications", Handler: m.auth(m.handleAdminSubmitOrgCert), Admin: true, Perm: rbac.PermOrgManage},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/orgs/{id}/members", Handler: m.auth(m.handleAdminOrgMembers), Admin: true, Perm: rbac.PermOrgManage},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/orgs/{id}/members", Handler: m.auth(m.handleAdminAddOrgMember), Admin: true, Perm: rbac.PermOrgManage},
+		module.Route{Method: http.MethodDelete, Path: "/api/admin/v1/orgs/{id}/members/{uid}", Handler: m.auth(m.handleAdminRemoveOrgMember), Admin: true, Perm: rbac.PermOrgManage},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/orgs/{id}/admins", Handler: m.auth(m.handleAdminOrgAdmins), Admin: true, Perm: rbac.PermOrgManage},
 		// 组织管理员机制
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/orgs/{id}/admins", Handler: m.auth(m.handleInviteOrgAdmin)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/orgs/{id}/admins", Handler: m.auth(m.handleOrgAdmins)},
@@ -82,8 +91,12 @@ func (m *Module) Register(r *module.Registry) error {
 	)
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "verify:cert:review", Path: "/api/admin/v1/certs/{id}/review", Required: true, LogFailed: true, Module: "verify"},
+		audit.Point{Action: "verify:cert:realname:view", Path: "/api/admin/v1/certs/{id}/realname", Required: true, LogFailed: true, Module: "verify"},
 		audit.Point{Action: "verify:affiliation:resolve", Path: "/api/admin/v1/affiliations/{id}/resolve", Required: true, LogFailed: true, Module: "verify"},
 		audit.Point{Action: "verify:org_admin:reset", Path: "/api/admin/v1/orgs/{id}/admins/reset", Required: true, LogFailed: true, Module: "verify"},
+		audit.Point{Action: "verify:org:cert:submit", Path: "/api/admin/v1/orgs/{id}/certifications", Required: true, LogFailed: true, Module: "verify"},
+		audit.Point{Action: "verify:org:member:add", Path: "/api/admin/v1/orgs/{id}/members", Required: true, LogFailed: true, Module: "verify"},
+		audit.Point{Action: "verify:org:member:remove", Path: "/api/admin/v1/orgs/{id}/members/{uid}", Required: true, LogFailed: true, Module: "verify"},
 		audit.Point{Action: "verify:badge:config", Path: "/api/admin/v1/badges/{code}", Required: true, LogFailed: true, Module: "verify"},
 		audit.Point{Action: "verify:badge:grant", Path: "/api/admin/v1/badges/grant", Required: true, LogFailed: true, Module: "verify"},
 		audit.Point{Action: "verify:cert:review", Path: "/api/mp/v1/certs/{id}/review", Required: true, LogFailed: true, Module: "verify"},
@@ -99,10 +112,19 @@ func (m *Module) Migrations() string { return migrations }
 func (m *Module) Facade() contract.Facade { return m }
 
 func (m *Module) Certify(ctx context.Context, userID int64, in contract.CertifyInput) (contract.Cert, error) {
+	if in.CertType != contract.CertRealname {
+		return m.svc.CertifyFor(ctx, userID, in)
+	}
 	return m.svc.Certify(ctx, userID, in)
 }
 func (m *Module) CertsOf(ctx context.Context, userID int64) ([]contract.Cert, error) {
 	return m.svc.CertsOf(ctx, userID)
+}
+func (m *Module) RealnameInfos(ctx context.Context, userIDs []int64) ([]contract.RealnameInfo, error) {
+	return m.svc.RealnameInfos(ctx, userIDs)
+}
+func (m *Module) RealnameDetail(ctx context.Context, certID int64) (contract.RealnameDetail, error) {
+	return m.svc.RealnameDetail(ctx, certID)
 }
 func (m *Module) BadgeDefs(ctx context.Context) ([]contract.BadgeDef, error) {
 	defs, err := m.svc.BadgeDefs(ctx)
@@ -139,6 +161,15 @@ func (m *Module) ApplyAffiliation(ctx context.Context, userID, orgID int64, role
 }
 func (m *Module) AffiliationsOf(ctx context.Context, userID int64) ([]contract.Affiliation, error) {
 	return m.svc.AffiliationsOf(ctx, userID)
+}
+func (m *Module) AffiliationsOfOrg(ctx context.Context, orgID int64) ([]contract.Affiliation, error) {
+	return m.svc.AffiliationsOfOrg(ctx, orgID)
+}
+func (m *Module) AssistAffiliation(ctx context.Context, orgID, userID int64, role string, proofFileIDs []int64, operatorID int64) (contract.Affiliation, error) {
+	return m.svc.AssistAffiliation(ctx, orgID, userID, role, proofFileIDs, operatorID)
+}
+func (m *Module) RemoveAffiliation(ctx context.Context, orgID, userID, operatorID int64) error {
+	return m.svc.RemoveAffiliation(ctx, orgID, userID, operatorID)
 }
 func (m *Module) PendingAffiliations(ctx context.Context, orgID, reviewerID int64, limit int) ([]contract.Affiliation, error) {
 	return m.svc.PendingAffiliations(ctx, orgID, reviewerID, limit)
@@ -204,6 +235,9 @@ const (
 	codeCertUnsupported = 100005 // 100005 暂不支持的认证类型
 	codeNotFoundVerify  = 100006 // 100006 记录不存在或已处理
 	codeNoPermVerify    = 100007 // 100007 无审核权限
+	codeRealnameNeeded  = 100008 // 100008 需先实名
+	codeOrgNotReady     = 100009 // 100009 组织未就绪/未认证
+	codeCertPending     = 100010 // 100010 实名认证审核中
 )
 
 func (m *Module) handleCertify(w http.ResponseWriter, req *http.Request) {
@@ -292,6 +326,10 @@ func writeVerifyErrExt(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, app.ErrMaterialsRequired), errors.Is(err, app.ErrOrgIDRequired):
 		writeErr(w, codeParamInvalid, err.Error())
+	case errors.Is(err, app.ErrIDCardMaterials):
+		writeErr(w, codeCertInvalid, err.Error())
+	case errors.Is(err, app.ErrCertPending):
+		writeErr(w, codeCertPending, err.Error())
 	case errors.Is(err, app.ErrNoPermission):
 		writeErr(w, codeNoPermVerify, err.Error())
 	case errors.Is(err, app.ErrCertNotPending), errors.Is(err, app.ErrInviteNotFound), errors.Is(err, app.ErrAffNotFound):
@@ -311,14 +349,20 @@ func writeVerifyErr(w http.ResponseWriter, err error) {
 		writeErr(w, codeCertInvalid, err.Error())
 	case errors.Is(err, domain.ErrNotMatched):
 		writeErr(w, codeNotMatched, err.Error())
-	case errors.Is(err, app.ErrMaterialsRequired), errors.Is(err, app.ErrOrgIDRequired):
+	case errors.Is(err, app.ErrMaterialsRequired), errors.Is(err, app.ErrOrgIDRequired), errors.Is(err, app.ErrIDCardMaterials):
 		writeErr(w, codeCertInvalid, err.Error())
+	case errors.Is(err, app.ErrCertPending):
+		writeErr(w, codeCertPending, err.Error())
 	case errors.Is(err, app.ErrNoPermission), errors.Is(err, app.ErrOrgAdminExists):
 		writeErr(w, codeNoPermVerify, err.Error())
 	case errors.Is(err, app.ErrCertNotPending), errors.Is(err, app.ErrInviteNotFound), errors.Is(err, app.ErrAffNotFound):
 		writeErr(w, codeNotFoundVerify, err.Error())
 	case errors.Is(err, app.ErrAffNotVerified):
 		writeErr(w, codeCertInvalid, err.Error())
+	case errors.Is(err, app.ErrRealnameRequired):
+		writeErr(w, codeRealnameNeeded, err.Error())
+	case errors.Is(err, app.ErrOrgNotReady):
+		writeErr(w, codeOrgNotReady, err.Error())
 	case errors.Is(err, domain.ErrAlreadyVerified):
 		writeErr(w, codeAlreadyRealname, err.Error())
 	case errors.Is(err, domain.ErrUnsupportedCertType):
@@ -334,9 +378,9 @@ func httpStatus(code int) int {
 	switch code {
 	case codeUnauthorized:
 		return http.StatusUnauthorized
-	case codeParamInvalid, codeCertInvalid, codeNotMatched, codeCertUnsupported:
+	case codeParamInvalid, codeCertInvalid, codeNotMatched, codeCertUnsupported, codeRealnameNeeded, codeOrgNotReady:
 		return http.StatusBadRequest
-	case codeAlreadyRealname:
+	case codeAlreadyRealname, codeCertPending:
 		return http.StatusConflict
 	case codeNotFoundVerify:
 		return http.StatusNotFound

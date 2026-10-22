@@ -55,6 +55,9 @@ type Config struct {
 	// DevSMSCode 非空时作为固定短信验证码（开发/联调；生产必须留空）
 	DevSMSCode string
 
+	// RealnameManualReview true=实名认证走「证件材料 + 运营审核」；false=开发态二要素直通
+	RealnameManualReview bool
+
 	// OpenTelemetry（p1 §5.6 / p6 §5.1）：默认关闭；启用后经 OTLP gRPC 导出到 Collector
 	OTelEnabled     bool
 	OTelService     string
@@ -82,6 +85,7 @@ func FromEnv() Config {
 		IdentityEncKey:       getenv("CATCUBE_IDENTITY_ENC_KEY", ""),
 		BlindKey:             getenv("CATCUBE_BLIND_KEY", ""),
 		DevSMSCode:           getenv("CATCUBE_SMS_DEV_CODE", ""),
+		RealnameManualReview: getenvBool("CATCUBE_REALNAME_MANUAL_REVIEW", true),
 		DrainSeconds:         getenvInt("CATCUBE_DRAIN_SECONDS", 5),
 		Moderation:           getenv("CATCUBE_MODERATION", ""),
 		AlertOutboxBacklog:   getenvInt("CATCUBE_ALERT_OUTBOX_BACKLOG", 1000),

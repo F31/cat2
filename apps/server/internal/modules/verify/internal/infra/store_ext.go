@@ -76,6 +76,48 @@ func (s *Store) AffiliationsOf(ctx context.Context, userID int64) ([]Affiliation
 	return out, rows.Err()
 }
 
+// AffiliationsOfOrg 某组织的成员归属列表。
+func (s *Store) AffiliationsOfOrg(ctx context.Context, orgID int64) ([]Affiliation, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+affCols+` FROM vfy_affiliation WHERE org_id=$1 ORDER BY status, created_at`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Affiliation
+	for rows.Next() {
+		a, err := scanAff(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// InsertVerifiedAffiliation 管理端辅助加入：直接写入已核验归属。
+func (s *Store) InsertVerifiedAffiliation(ctx context.Context, tx db.Tx, a Affiliation, reviewerID int64) error {
+	proof, _ := json.Marshal(a.ProofIDs)
+	_, err := tx.Exec(ctx, `
+		INSERT INTO vfy_affiliation (id, user_id, org_id, role, proof_file_ids, status, reviewer_id, reviewed_at, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,1,$6,now(),now(),now())
+		ON CONFLICT (user_id, org_id) DO UPDATE
+		SET role=EXCLUDED.role, proof_file_ids=EXCLUDED.proof_file_ids,
+		    status=1, reject_reason=NULL, reviewer_id=EXCLUDED.reviewer_id, reviewed_at=now(), updated_at=now()`,
+		a.ID, a.UserID, a.OrgID, a.Role, proof, reviewerID)
+	return err
+}
+
+// RemoveAffiliation 移除已核验归属。
+func (s *Store) RemoveAffiliation(ctx context.Context, orgID, userID, operatorID int64) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE vfy_affiliation SET status=3, is_primary=false, reviewer_id=$3, reviewed_at=now(), updated_at=now()
+		WHERE org_id=$1 AND user_id=$2 AND status=1`, orgID, userID, operatorID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
 // GetAffiliation 单条。
 func (s *Store) GetAffiliation(ctx context.Context, id int64) (Affiliation, error) {
 	return scanAff(s.pool.QueryRow(ctx, `SELECT `+affCols+` FROM vfy_affiliation WHERE id=$1`, id))
@@ -295,13 +337,14 @@ func (s *Store) PendingCerts(ctx context.Context, reviewerType int16, orgID int6
 
 func scanCertFull(row pgx.Row) (Cert, error) {
 	var c Cert
-	var material []byte
-	err := row.Scan(&c.ID, &c.UserID, &c.CertType, &c.TargetOrgID, &material,
+	var material, extra []byte
+	err := row.Scan(&c.ID, &c.UserID, &c.CertType, &c.TargetOrgID, &material, &extra,
 		&c.RealNameEnc, &c.IDNoEnc, &c.Status, &c.RejectReason, &c.SubmitterAt, &c.ReviewedAt, &c.ReviewerType)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, ErrNotFound
 	}
 	_ = json.Unmarshal(material, &c.MaterialIDs)
+	_ = json.Unmarshal(extra, &c.Extra)
 	return c, err
 }
 

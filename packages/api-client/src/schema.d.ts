@@ -2648,7 +2648,7 @@ export interface components {
             /** @description 实名认证服务协议勾选 */
             agreed: boolean;
             target_org_id?: string;
-            material_file_ids?: string[];
+            material_file_ids?: number[];
             extra?: {
                 [key: string]: string;
             };

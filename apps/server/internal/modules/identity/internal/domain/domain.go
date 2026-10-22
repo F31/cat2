@@ -3,6 +3,8 @@ package domain
 
 import (
 	"errors"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -100,3 +102,8 @@ func ValidPhone(p string) bool {
 	}
 	return p[1] >= '3' && p[1] <= '9'
 }
+
+var idCardRe = regexp.MustCompile(`^\d{17}[\dXx]$`)
+
+// ValidIDCard 身份证号格式（18 位，末位数字或 X）。
+func ValidIDCard(s string) bool { return idCardRe.MatchString(strings.TrimSpace(s)) }

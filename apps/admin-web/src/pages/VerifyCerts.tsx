@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Input, Modal, Space, Tag, message } from 'antd'
+import { Button, Descriptions, Input, Modal, Space, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { adminApi, type AdminCert } from '../api/admin'
+import { adminApi, type AdminCert, type RealnameDetail } from '../api/admin'
 import DataTable from '../components/DataTable'
+import MediaThumb from '../components/MediaThumb'
 
-const CERT_TYPE: Record<number, string> = { 1: '实名', 2: '企业', 3: '组织' }
+const CERT_TYPE: Record<number, string> = { 1: '实名', 2: '个人企业身份', 3: '组织', 4: '企业', 5: '机构' }
 const CERT_STATUS: Record<number, { text: string; color: string }> = {
   0: { text: '待审核', color: 'orange' },
   1: { text: '已通过', color: 'green' },
@@ -17,6 +18,9 @@ export default function VerifyCerts() {
   const [loading, setLoading] = useState(false)
   const [action, setAction] = useState<{ cert: AdminCert; pass: boolean } | null>(null)
   const [reason, setReason] = useState('')
+  const [realname, setRealname] = useState<RealnameDetail | null>(null)
+  const [realnameReason, setRealnameReason] = useState('')
+  const [realnameLoading, setRealnameLoading] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -51,10 +55,60 @@ export default function VerifyCerts() {
     }
   }
 
+  const openRealname = async (cert: AdminCert) => {
+    setRealnameLoading(true)
+    try {
+      const detail = await adminApi.realnameDetail(cert.id)
+      setRealname(detail)
+      setRealnameReason('')
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '加载实名详情失败')
+    } finally {
+      setRealnameLoading(false)
+    }
+  }
+
+  const reviewRealname = async (pass: boolean) => {
+    if (!realname) return
+    if (!pass && !realnameReason.trim()) {
+      message.warning('驳回必须填写原因')
+      return
+    }
+    try {
+      await adminApi.reviewCert(realname.cert_id, pass, realnameReason)
+      message.success('已处理')
+      setRealname(null)
+      setRealnameReason('')
+      void load()
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '操作失败')
+    }
+  }
+
   const columns: ColumnsType<AdminCert> = [
     { title: '认证ID', dataIndex: 'id' },
     { title: '用户ID', dataIndex: 'user_id' },
     { title: '类型', dataIndex: 'cert_type', render: (v: number) => CERT_TYPE[v] ?? v },
+    {
+      title: '申请信息',
+      render: (_, r) => (
+        <div style={{ fontSize: 12 }}>
+          {r.extra?.org_code ? <div>代码：{r.extra.org_code}</div> : null}
+          {r.extra?.legal_name ? <div>负责人：{r.extra.legal_name}</div> : null}
+          {!r.extra?.org_code && !r.extra?.legal_name ? '—' : null}
+        </div>
+      ),
+    },
+    {
+      title: '资质材料',
+      render: (_, r) => (
+        <Space wrap>
+          {(r.material_file_ids ?? []).length === 0
+            ? '—'
+            : (r.material_file_ids ?? []).map((id) => <MediaThumb key={id} id={id} />)}
+        </Space>
+      ),
+    },
     {
       title: '状态',
       dataIndex: 'status',
@@ -69,12 +123,20 @@ export default function VerifyCerts() {
       title: '操作',
       render: (_, r) => (
         <Space>
-          <Button size="small" type="primary" onClick={() => setAction({ cert: r, pass: true })}>
-            通过
-          </Button>
-          <Button size="small" danger onClick={() => setAction({ cert: r, pass: false })}>
-            驳回
-          </Button>
+          {r.cert_type === 1 ? (
+            <Button size="small" type="primary" loading={realnameLoading} onClick={() => void openRealname(r)}>
+              查看实名
+            </Button>
+          ) : (
+            <>
+              <Button size="small" type="primary" onClick={() => setAction({ cert: r, pass: true })}>
+                通过
+              </Button>
+              <Button size="small" danger onClick={() => setAction({ cert: r, pass: false })}>
+                驳回
+              </Button>
+            </>
+          )}
         </Space>
       ),
     },
@@ -100,6 +162,51 @@ export default function VerifyCerts() {
           value={reason}
           onChange={(e) => setReason(e.target.value)}
         />
+      </Modal>
+
+      <Modal
+        title="实名审核详情"
+        open={!!realname}
+        onCancel={() => setRealname(null)}
+        footer={
+          <Space>
+            <Button danger onClick={() => void reviewRealname(false)}>
+              驳回
+            </Button>
+            <Button type="primary" onClick={() => void reviewRealname(true)}>
+              通过
+            </Button>
+          </Space>
+        }
+        width={680}
+      >
+        {realname ? (
+          <>
+            <Descriptions column={1} bordered size="small">
+              <Descriptions.Item label="用户 ID">{realname.user_id}</Descriptions.Item>
+              <Descriptions.Item label="姓名">{realname.real_name || '—'}</Descriptions.Item>
+              <Descriptions.Item label="身份证号">{realname.id_card_no || '—'}</Descriptions.Item>
+              <Descriptions.Item label="提交时间">
+                {realname.submitted_at ? realname.submitted_at.slice(0, 19).replace('T', ' ') : '—'}
+              </Descriptions.Item>
+            </Descriptions>
+            <div style={{ margin: '12px 0' }}>
+              <Space wrap>
+                {(realname.material_file_ids ?? []).map((id) => (
+                  <MediaThumb key={id} id={id} />
+                ))}
+                {(realname.material_file_ids ?? []).length === 0 ? <Tag>无材料</Tag> : null}
+              </Space>
+            </div>
+            <p style={{ color: '#888', fontSize: 12 }}>查看实名详情已写入审计；请仅用于本次审核。</p>
+            <Input.TextArea
+              rows={3}
+              placeholder="驳回原因（驳回必填）"
+              value={realnameReason}
+              onChange={(e) => setRealnameReason(e.target.value)}
+            />
+          </>
+        ) : null}
       </Modal>
     </>
   )

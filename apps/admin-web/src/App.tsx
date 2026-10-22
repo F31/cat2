@@ -33,6 +33,7 @@ import ChannelSettings from './pages/ChannelSettings'
 import MembershipPricing from './pages/MembershipPricing'
 import SmsSettings from './pages/SmsSettings'
 import AiGatewaySettings from './pages/AiGatewaySettings'
+import Organizations from './pages/Organizations'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />
@@ -57,6 +58,7 @@ export default function App() {
         <Route path="reviews" element={<Reviews />} />
         <Route path="orders" element={<Orders />} />
         <Route path="members" element={<Members />} />
+        <Route path="organizations" element={<Organizations />} />
         <Route path="templates" element={<Templates />} />
         <Route path="dead-letters" element={<DeadLetters />} />
         <Route path="feature-flags" element={<FeatureFlags />} />

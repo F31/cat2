@@ -1367,6 +1367,36 @@ paths:
                           items:
                             type: array
                             items: { $ref: '#/components/schemas/DictItem' }
+  /media/upload:
+    post:
+      tags: [media]
+      summary: 直接上传图片（multipart/form-data，JPG/PNG ≤5MB；未配置 OSS 时本地落库）
+      operationId: uploadMedia
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200':
+          description: 文件ID
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          file_id: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /media/uploads:
     post:
       tags: [media]
@@ -3712,7 +3742,7 @@ components:
         id_card_no: { type: string }
         agreed: { type: boolean, description: 实名认证服务协议勾选 }
         target_org_id: { type: string }
-        material_file_ids: { type: array, items: { type: string } }
+        material_file_ids: { type: array, items: { type: integer } }
         extra: { type: object, additionalProperties: { type: string } }
     Badge:
       type: object

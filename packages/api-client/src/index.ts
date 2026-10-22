@@ -330,7 +330,7 @@ export interface CertifyInput {
   id_card_no?: string
   agreed: boolean
   target_org_id?: string
-  material_file_ids?: string[]
+  material_file_ids?: number[]
   extra?: Record<string, string>
 }
 

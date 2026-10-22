@@ -205,6 +205,125 @@ func (m *Module) handleResetOrgAdmin(w http.ResponseWriter, req *http.Request) {
 	writeData(w, map[string]any{"reset": true})
 }
 
+func (m *Module) handleAdminRealnameDetail(w http.ResponseWriter, req *http.Request) {
+	certID, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	if certID == 0 {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	detail, err := m.svc.RealnameDetail(req.Context(), certID)
+	if err != nil {
+		writeVerifyErrExt(w, err)
+		return
+	}
+	m.auditVerify(req, contract.ReviewerPlatform, "verify:cert:realname:view",
+		fmt.Sprintf(`{"type":"cert","id":"%d"}`, certID),
+		map[string]any{"user_id": strconv.FormatInt(detail.UserID, 10)}, audit.ResultOK)
+	writeData(w, detail)
+}
+
+// ---- 组织管理（运营后台）----
+
+func (m *Module) handleAdminSubmitOrgCert(w http.ResponseWriter, req *http.Request) {
+	orgID, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	var body struct {
+		CertType        int16             `json:"cert_type"`
+		Agreed          bool              `json:"agreed"`
+		MaterialFileIDs []int64           `json:"material_file_ids"`
+		Extra           map[string]string `json:"extra"`
+	}
+	if orgID == 0 || json.NewDecoder(req.Body).Decode(&body) != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	if body.CertType != contract.CertEnterprise && body.CertType != contract.CertInstitution {
+		writeErr(w, codeCertUnsupported, "仅支持企业认证或机构认证")
+		return
+	}
+	cert, err := m.svc.CertifyFor(req.Context(), orgID, contract.CertifyInput{
+		CertType: body.CertType, Agreed: body.Agreed, MaterialFileIDs: body.MaterialFileIDs, Extra: body.Extra,
+	})
+	if err != nil {
+		m.auditVerify(req, contract.ReviewerPlatform, "verify:org:cert:submit",
+			fmt.Sprintf(`{"type":"org","id":"%d"}`, orgID), map[string]any{"cert_type": body.CertType, "err": err.Error()}, audit.ResultFailed)
+		writeVerifyErrExt(w, err)
+		return
+	}
+	m.auditVerify(req, contract.ReviewerPlatform, "verify:org:cert:submit",
+		fmt.Sprintf(`{"type":"cert","id":"%d"}`, cert.ID), map[string]any{"org_id": strconv.FormatInt(orgID, 10), "cert_type": body.CertType}, audit.ResultOK)
+	writeData(w, cert)
+}
+
+func (m *Module) handleAdminOrgMembers(w http.ResponseWriter, req *http.Request) {
+	orgID, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	if orgID == 0 {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	items, err := m.svc.AffiliationsOfOrg(req.Context(), orgID)
+	if err != nil {
+		writeVerifyErrExt(w, err)
+		return
+	}
+	writeData(w, map[string]any{"items": items})
+}
+
+func (m *Module) handleAdminAddOrgMember(w http.ResponseWriter, req *http.Request) {
+	orgID, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	var body struct {
+		UserID       string  `json:"user_id"`
+		Role         string  `json:"role"`
+		ProofFileIDs []int64 `json:"proof_file_ids"`
+	}
+	if orgID == 0 || json.NewDecoder(req.Body).Decode(&body) != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	userID, _ := strconv.ParseInt(body.UserID, 10, 64)
+	aff, err := m.svc.AssistAffiliation(req.Context(), orgID, userID, body.Role, body.ProofFileIDs, userIDFrom(req.Context()))
+	if err != nil {
+		m.auditVerify(req, contract.ReviewerPlatform, "verify:org:member:add",
+			fmt.Sprintf(`{"type":"org","id":"%d"}`, orgID), map[string]any{"user_id": body.UserID, "err": err.Error()}, audit.ResultFailed)
+		writeVerifyErrExt(w, err)
+		return
+	}
+	m.auditVerify(req, contract.ReviewerPlatform, "verify:org:member:add",
+		fmt.Sprintf(`{"type":"org","id":"%d"}`, orgID), map[string]any{"user_id": body.UserID, "role": body.Role}, audit.ResultOK)
+	writeData(w, aff)
+}
+
+func (m *Module) handleAdminRemoveOrgMember(w http.ResponseWriter, req *http.Request) {
+	orgID, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	userID, _ := strconv.ParseInt(req.PathValue("uid"), 10, 64)
+	if orgID == 0 || userID == 0 {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	if err := m.svc.RemoveAffiliation(req.Context(), orgID, userID, userIDFrom(req.Context())); err != nil {
+		m.auditVerify(req, contract.ReviewerPlatform, "verify:org:member:remove",
+			fmt.Sprintf(`{"type":"org","id":"%d"}`, orgID), map[string]any{"user_id": strconv.FormatInt(userID, 10), "err": err.Error()}, audit.ResultFailed)
+		writeVerifyErrExt(w, err)
+		return
+	}
+	m.auditVerify(req, contract.ReviewerPlatform, "verify:org:member:remove",
+		fmt.Sprintf(`{"type":"org","id":"%d"}`, orgID), map[string]any{"user_id": strconv.FormatInt(userID, 10)}, audit.ResultOK)
+	writeData(w, map[string]any{"removed": true})
+}
+
+func (m *Module) handleAdminOrgAdmins(w http.ResponseWriter, req *http.Request) {
+	orgID, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	if orgID == 0 {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	items, err := m.svc.OrgAdminsOf(req.Context(), orgID)
+	if err != nil {
+		writeVerifyErrExt(w, err)
+		return
+	}
+	writeData(w, map[string]any{"items": items})
+}
+
 // auditVerify 认证/标识类操作审计（平台=admin，企业审核=mp 用户）。
 func (m *Module) auditVerify(req *http.Request, reviewerType int16, action, targetRef string, detail map[string]any, result audit.Result) {
 	if m.deps.Audit == nil {

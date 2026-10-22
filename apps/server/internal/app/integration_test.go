@@ -4925,6 +4925,13 @@ func TestIntegrationVerifyCertTypesAndOrgAdmin(t *testing.T) {
 	ctx := context.Background()
 	_ = member
 
+	// 0) 加入组织要求成员已实名
+	if _, env := h.do(http.MethodPost, "/api/mp/v1/certs", memberTok, map[string]any{
+		"cert_type": 1, "real_name": "组织成员", "id_card_no": "310101199001010022", "agreed": true,
+	}); env.Code != 0 {
+		t.Fatalf("成员实名失败: %+v", env)
+	}
+
 	// 1) 非实名类认证材料必填
 	if s, e := h.do(http.MethodPost, "/api/mp/v1/certs", applicantTok, map[string]any{
 		"cert_type": 4, "agreed": true, "material_file_ids": []int64{},
@@ -5419,6 +5426,8 @@ func TestIntegrationGovernanceUserSearchAndRestrict(t *testing.T) {
 	type row struct {
 		ID             string `json:"id"`
 		Nickname       string `json:"nickname"`
+		RealName       string `json:"real_name"`
+		IDCardMasked   string `json:"id_card_masked"`
 		RealnameStatus int16  `json:"realname_status"`
 		MemberLevel    int16  `json:"member_level"`
 		MemberActive   bool   `json:"member_active"`
@@ -5441,8 +5450,16 @@ func TestIntegrationGovernanceUserSearchAndRestrict(t *testing.T) {
 	}
 
 	// 1) 手机号精确（盲索引）
-	if got := search("phone=" + phone); !contains(got, target) {
+	got := search("phone=" + phone)
+	if !contains(got, target) {
 		t.Fatalf("手机号精确检索应命中: %+v", got)
+	}
+	for _, r := range got {
+		if r.ID == fmt.Sprintf("%d", target) {
+			if r.RealName != "检索目标" || r.IDCardMasked != "3101**********0011" {
+				t.Fatalf("用户列表应返回姓名与脱敏证件号: %+v", r)
+			}
+		}
 	}
 	// 2) 手机号不匹配
 	if got := search("phone=13000000000"); contains(got, target) {
@@ -5460,7 +5477,7 @@ func TestIntegrationGovernanceUserSearchAndRestrict(t *testing.T) {
 		t.Fatalf("实名+手机号筛选应命中: %+v", got)
 	}
 	// 4) 会员等级过滤（VIP=1）
-	got := search("level=1&phone=" + phone)
+	got = search("level=1&phone=" + phone)
 	if !contains(got, target) {
 		t.Fatalf("会员等级筛选应命中: %+v", got)
 	}
