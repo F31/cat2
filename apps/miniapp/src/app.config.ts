@@ -3,8 +3,8 @@
 export default defineAppConfig({
   pages: [
     'pages/square/index',
-    'pages/circle-home/index',
-    'pages/cube-home/index',
+    'pages/home-circle/index',
+    'pages/home-cube/index',
     'pages/messages/index',
     'pages/mine/index',
   ],
@@ -35,8 +35,8 @@ export default defineAppConfig({
     borderStyle: 'black',
     list: [
       { pagePath: 'pages/square/index', text: '广场' },
-      { pagePath: 'pages/circle-home/index', text: '圈子' },
-      { pagePath: 'pages/cube-home/index', text: '猫立方' },
+      { pagePath: 'pages/home-circle/index', text: '圈子' },
+      { pagePath: 'pages/home-cube/index', text: '猫立方' },
       { pagePath: 'pages/messages/index', text: '消息' },
       { pagePath: 'pages/mine/index', text: '我的' },
     ],

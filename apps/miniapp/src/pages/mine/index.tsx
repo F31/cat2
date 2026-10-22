@@ -69,10 +69,10 @@ export default function Mine() {
         </View>
 
         <View className="menu">
-          <View className="menu__item" onClick={() => Taro.switchTab({ url: '/pages/circle-home/index' })}>
+          <View className="menu__item" onClick={() => Taro.switchTab({ url: '/pages/home-circle/index' })}>
             <Text>我的圈子</Text>
           </View>
-          <View className="menu__item" onClick={() => Taro.switchTab({ url: '/pages/cube-home/index' })}>
+          <View className="menu__item" onClick={() => Taro.switchTab({ url: '/pages/home-cube/index' })}>
             <Text>我的猫立方</Text>
           </View>
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/msg/notices' })}>
