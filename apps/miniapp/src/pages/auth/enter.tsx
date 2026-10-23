@@ -14,6 +14,7 @@ export default function AuthEnter() {
   const [identity, setIdentity] = useState<1 | 2>(1)
   const [confirming, setConfirming] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [phoneBusy, setPhoneBusy] = useState(false)
 
   const showAgreement = (title: string) => Taro.showToast({ title: `《${title}》内容页后续接入`, icon: 'none' })
 
@@ -29,7 +30,9 @@ export default function AuthEnter() {
   const onPhoneNumber = (e: { detail: { code?: string; errMsg?: string } }) => {
     const phoneCode = e.detail.code
     if (!phoneCode) {
-      Taro.showToast({ title: '需授权手机号完成登录', icon: 'none' })
+      setPhoneBusy(false)
+      const tooOften = (e.detail.errMsg ?? '').includes('frequently')
+      Taro.showToast({ title: tooOften ? '请求过于频繁，请稍后再试' : '需授权手机号完成登录', icon: 'none' })
       return
     }
     void doLogin(phoneCode)
@@ -44,6 +47,7 @@ export default function AuthEnter() {
       Taro.showToast({ title: '登录失败，请重试', icon: 'none' })
     } finally {
       setSubmitting(false)
+      setPhoneBusy(false)
     }
   }
 
@@ -104,7 +108,9 @@ export default function AuthEnter() {
                 className="btn-primary auth-modal__btn"
                 openType="getPhoneNumber"
                 onGetPhoneNumber={onPhoneNumber}
-                loading={submitting}
+                loading={submitting || phoneBusy}
+                disabled={submitting || phoneBusy}
+                onClick={() => setPhoneBusy(true)}
               >
                 确认并登录
               </Button>
