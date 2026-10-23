@@ -18,6 +18,9 @@ var (
 	ErrNotRealname   = errors.New("content: 发布需先完成实名认证")
 	ErrRestricted    = errors.New("content: 账号处于限制期，禁止发布")
 	ErrKindUnknown   = errors.New("content: 未知内容类型")
+	ErrNotSignupable = errors.New("content: 该内容不支持报名")
+	ErrSignupFull    = errors.New("content: 报名人数已满")
+	ErrSignupClosed  = errors.New("content: 报名已截止")
 )
 
 // 状态机 #2 状态。

@@ -44,6 +44,10 @@ type Explain struct {
 type Facade interface {
 	// Feed 匹配卡片流（读预计算候选；offset 用于「换一批」）。
 	Feed(ctx context.Context, userID int64, limit, offset int) ([]Card, error)
+	// FeedFiltered 按内容类型过滤的匹配卡片流；type 为空等同 Feed。
+	FeedFiltered(ctx context.Context, userID int64, typ string, limit, offset int) ([]Card, error)
+	// PublicFeed 游客/公开广场：无需登录，只读公开投影，按活跃时间倒序。
+	PublicFeed(ctx context.Context, typ string, limit, offset int) ([]Card, error)
 	// Search 六类内容检索。
 	Search(ctx context.Context, q SearchQuery) ([]Card, error)
 	// Explain 某候选的匹配解释（规则模板生成）。

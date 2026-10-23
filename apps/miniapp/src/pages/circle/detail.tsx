@@ -19,6 +19,7 @@ export default function CircleDetail() {
   const [mounts, setMounts] = useState<CircleMount[]>([])
   const [members, setMembers] = useState<CircleMember[]>([])
   const [pendingCount, setPendingCount] = useState(0)
+  const [myUserId, setMyUserId] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
@@ -31,16 +32,18 @@ export default function CircleDetail() {
       const joined = c.joined || (c.my_role ?? 0) > 0
       if (joined) {
         await ensureLogin()
-        const [f, d, m, ms] = await Promise.all([
+        const [f, d, m, ms, me] = await Promise.all([
           api.listCircleFeeds(id),
           api.listCircleDemands(id),
           api.circleMounts(id),
           api.circleMembers(id),
+          api.me(),
         ])
         setFeeds(f.items ?? [])
         setDemands(d.items ?? [])
         setMounts(m.items ?? [])
         setMembers(ms.items ?? [])
+        setMyUserId(me.user_id)
         if (c.my_role === 1) {
           const apps = await api.listCircleApplications(id, 1)
           setPendingCount((apps.items ?? []).length)
@@ -127,6 +130,18 @@ export default function CircleDetail() {
     }
   }
 
+  const deleteFeed = async (f: CircleFeed) => {
+    const r = await Taro.showModal({ title: '删除动态', content: '删除后不可恢复，确认删除？' })
+    if (!r.confirm) return
+    try {
+      await api.deleteCircleFeed(id, f.id)
+      Taro.showToast({ title: '已删除', icon: 'success' })
+      void load()
+    } catch {
+      Taro.showToast({ title: '仅圈主或作者可删除', icon: 'none' })
+    }
+  }
+
   const renew = async (d: CircleDemand) => {
     try {
       await api.renewCircleDemand(d.id)
@@ -159,6 +174,16 @@ export default function CircleDetail() {
 
   const openMount = (m: CircleMount) => {
     Taro.navigateTo({ url: `/pages/content/detail?ref=${encodeURIComponent(m.item_ref)}` })
+  }
+
+  const decideMount = async (m: CircleMount, approve: boolean) => {
+    try {
+      await api.decideCircleMount(m.id, approve)
+      Taro.showToast({ title: approve ? '已同意挂载' : '已拒绝挂载', icon: 'success' })
+      void load()
+    } catch {
+      Taro.showToast({ title: '操作失败', icon: 'none' })
+    }
   }
 
   if (!circle && (loading || error)) {
@@ -238,6 +263,9 @@ export default function CircleDetail() {
                 </View>
                 <Text className="detail-block__body">{f.text}</Text>
                 <Text className="form-field__label">{f.created_at?.slice(0, 16).replace('T', ' ')}</Text>
+                {isOwner || f.author_id === myUserId ? (
+                  <Text className="row-action" onClick={() => void deleteFeed(f)}>删除</Text>
+                ) : null}
               </View>
             ))}
             {feeds.length === 0 ? <Text className="form-field__label">暂无动态</Text> : null}
@@ -266,13 +294,41 @@ export default function CircleDetail() {
           </View>
 
           <View className="detail-block">
-            <Text className="detail-block__title">挂载内容（{mounts.length}）</Text>
-            {mounts.map((m) => (
-              <Text key={m.id} className="detail-block__body" onClick={() => openMount(m)}>
-                {m.item_ref} {m.approval_status === 0 ? '（待确认）' : m.approval_status === 2 ? '（已拒绝）' : ''}
-              </Text>
+            <Text className="detail-block__title">圈内活动 / 会议</Text>
+            {mounts.filter(isTimedMounted).map((m) => (
+              <View key={m.id} className="menu__item" onClick={() => openMount(m)}>
+                <View className="menu__row">
+                  <Text>{m.title || m.item_ref}</Text>
+                  <Text className="row-tag">{m.kind === 'event' ? '活动' : '会议'}</Text>
+                </View>
+                <Text className="form-field__label">
+                  {fmtRange(m.start_at)}
+                  {m.location ? ` · ${m.location}` : ''}
+                </Text>
+              </View>
             ))}
-            {mounts.length === 0 ? <Text className="form-field__label">暂无挂载</Text> : null}
+            {mounts.filter(isTimedMounted).length === 0 ? (
+              <Text className="form-field__label">暂无圈内活动或会议</Text>
+            ) : null}
+          </View>
+
+          <View className="detail-block">
+            <Text className="detail-block__title">挂载内容（{mounts.filter((m) => !isTimedMounted(m)).length}）</Text>
+            {mounts.filter((m) => !isTimedMounted(m)).map((m) => (
+              <View key={m.id} className="menu__item" onClick={() => openMount(m)}>
+                <View className="menu__row">
+                  <Text>{m.title || m.item_ref}</Text>
+                  <Text className="row-tag">{mountLabel(m)}</Text>
+                </View>
+                {m.can_decide ? (
+                  <View className="menu__row-extra">
+                    <Text className="row-action" onClick={(e) => { e.stopPropagation(); void decideMount(m, true) }}>同意</Text>
+                    <Text className="row-action" onClick={(e) => { e.stopPropagation(); void decideMount(m, false) }}>拒绝</Text>
+                  </View>
+                ) : null}
+              </View>
+            ))}
+            {mounts.filter((m) => !isTimedMounted(m)).length === 0 ? <Text className="form-field__label">暂无挂载</Text> : null}
           </View>
 
           <View className="detail-block">
@@ -302,6 +358,23 @@ export default function CircleDetail() {
       <Canvas canvasId="circleCard" id="circleCard" style={{ position: 'fixed', left: '-2000px', top: 0, width: '750px', height: '1000px' }} />
     </View>
   )
+}
+
+function mountLabel(m: CircleMount): string {
+  if (m.approval_status === 0) return '待确认'
+  if (m.approval_status === 2) return '已拒绝'
+  if (m.kind === 'event') return '活动'
+  if (m.kind === 'meeting') return '会议'
+  return m.kind === 'project' ? '项目' : m.kind === 'product' ? '产品' : '内容'
+}
+
+function isTimedMounted(m: CircleMount): boolean {
+  return m.approval_status === 1 && (m.kind === 'event' || m.kind === 'meeting')
+}
+
+function fmtRange(v?: string): string {
+  if (!v) return '时间待定'
+  return v.slice(0, 16).replace('T', ' ')
 }
 
 // 简单按字符换行（中文为主；最多 6 行）。

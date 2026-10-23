@@ -530,6 +530,25 @@ page {
   color: #999;
   font-size: 22px;
 }
+.feed-filter {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  white-space: nowrap;
+  margin-bottom: 20px;
+}
+.feed-filter__item {
+  flex: 0 0 auto;
+  padding: 8px 20px;
+  background: #ffffff;
+  border-radius: 30px;
+  color: #666;
+  font-size: 24px;
+}
+.feed-filter__item--active {
+  background: #d4411e;
+  color: #ffffff;
+}
 .tabs {
   display: flex;
   flex-wrap: wrap;

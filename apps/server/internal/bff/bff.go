@@ -54,8 +54,8 @@ func New(deps Deps) *Aggregator { return &Aggregator{deps: deps} }
 
 // Register 注册聚合路由（bff 不属于依赖阶梯，直接挂 mux）。
 func (a *Aggregator) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/mp/v1/feed", a.auth(a.handleFeed))
-	mux.HandleFunc("POST /api/mp/v1/feed/refresh", a.auth(a.handleFeed))
+	mux.HandleFunc("GET /api/mp/v1/feed", a.optionalAuth(a.handleFeed))
+	mux.HandleFunc("POST /api/mp/v1/feed/refresh", a.optionalAuth(a.handleFeed))
 	// 详情页游客可看（浏览/搜索/详情=游客可），登录态可选：已登录回关注/会员态，未登录 uid=0。
 	mux.HandleFunc("GET /api/mp/v1/aggregate/detail", a.optionalAuth(a.handleDetail))
 	// 联系方式揭示：会员权益（手机号），非会员 120007 由前端引导开通。
@@ -198,8 +198,17 @@ func (a *Aggregator) handleFeed(w http.ResponseWriter, req *http.Request) {
 	uid := userIDFrom(req.Context())
 	limit, _ := strconv.Atoi(req.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(req.URL.Query().Get("offset"))
+	typ := strings.TrimSpace(req.URL.Query().Get("type"))
 
-	cards, err := a.deps.Discovery.Feed(req.Context(), uid, limit, offset)
+	var (
+		cards []discoverycontract.Card
+		err   error
+	)
+	if uid == 0 {
+		cards, err = a.deps.Discovery.PublicFeed(req.Context(), typ, limit, offset)
+	} else {
+		cards, err = a.deps.Discovery.FeedFiltered(req.Context(), uid, typ, limit, offset)
+	}
 	if err != nil {
 		writeErr(w, 9, "服务错误")
 		return
@@ -207,12 +216,15 @@ func (a *Aggregator) handleFeed(w http.ResponseWriter, req *http.Request) {
 	if cards == nil {
 		cards = []discoverycontract.Card{}
 	}
-	progress, _ := a.deps.Profile.CompletionOf(req.Context(), uid)
-	follow, _ := a.deps.Social.Unread(req.Context(), uid)
-	msgUnread := 0
-	if sessions, err := a.deps.Msg.Sessions(req.Context(), uid); err == nil {
-		for _, s := range sessions {
-			msgUnread += s.Unread
+	var progress profilecontract.Completion
+	var follow, msgUnread int
+	if uid > 0 {
+		progress, _ = a.deps.Profile.CompletionOf(req.Context(), uid)
+		follow, _ = a.deps.Social.Unread(req.Context(), uid)
+		if sessions, serr := a.deps.Msg.Sessions(req.Context(), uid); serr == nil {
+			for _, s := range sessions {
+				msgUnread += s.Unread
+			}
 		}
 	}
 	writeData(w, FeedData{

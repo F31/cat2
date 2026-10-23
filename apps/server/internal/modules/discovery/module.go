@@ -71,6 +71,12 @@ func (m *Module) Facade() contract.Facade { return m }
 func (m *Module) Feed(ctx context.Context, userID int64, limit, offset int) ([]contract.Card, error) {
 	return m.svc.Feed(ctx, userID, limit, offset)
 }
+func (m *Module) FeedFiltered(ctx context.Context, userID int64, typ string, limit, offset int) ([]contract.Card, error) {
+	return m.svc.FeedFiltered(ctx, userID, typ, limit, offset)
+}
+func (m *Module) PublicFeed(ctx context.Context, typ string, limit, offset int) ([]contract.Card, error) {
+	return m.svc.PublicFeed(ctx, typ, limit, offset)
+}
 func (m *Module) Search(ctx context.Context, q contract.SearchQuery) ([]contract.Card, error) {
 	return m.svc.Search(ctx, q)
 }

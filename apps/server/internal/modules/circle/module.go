@@ -108,6 +108,7 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/demands", Handler: m.auth(m.handleListDemands)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/demands/{did}/renew", Handler: m.auth(m.handleRenewDemand)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/feeds", Handler: m.auth(m.handlePublishFeed)},
+		module.Route{Method: http.MethodDelete, Path: "/api/mp/v1/circles/{id}/feeds/{fid}", Handler: m.auth(m.handleDeleteFeed)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/mounts", Handler: m.auth(m.handleMount)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/mounts", Handler: m.auth(m.handleListMounts)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/mounts/{mid}/decide", Handler: m.auth(m.handleDecideMount)},
@@ -225,6 +226,9 @@ func (m *Module) MemberItems(ctx context.Context, circleID, viewerID int64) ([]c
 }
 func (m *Module) ListFeeds(ctx context.Context, circleID, viewerID int64, limit int) ([]contract.CircleFeed, error) {
 	return m.svc.ListFeeds(ctx, circleID, viewerID, limit)
+}
+func (m *Module) DeleteFeed(ctx context.Context, circleID, feedID, userID int64) error {
+	return m.svc.DeleteFeed(ctx, circleID, feedID, userID)
 }
 func (m *Module) ListApplications(ctx context.Context, circleID, ownerID int64, status int16) ([]contract.CircleApplication, error) {
 	return m.svc.ListApplications(ctx, circleID, ownerID, status)
@@ -896,6 +900,14 @@ func (m *Module) handlePublishFeed(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	writeData(w, map[string]any{"id": strconv.FormatInt(id, 10)})
+}
+
+func (m *Module) handleDeleteFeed(w http.ResponseWriter, req *http.Request) {
+	if err := m.svc.DeleteFeed(req.Context(), pathID(req, "id"), pathID(req, "fid"), userIDFrom(req.Context())); err != nil {
+		writeCircleErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"deleted": true})
 }
 
 // ---- 挂载与到猫立方里办（§6.6/6.7）----

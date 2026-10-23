@@ -72,6 +72,7 @@ type Repo interface {
 	AllProfiles(ctx context.Context, limit int) ([]infra.Doc, error)
 	ReplaceCandidates(ctx context.Context, userID int64, list []domain.Ranked) error
 	ListCandidates(ctx context.Context, userID int64, limit, offset int) ([]infra.Candidate, error)
+	ListCandidatesFiltered(ctx context.Context, userID int64, typ string, limit, offset int) ([]infra.Candidate, error)
 	Search(ctx context.Context, f infra.Filter) ([]infra.Doc, error)
 	Reset(ctx context.Context) error
 	DeleteUser(ctx context.Context, userID int64) error
@@ -371,13 +372,20 @@ func (s *Service) RefreshAll(ctx context.Context) (int, error) {
 
 // Feed 匹配卡片流（offset 用于换一批）。
 func (s *Service) Feed(ctx context.Context, userID int64, limit, offset int) ([]contract.Card, error) {
+	return s.FeedFiltered(ctx, userID, "", limit, offset)
+}
+
+func (s *Service) FeedFiltered(ctx context.Context, userID int64, typ string, limit, offset int) ([]contract.Card, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	rows, err := s.repo.ListCandidates(ctx, userID, limit, offset)
+	if typ != "" && !domain.ValidType(typ) {
+		return nil, domain.ErrBadType
+	}
+	rows, err := s.repo.ListCandidatesFiltered(ctx, userID, typ, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -385,6 +393,29 @@ func (s *Service) Feed(ctx context.Context, userID int64, limit, offset int) ([]
 	for _, c := range rows {
 		out = append(out, contract.Card{Ref: c.Ref, Type: c.Type, Title: c.Title, Cover: c.Cover,
 			Region: c.Region, Score: c.Score, MemberLevel: c.MemberLevel, Verified: c.Verified, Reason: toReasons(c.Reason)})
+	}
+	return out, nil
+}
+
+// PublicFeed 游客/公开广场：不依赖画像候选，直接读公开投影。
+func (s *Service) PublicFeed(ctx context.Context, typ string, limit, offset int) ([]contract.Card, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if typ != "" && !domain.ValidType(typ) {
+		return nil, domain.ErrBadType
+	}
+	docs, err := s.repo.Search(ctx, infra.Filter{Type: typ, Limit: limit, Offset: offset})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contract.Card, 0, len(docs))
+	for _, d := range docs {
+		out = append(out, contract.Card{Ref: d.Ref, Type: d.Type, Title: d.Title, Cover: d.Cover,
+			Region: d.Region, MemberLevel: d.MemberLevel, Verified: d.Verified})
 	}
 	return out, nil
 }

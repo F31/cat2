@@ -475,6 +475,33 @@ func (s *Store) CreateFeed(ctx context.Context, q Querier, id, circleID, authorI
 	return err
 }
 
+// GetFeed 读取单条动态。
+func (s *Store) GetFeed(ctx context.Context, id int64) (Feed, error) {
+	var f Feed
+	var images []byte
+	err := s.pool.QueryRow(ctx, `SELECT id, circle_id, author_id, COALESCE(text,''), image_file_ids, is_announcement, created_at
+		FROM cir_feed WHERE id=$1 AND status=0`, id).
+		Scan(&f.ID, &f.CircleID, &f.AuthorID, &f.Text, &images, &f.IsAnnouncement, &f.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return f, ErrNotFound
+	}
+	if err != nil {
+		return f, err
+	}
+	_ = json.Unmarshal(images, &f.ImageFileIDs)
+	return f, nil
+}
+
+// DeleteFeed 软删除动态并回写圈子动态数。
+func (s *Store) DeleteFeed(ctx context.Context, q Querier, id, circleID int64) error {
+	_, err := q.Exec(ctx, `UPDATE cir_feed SET status=1 WHERE id=$1 AND circle_id=$2 AND status=0`, id, circleID)
+	if err != nil {
+		return err
+	}
+	_, _ = q.Exec(ctx, `UPDATE cir_circle SET feed_count=GREATEST(feed_count-1,0) WHERE id=$1`, circleID)
+	return nil
+}
+
 // ListFeeds 圈内动态/公告列表。
 func (s *Store) ListFeeds(ctx context.Context, circleID int64, limit int) ([]Feed, error) {
 	if limit <= 0 || limit > 100 {

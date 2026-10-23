@@ -421,6 +421,131 @@ func TestIntegrationContentFlow(t *testing.T) {
 	}
 }
 
+// 活动报名链路：发布活动 → 报名幂等 → 我的活动 → 取消 → 满员拦截。
+func TestIntegrationSignupFlow(t *testing.T) {
+	h := newTestApp(t)
+
+	login := func() string {
+		phone := randPhone()
+		_, env := h.do(http.MethodPost, "/api/mp/v1/auth/wechat", "", map[string]string{
+			"code": "wx-" + phone, "phone_code": phone,
+		})
+		var out struct {
+			Tokens struct {
+				AccessToken string `json:"access_token"`
+			} `json:"tokens"`
+		}
+		_ = json.Unmarshal(env.Data, &out)
+		if out.Tokens.AccessToken == "" {
+			t.Fatalf("登录失败: %+v", env)
+		}
+		return out.Tokens.AccessToken
+	}
+
+	owner := login()
+	_, _ = h.do(http.MethodPost, "/api/mp/v1/certs", owner, map[string]any{
+		"cert_type": 1, "real_name": "活动主办方", "id_card_no": "110101199003070019", "agreed": true,
+	})
+	start := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
+	end := time.Now().Add(26 * time.Hour).Format(time.RFC3339)
+	_, env := h.do(http.MethodPost, "/api/mp/v1/contents", owner, map[string]any{
+		"kind": "event", "title": "报名测试活动",
+		"fields": map[string]any{
+			"start_at": start, "end_at": end, "location": "上海市",
+			"participant_limit": 1, "signup_method": "平台报名", "intro": "测试活动",
+		},
+	})
+	var item struct {
+		ID int64 `json:"id,string"`
+	}
+	if err := json.Unmarshal(env.Data, &item); err != nil || item.ID == 0 {
+		t.Fatalf("创建活动失败: %+v err=%v", env, err)
+	}
+	if _, env := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/contents/%d/submit", item.ID), owner, nil); env.Code != 0 {
+		t.Fatalf("提交活动失败: %+v", env)
+	}
+
+	attendee := login()
+	path := fmt.Sprintf("/api/mp/v1/contents/%d/signup", item.ID)
+	_, env = h.do(http.MethodGet, path, attendee, nil)
+	var state struct {
+		SignedUp bool `json:"signed_up"`
+		Count    int  `json:"count"`
+		Limit    int  `json:"limit"`
+	}
+	if err := json.Unmarshal(env.Data, &state); err != nil || state.SignedUp || state.Limit != 1 {
+		t.Fatalf("初始报名状态错误: %+v err=%v", state, err)
+	}
+	_, env = h.do(http.MethodPost, path, attendee, nil)
+	_ = json.Unmarshal(env.Data, &state)
+	if !state.SignedUp || state.Count != 1 {
+		t.Fatalf("报名后状态错误: %+v", state)
+	}
+	// 幂等：重复报名不重复计数
+	_, env = h.do(http.MethodPost, path, attendee, nil)
+	_ = json.Unmarshal(env.Data, &state)
+	if !state.SignedUp || state.Count != 1 {
+		t.Fatalf("重复报名应幂等: %+v", state)
+	}
+	_, env = h.do(http.MethodGet, "/api/mp/v1/contents/mine/signups", attendee, nil)
+	var mine struct {
+		Items []struct {
+			Item struct {
+				ID int64 `json:"id,string"`
+			} `json:"item"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &mine)
+	if len(mine.Items) != 1 || mine.Items[0].Item.ID != item.ID {
+		t.Fatalf("我的活动应包含报名活动: %+v", mine)
+	}
+	// 主办方查看报名名单；非主办方禁止
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/contents/%d/signups", item.ID), owner, nil)
+	var signups struct {
+		Items []struct {
+			UserID string `json:"user_id"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &signups)
+	if len(signups.Items) != 1 || signups.Items[0].UserID == "" {
+		t.Fatalf("主办方应看到 1 条报名: %+v", signups)
+	}
+	other := login()
+	if status, env := h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/contents/%d/signups", item.ID), other, nil); status != http.StatusForbidden || env.Code != 110002 {
+		t.Fatalf("非主办方查看名单应 110002/403: %d %+v", status, env)
+	}
+	// 满员：第二人报名被拒绝
+	if status, env := h.do(http.MethodPost, path, other, nil); status != http.StatusConflict || env.Code != 110007 {
+		t.Fatalf("满员应 110007/409: %d %+v", status, env)
+	}
+	// 取消报名后释放名额，可再次报名
+	_, env = h.do(http.MethodDelete, path, attendee, nil)
+	_ = json.Unmarshal(env.Data, &state)
+	if state.SignedUp || state.Count != 0 {
+		t.Fatalf("取消后状态错误: %+v", state)
+	}
+	if _, env := h.do(http.MethodPost, path, other, nil); env.Code != 0 {
+		t.Fatalf("取消后应可报名: %+v", env)
+	}
+
+	// 已结束活动拒绝报名
+	past := time.Now().Add(-2 * time.Hour).Format(time.RFC3339)
+	_, env = h.do(http.MethodPost, "/api/mp/v1/contents", owner, map[string]any{
+		"kind": "event", "title": "已结束活动",
+		"fields": map[string]any{"start_at": past, "end_at": time.Now().Add(-time.Hour).Format(time.RFC3339), "location": "上海市"},
+	})
+	var closed struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &closed)
+	if _, env := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/contents/%d/submit", closed.ID), owner, nil); env.Code != 0 {
+		t.Fatalf("提交已结束活动失败: %+v", env)
+	}
+	if status, env := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/contents/%d/signup", closed.ID), attendee, nil); status != http.StatusBadRequest || env.Code != 110009 {
+		t.Fatalf("已结束活动应 110009/400: %d %+v", status, env)
+	}
+}
+
 // 举报链路：发布 → 举报 → 后台复核属实 → 内容下架 + 违规记分；3 次记分 → 限制发布。
 func TestIntegrationTrustReportFlow(t *testing.T) {
 	h := newTestApp(t)
@@ -1242,6 +1367,20 @@ func TestIntegrationBFFAggregate(t *testing.T) {
 		t.Fatalf("首屏聚合不符: %+v", feed)
 	}
 
+	// 类型筛选：type=user 只返回人。
+	_, env = h.do(http.MethodGet, "/api/mp/v1/feed?type=user", aTok, nil)
+	var typedFeed struct {
+		Items []struct {
+			Type string `json:"type"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &typedFeed)
+	for _, it := range typedFeed.Items {
+		if it.Type != "user" {
+			t.Fatalf("登录态 type=user 筛选不应出现 %s", it.Type)
+		}
+	}
+
 	// feed 分页不报错（换一批）
 	if status, env := h.do(http.MethodPost, "/api/mp/v1/feed/refresh?offset=1", aTok, nil); status != http.StatusOK || env.Code != 0 {
 		t.Fatalf("换一批应成功: %d %+v", status, env)
@@ -1288,6 +1427,27 @@ func TestIntegrationBFFGuestAndContact(t *testing.T) {
 	})
 	if status != http.StatusOK || env.Code != 0 {
 		t.Fatalf("配置名片失败: %d %+v", status, env)
+	}
+
+	// 游客（无令牌）可看广场公开流；类型筛选生效。
+	relayAll(t, h)
+	status, env = h.do(http.MethodGet, "/api/mp/v1/feed?type=user", "", nil)
+	var guestFeed struct {
+		Items []struct {
+			Type string `json:"type"`
+			Ref  string `json:"ref"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(env.Data, &guestFeed); err != nil {
+		t.Fatal(err)
+	}
+	if status != http.StatusOK || env.Code != 0 || len(guestFeed.Items) == 0 {
+		t.Fatalf("游客广场应可浏览: %d %+v", status, env)
+	}
+	for _, it := range guestFeed.Items {
+		if it.Type != "user" {
+			t.Fatalf("type=user 筛选不应出现 %s: %+v", it.Type, it)
+		}
 	}
 
 	// 游客（无令牌）看详情：200 且不含关注态。
@@ -2956,6 +3116,23 @@ func TestIntegrationCircleMountToCube(t *testing.T) {
 		t.Fatalf("内容所有者确认失败: %d %+v", s, e)
 	}
 
+	// 挂载列表带内容摘要：标题/类型来自 content，未展示内容仍保留 item_ref。
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/circles/%d/mounts", cir.ID), aTok, nil)
+	var mounts struct {
+		Items []struct {
+			Title     string `json:"title"`
+			Kind      string `json:"kind"`
+			CanDecide bool   `json:"can_decide"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &mounts)
+	if len(mounts.Items) != 1 || mounts.Items[0].Title != "B的项目" || mounts.Items[0].Kind != "project" {
+		t.Fatalf("挂载列表应带内容摘要: %+v", mounts)
+	}
+	if mounts.Items[0].CanDecide {
+		t.Fatalf("A 不是内容所有者，不应可确认: %+v", mounts.Items[0])
+	}
+
 	// A 发布需求（scope=2 全平台，用于搜索投影）+ 建猫立方（猫王）→ 到猫立方里办
 	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/demands", cir.ID), aTok, map[string]any{
 		"title": "多方协作需求", "content": "需要设计+供应链", "scope": 2,
@@ -3138,6 +3315,65 @@ func TestIntegrationBFFCollaboration(t *testing.T) {
 		t.Fatalf("圈详情聚合不符: %d %+v", status, detail)
 	}
 	_ = bTok
+}
+
+// 圈内动态删除：作者可删自己的，圈主可删任意，非成员不可删。
+func TestIntegrationCircleFeedDelete(t *testing.T) {
+	h := newTestApp(t)
+	aID, aTok := loginPhone(t, h, randPhone())
+	bID, bTok := loginPhone(t, h, randPhone())
+	_, cTok := loginPhone(t, h, randPhone())
+	for _, tok := range []string{aTok, bTok, cTok} {
+		if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+			"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+		}); s != http.StatusOK || env.Code != 0 {
+			t.Fatalf("实名失败: %d %+v", s, env)
+		}
+	}
+	_, env := h.do(http.MethodPost, "/api/mp/v1/circles", aTok, map[string]any{"name": "动态删除圈", "type": 1})
+	var cir struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &cir)
+	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/apply", cir.ID), bTok, nil); e.Code != 0 {
+		t.Fatalf("B 申请失败: %+v", e)
+	}
+	if _, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/applications/%d/decide", cir.ID, bID), aTok,
+		map[string]any{"approve": true}); e.Code != 0 {
+		t.Fatalf("圈主审核失败: %+v", e)
+	}
+	post := func(tok, text string) int64 {
+		_, env := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/%d/feeds", cir.ID), tok, map[string]any{"text": text})
+		var f struct {
+			ID int64 `json:"id,string"`
+		}
+		_ = json.Unmarshal(env.Data, &f)
+		return f.ID
+	}
+	f1 := post(bTok, "作者删除")
+	if f1 == 0 {
+		t.Fatal("发动态失败")
+	}
+	// 非成员不可删
+	if s, e := h.do(http.MethodDelete, fmt.Sprintf("/api/mp/v1/circles/%d/feeds/%d", cir.ID, f1), cTok, nil); s != http.StatusForbidden || e.Code != 140002 {
+		t.Fatalf("非成员删除应 140002/403: %d %+v", s, e)
+	}
+	if _, e := h.do(http.MethodDelete, fmt.Sprintf("/api/mp/v1/circles/%d/feeds/%d", cir.ID, f1), bTok, nil); e.Code != 0 {
+		t.Fatalf("作者删除失败: %+v", e)
+	}
+	f2 := post(bTok, "圈主删除")
+	if _, e := h.do(http.MethodDelete, fmt.Sprintf("/api/mp/v1/circles/%d/feeds/%d", cir.ID, f2), aTok, nil); e.Code != 0 {
+		t.Fatalf("圈主删除失败: %+v", e)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/circles/%d/feeds", cir.ID), aTok, nil)
+	var feeds struct {
+		Items []json.RawMessage `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &feeds)
+	if len(feeds.Items) != 0 {
+		t.Fatalf("删除后列表应为空: %+v", feeds)
+	}
+	_ = aID
 }
 
 // 配额门禁（p3 §11.3）：立方成员上限（基础档 10）、公告每日上限（3）。

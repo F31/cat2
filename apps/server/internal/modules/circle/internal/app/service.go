@@ -55,6 +55,8 @@ type Repo interface {
 	RenewDemand(ctx context.Context, q infra.Querier, id int64, expire time.Time) error
 	ExpireDueDemands(ctx context.Context, limit int) ([]int64, error)
 	CreateFeed(ctx context.Context, q infra.Querier, id, circleID, authorID int64, text string, images []byte, announce bool) error
+	GetFeed(ctx context.Context, id int64) (infra.Feed, error)
+	DeleteFeed(ctx context.Context, q infra.Querier, id, circleID int64) error
 	ListFeeds(ctx context.Context, circleID int64, limit int) ([]infra.Feed, error)
 	ListDueCircles(ctx context.Context, limit int) ([]int64, error)
 	CreateMount(ctx context.Context, q infra.Querier, id, circleID int64, itemRef string, mountedBy int64, mountType, approval int16) error
@@ -319,6 +321,22 @@ func (s *Service) ListFeeds(ctx context.Context, circleID, viewerID int64, limit
 		out = append(out, item)
 	}
 	return out, nil
+}
+
+// DeleteFeed 圈主或作者删除圈内动态（软删除，保留审计记录）。
+func (s *Service) DeleteFeed(ctx context.Context, circleID, feedID, userID int64) error {
+	c, err := s.repo.GetCircle(ctx, circleID)
+	if err != nil {
+		return err
+	}
+	f, err := s.repo.GetFeed(ctx, feedID)
+	if err != nil || f.CircleID != circleID {
+		return domain.ErrNotFound
+	}
+	if c.OwnerUserID != userID && f.AuthorID != userID {
+		return domain.ErrNoPermission
+	}
+	return s.repo.DeleteFeed(ctx, s.pool, feedID, circleID)
 }
 
 // ListApplications 圈主查看入圈申请。
@@ -1006,7 +1024,24 @@ func (s *Service) ListMounts(ctx context.Context, circleID, viewerID int64) ([]c
 	}
 	out := make([]contract.Mount, 0, len(rows))
 	for _, m := range rows {
-		out = append(out, toMount(m))
+		cm := toMount(m)
+		// 列表展示：解析内容标题/类型/时间地点；失败时保留 item_ref，页面仍可跳转。
+		if s.content != nil {
+			if id, err := itemIDFromRef(m.ItemRef); err == nil {
+				if it, err := s.content.Get(ctx, viewerID, id); err == nil {
+					cm.Title = it.Title
+					cm.Kind = it.Kind
+					if v, ok := it.Fields["start_at"].(string); ok {
+						cm.StartAt = v
+					}
+					if v, ok := it.Fields["location"].(string); ok {
+						cm.Location = v
+					}
+					cm.CanDecide = m.ApprovalStatus == 0 && it.OwnerRef.ID == viewerID
+				}
+			}
+		}
+		out = append(out, cm)
 	}
 	return out, nil
 }
@@ -1081,16 +1116,20 @@ func (s *Service) HandleCubeProjectCreated(ctx context.Context, payload []byte) 
 	return s.repo.MarkDemandTransferred(ctx, demandID, p.SourceRef)
 }
 
+func itemIDFromRef(itemRef string) (int64, error) {
+	parts := strings.SplitN(itemRef, ":", 2)
+	if len(parts) != 2 || !strings.HasPrefix(parts[0], "content.") {
+		return 0, domain.ErrInvalidInput
+	}
+	return strconv.ParseInt(parts[1], 10, 64)
+}
+
 // itemOwner 解析被挂载内容归属人（仅 content.* 支持）。
 func (s *Service) itemOwner(ctx context.Context, itemRef string) (int64, error) {
 	if s.content == nil {
 		return 0, domain.ErrInvalidInput
 	}
-	parts := strings.SplitN(itemRef, ":", 2)
-	if len(parts) != 2 || !strings.HasPrefix(parts[0], "content.") {
-		return 0, domain.ErrInvalidInput
-	}
-	id, err := strconv.ParseInt(parts[1], 10, 64)
+	id, err := itemIDFromRef(itemRef)
 	if err != nil {
 		return 0, domain.ErrInvalidInput
 	}

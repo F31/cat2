@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for CircleCreateInputDurationDays.
@@ -356,6 +357,66 @@ func (e ListFavoritesParamsType) Valid() bool {
 	}
 }
 
+// Defines values for FeedParamsType.
+const (
+	FeedParamsTypeContentEvent   FeedParamsType = "content.event"
+	FeedParamsTypeContentMeeting FeedParamsType = "content.meeting"
+	FeedParamsTypeContentProduct FeedParamsType = "content.product"
+	FeedParamsTypeContentProject FeedParamsType = "content.project"
+	FeedParamsTypeOrg            FeedParamsType = "org"
+	FeedParamsTypeUser           FeedParamsType = "user"
+)
+
+// Valid indicates whether the value is a known member of the FeedParamsType enum.
+func (e FeedParamsType) Valid() bool {
+	switch e {
+	case FeedParamsTypeContentEvent:
+		return true
+	case FeedParamsTypeContentMeeting:
+		return true
+	case FeedParamsTypeContentProduct:
+		return true
+	case FeedParamsTypeContentProject:
+		return true
+	case FeedParamsTypeOrg:
+		return true
+	case FeedParamsTypeUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FeedRefreshParamsType.
+const (
+	FeedRefreshParamsTypeContentEvent   FeedRefreshParamsType = "content.event"
+	FeedRefreshParamsTypeContentMeeting FeedRefreshParamsType = "content.meeting"
+	FeedRefreshParamsTypeContentProduct FeedRefreshParamsType = "content.product"
+	FeedRefreshParamsTypeContentProject FeedRefreshParamsType = "content.project"
+	FeedRefreshParamsTypeOrg            FeedRefreshParamsType = "org"
+	FeedRefreshParamsTypeUser           FeedRefreshParamsType = "user"
+)
+
+// Valid indicates whether the value is a known member of the FeedRefreshParamsType enum.
+func (e FeedRefreshParamsType) Valid() bool {
+	switch e {
+	case FeedRefreshParamsTypeContentEvent:
+		return true
+	case FeedRefreshParamsTypeContentMeeting:
+		return true
+	case FeedRefreshParamsTypeContentProduct:
+		return true
+	case FeedRefreshParamsTypeContentProject:
+		return true
+	case FeedRefreshParamsTypeOrg:
+		return true
+	case FeedRefreshParamsTypeUser:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateUploadJSONBodyContentType.
 const (
 	Imagejpeg CreateUploadJSONBodyContentType = "image/jpeg"
@@ -391,28 +452,28 @@ func (e ListNoticesParamsUnread) Valid() bool {
 
 // Defines values for SearchParamsType.
 const (
-	ContentEvent   SearchParamsType = "content.event"
-	ContentMeeting SearchParamsType = "content.meeting"
-	ContentProduct SearchParamsType = "content.product"
-	ContentProject SearchParamsType = "content.project"
-	Org            SearchParamsType = "org"
-	User           SearchParamsType = "user"
+	SearchParamsTypeContentEvent   SearchParamsType = "content.event"
+	SearchParamsTypeContentMeeting SearchParamsType = "content.meeting"
+	SearchParamsTypeContentProduct SearchParamsType = "content.product"
+	SearchParamsTypeContentProject SearchParamsType = "content.project"
+	SearchParamsTypeOrg            SearchParamsType = "org"
+	SearchParamsTypeUser           SearchParamsType = "user"
 )
 
 // Valid indicates whether the value is a known member of the SearchParamsType enum.
 func (e SearchParamsType) Valid() bool {
 	switch e {
-	case ContentEvent:
+	case SearchParamsTypeContentEvent:
 		return true
-	case ContentMeeting:
+	case SearchParamsTypeContentMeeting:
 		return true
-	case ContentProduct:
+	case SearchParamsTypeContentProduct:
 		return true
-	case ContentProject:
+	case SearchParamsTypeContentProject:
 		return true
-	case Org:
+	case SearchParamsTypeOrg:
 		return true
-	case User:
+	case SearchParamsTypeUser:
 		return true
 	default:
 		return false
@@ -543,7 +604,7 @@ type CertifyInput struct {
 	CertType        int                `json:"cert_type"`
 	Extra           *map[string]string `json:"extra,omitempty"`
 	IdCardNo        *string            `json:"id_card_no,omitempty"`
-	MaterialFileIds *[]string          `json:"material_file_ids,omitempty"`
+	MaterialFileIds *[]int             `json:"material_file_ids,omitempty"`
 	RealName        *string            `json:"real_name,omitempty"`
 	TargetOrgId     *string            `json:"target_org_id,omitempty"`
 }
@@ -714,16 +775,29 @@ type CircleMember struct {
 // CircleMount defines model for CircleMount.
 type CircleMount struct {
 	// ApprovalStatus 0 待确认 / 1 已同意 / 2 已拒绝
-	ApprovalStatus int        `json:"approval_status"`
-	CircleId       string     `json:"circle_id"`
-	CreatedAt      *time.Time `json:"created_at,omitempty"`
-	Id             string     `json:"id"`
-	ItemRef        string     `json:"item_ref"`
+	ApprovalStatus int `json:"approval_status"`
+
+	// CanDecide 当前查看者是否为待确认内容所有者
+	CanDecide *bool      `json:"can_decide,omitempty"`
+	CircleId  string     `json:"circle_id"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	Id        string     `json:"id"`
+	ItemRef   string     `json:"item_ref"`
+
+	// Kind 内容类型 project/product/meeting/event
+	Kind     *string `json:"kind,omitempty"`
+	Location *string `json:"location,omitempty"`
 
 	// MountType 1 本人 / 2 申请挂载
 	MountType int    `json:"mount_type"`
 	MountedBy string `json:"mounted_by"`
-	Status    int    `json:"status"`
+
+	// StartAt 活动/会议开始时间（RFC3339）
+	StartAt *string `json:"start_at,omitempty"`
+	Status  int     `json:"status"`
+
+	// Title 挂载内容标题（解析失败时为空）
+	Title *string `json:"title,omitempty"`
 }
 
 // Completion defines model for Completion.
@@ -1284,6 +1358,30 @@ type SessionPeer struct {
 	UserId string  `json:"user_id"`
 }
 
+// SignupItem defines model for SignupItem.
+type SignupItem struct {
+	Item       ContentItem `json:"item"`
+	SignedUpAt time.Time   `json:"signed_up_at"`
+}
+
+// SignupState defines model for SignupState.
+type SignupState struct {
+	// Count 已报名人数
+	Count int `json:"count"`
+
+	// Limit 人数上限，0=不限
+	Limit    int  `json:"limit"`
+	SignedUp bool `json:"signed_up"`
+}
+
+// SignupUser defines model for SignupUser.
+type SignupUser struct {
+	AvatarFileId *string   `json:"avatar_file_id,omitempty"`
+	Nickname     *string   `json:"nickname,omitempty"`
+	SignedUpAt   time.Time `json:"signed_up_at"`
+	UserId       string    `json:"user_id"`
+}
+
 // SubAccount defines model for SubAccount.
 type SubAccount struct {
 	Id        string     `json:"id"`
@@ -1752,13 +1850,25 @@ type FavoriteTargetParams struct {
 type FeedParams struct {
 	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Type 内容类型筛选；空=全部
+	Type *FeedParamsType `form:"type,omitempty" json:"type,omitempty"`
 }
+
+// FeedParamsType defines parameters for Feed.
+type FeedParamsType string
 
 // FeedRefreshParams defines parameters for FeedRefresh.
 type FeedRefreshParams struct {
 	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Type 内容类型筛选；空=全部
+	Type *FeedRefreshParamsType `form:"type,omitempty" json:"type,omitempty"`
 }
+
+// FeedRefreshParamsType defines parameters for FeedRefresh.
+type FeedRefreshParamsType string
 
 // FollowTargetParams defines parameters for FollowTarget.
 type FollowTargetParams struct {
@@ -1768,6 +1878,11 @@ type FollowTargetParams struct {
 // ListMatchesParams defines parameters for ListMatches.
 type ListMatchesParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// UploadMediaMultipartBody defines parameters for UploadMedia.
+type UploadMediaMultipartBody struct {
+	File openapi_types.File `json:"file"`
 }
 
 // CreateUploadJSONBody defines parameters for CreateUpload.
@@ -2026,6 +2141,9 @@ type FavoriteTargetJSONRequestBody = TargetRefInput
 // FollowTargetJSONRequestBody defines body for FollowTarget for application/json ContentType.
 type FollowTargetJSONRequestBody = TargetRefInput
 
+// UploadMediaMultipartRequestBody defines body for UploadMedia for multipart/form-data ContentType.
+type UploadMediaMultipartRequestBody UploadMediaMultipartBody
+
 // CreateUploadJSONRequestBody defines body for CreateUpload for application/json ContentType.
 type CreateUploadJSONRequestBody CreateUploadJSONBody
 
@@ -2208,7 +2326,7 @@ type ServerInterface interface {
 	// ConvertCircle 已结束转常设（圈主）
 	// (POST /circles/{id}/convert)
 	ConvertCircle(w http.ResponseWriter, r *http.Request, id string)
-	// ListCircleDemands 圈内需求列表（生效在前；联系方式会员可见）
+	// ListCircleDemands 圈内需求列表（成员可见；生效在前；联系方式会员可见）
 	// (GET /circles/{id}/demands)
 	ListCircleDemands(w http.ResponseWriter, r *http.Request, id string, params ListCircleDemandsParams)
 	// PublishCircleDemand 发布需求（每人每日跨圈合计 3 条；VIP 可选全平台）
@@ -2226,6 +2344,9 @@ type ServerInterface interface {
 	// PublishCircleFeed 圈内动态/公告（公告仅圈主、每圈每日 ≤3 条不占个人额度）
 	// (POST /circles/{id}/feeds)
 	PublishCircleFeed(w http.ResponseWriter, r *http.Request, id string)
+	// DeleteCircleFeed 圈主或作者删除圈内动态（软删除）
+	// (DELETE /circles/{id}/feeds/{fid})
+	DeleteCircleFeed(w http.ResponseWriter, r *http.Request, id string, fid string)
 	// InviteCircle 生成/重置邀请链接（有效期=圈剩余存续期；可重置旧链作废）
 	// (POST /circles/{id}/invite)
 	InviteCircle(w http.ResponseWriter, r *http.Request, id string)
@@ -2235,7 +2356,7 @@ type ServerInterface interface {
 	// ListCircleMembers 成员列表（含昵称与角色）
 	// (GET /circles/{id}/members)
 	ListCircleMembers(w http.ResponseWriter, r *http.Request, id string)
-	// ListCircleMounts 圈内挂载列表（引用不复制，点开进原详情）
+	// ListCircleMounts 圈内挂载列表（成员可见；引用不复制，点开进原详情）
 	// (GET /circles/{id}/mounts)
 	ListCircleMounts(w http.ResponseWriter, r *http.Request, id string)
 	// MountCircleItem 挂载内容（本人直接；他人需对方确认；单圈 ≤50）
@@ -2247,12 +2368,27 @@ type ServerInterface interface {
 	// ListMyContents 我的发布（可按 kind 过滤）
 	// (GET /contents/mine)
 	ListMyContents(w http.ResponseWriter, r *http.Request, params ListMyContentsParams)
+	// ListMySignups 我的活动（已报名的活动/会议）
+	// (GET /contents/mine/signups)
+	ListMySignups(w http.ResponseWriter, r *http.Request)
 	// GetContent 内容详情（未展示内容非本人不可见；非会员过滤会员可见字段）
 	// (GET /contents/{id})
 	GetContent(w http.ResponseWriter, r *http.Request, id string)
 	// CloseContent 本人关闭内容（展示中→已下架）
 	// (POST /contents/{id}/close)
 	CloseContent(w http.ResponseWriter, r *http.Request, id string)
+	// CancelSignup 取消报名（未报名幂等）
+	// (DELETE /contents/{id}/signup)
+	CancelSignup(w http.ResponseWriter, r *http.Request, id string)
+	// GetSignupState 当前用户报名状态
+	// (GET /contents/{id}/signup)
+	GetSignupState(w http.ResponseWriter, r *http.Request, id string)
+	// SignupContent 报名活动/会议（重复报名幂等；满员拒绝）
+	// (POST /contents/{id}/signup)
+	SignupContent(w http.ResponseWriter, r *http.Request, id string)
+	// ListContentSignups 主办方查看活动/会议报名名单
+	// (GET /contents/{id}/signups)
+	ListContentSignups(w http.ResponseWriter, r *http.Request, id string)
 	// SubmitContent 提交审核（发布门槛：已实名；审核结论驱动状态机
 	// (POST /contents/{id}/submit)
 	SubmitContent(w http.ResponseWriter, r *http.Request, id string)
@@ -2418,6 +2554,9 @@ type ServerInterface interface {
 	// ExplainMatch 匹配解释（规则模板生成，不依赖 LLM）
 	// (GET /matches/{ref}/explain)
 	ExplainMatch(w http.ResponseWriter, r *http.Request, ref string)
+	// UploadMedia 直接上传图片（multipart/form-data，JPG/PNG ≤5MB；未配置 OSS 时本地落库）
+	// (POST /media/upload)
+	UploadMedia(w http.ResponseWriter, r *http.Request)
 	// CreateUpload 申请预签名上传（JPG/PNG ≤5MB）
 	// (POST /media/uploads)
 	CreateUpload(w http.ResponseWriter, r *http.Request, params CreateUploadParams)
@@ -3953,6 +4092,41 @@ func (siw *ServerInterfaceWrapper) PublishCircleFeed(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteCircleFeed operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCircleFeed(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "fid" -------------
+	var fid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fid", r.PathValue("fid"), &fid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fid", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCircleFeed(w, r, id, fid)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // InviteCircle operation middleware
 func (siw *ServerInterfaceWrapper) InviteCircle(w http.ResponseWriter, r *http.Request) {
 
@@ -4161,6 +4335,20 @@ func (siw *ServerInterfaceWrapper) ListMyContents(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ListMySignups operation middleware
+func (siw *ServerInterfaceWrapper) ListMySignups(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMySignups(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetContent operation middleware
 func (siw *ServerInterfaceWrapper) GetContent(w http.ResponseWriter, r *http.Request) {
 
@@ -4204,6 +4392,110 @@ func (siw *ServerInterfaceWrapper) CloseContent(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CloseContent(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelSignup operation middleware
+func (siw *ServerInterfaceWrapper) CancelSignup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelSignup(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSignupState operation middleware
+func (siw *ServerInterfaceWrapper) GetSignupState(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSignupState(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SignupContent operation middleware
+func (siw *ServerInterfaceWrapper) SignupContent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SignupContent(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListContentSignups operation middleware
+func (siw *ServerInterfaceWrapper) ListContentSignups(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListContentSignups(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5619,6 +5911,19 @@ func (siw *ServerInterfaceWrapper) Feed(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// ------------- Optional query parameter "type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "type", r.URL.Query(), &params.Type, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Feed(w, r, params)
 	}))
@@ -5661,6 +5966,19 @@ func (siw *ServerInterfaceWrapper) FeedRefresh(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "type", r.URL.Query(), &params.Type, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
 		}
 		return
 	}
@@ -5839,6 +6157,20 @@ func (siw *ServerInterfaceWrapper) ExplainMatch(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ExplainMatch(w, r, ref)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UploadMedia operation middleware
+func (siw *ServerInterfaceWrapper) UploadMedia(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadMedia(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6837,6 +7169,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/certs/mine", wrapper.GetMyCerts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contents", wrapper.PublishContent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/contents/mine", wrapper.ListMyContents)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/contents/mine/signups", wrapper.ListMySignups)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/contents/{id}/signups", wrapper.ListContentSignups)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/contents/{id}/signup", wrapper.CancelSignup)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/contents/{id}/signup", wrapper.GetSignupState)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contents/{id}/signup", wrapper.SignupContent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contents/{id}/submit", wrapper.SubmitContent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/contents/{id}", wrapper.GetContent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/contents/{id}/close", wrapper.CloseContent)
@@ -6875,6 +7212,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/membership/sub-accounts", wrapper.InviteSubAccount)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/membership/sub-accounts/{subUserID}", wrapper.RemoveSubAccount)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/dict/{dimension}", wrapper.ListDict)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/media/upload", wrapper.UploadMedia)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/media/uploads", wrapper.CreateUpload)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/cubes", wrapper.ListMyCubes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/cubes", wrapper.CreateCube)
@@ -6934,6 +7272,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/{id}/demands", wrapper.ListCircleDemands)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/demands", wrapper.PublishCircleDemand)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/demands/{did}/renew", wrapper.RenewCircleDemand)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/circles/{id}/feeds/{fid}", wrapper.DeleteCircleFeed)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/{id}/mounts", wrapper.ListCircleMounts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/mounts", wrapper.MountCircleItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/mounts/{mid}/decide", wrapper.DecideCircleMount)

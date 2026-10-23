@@ -64,6 +64,7 @@ type Filter struct {
 	Need     []string
 	Offer    []string
 	Limit    int
+	Offset   int
 }
 
 // Store discovery 仓储。
@@ -230,6 +231,33 @@ func (s *Store) ListCandidates(ctx context.Context, userID int64, limit, offset 
 		 WHERE c.user_id=$1 AND d.active=true
 		 ORDER BY c.rank ASC, c.score DESC
 		 LIMIT $2 OFFSET $3`, userID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Candidate
+	for rows.Next() {
+		var c Candidate
+		var reason []byte
+		if err := rows.Scan(&c.Ref, &c.Score, &reason, &c.Rank, &c.Type, &c.Title, &c.Cover, &c.Region, &c.MemberLevel, &c.Verified); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal(reason, &c.Reason)
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// ListCandidatesFiltered 按内容类型过滤的候选（首页类型筛选）。
+func (s *Store) ListCandidatesFiltered(ctx context.Context, userID int64, typ string, limit, offset int) ([]Candidate, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT c.candidate_ref, c.score, c.reason, c.rank,
+		       d.doc_type, d.title, COALESCE(d.cover,''), COALESCE(d.region_code,''), d.member_level, d.verified
+		  FROM dsc_match_candidates c
+		  JOIN dsc_search_doc d ON d.doc_ref=c.candidate_ref
+		 WHERE c.user_id=$1 AND d.active=true AND ($4='' OR d.doc_type=$4)
+		 ORDER BY c.rank ASC, c.score DESC
+		 LIMIT $2 OFFSET $3`, userID, limit, offset, typ)
 	if err != nil {
 		return nil, err
 	}

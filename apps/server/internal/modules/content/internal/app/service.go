@@ -17,6 +17,7 @@ import (
 	"catcube/internal/modules/content/internal/domain"
 	"catcube/internal/modules/content/internal/infra"
 	"catcube/internal/modules/content/internal/kind"
+	idcontract "catcube/internal/modules/identity/contract"
 	trustcontract "catcube/internal/modules/trust/contract"
 	dictcontract "catcube/internal/shared/dict/contract"
 	mediacontract "catcube/internal/shared/media/contract"
@@ -32,37 +33,47 @@ type Repo interface {
 	UpdateStatus(ctx context.Context, tx db.Tx, id int64, status int16, reason string, publishedAt *time.Time) error
 	SaveSub(ctx context.Context, tx db.Tx, kind string, itemID int64, fields map[string]any) error
 	GetSub(ctx context.Context, kind string, itemID int64) (map[string]any, error)
+	SignupActive(ctx context.Context, itemID, userID int64) (bool, error)
+	SetSignup(ctx context.Context, tx db.Tx, itemID, userID int64, active bool) (bool, error)
+	CountActive(ctx context.Context, itemID int64) (int, error)
+	EventCount(ctx context.Context, itemID int64) (int, error)
+	BumpEventCount(ctx context.Context, tx db.Tx, itemID int64, delta int) error
+	ListSignups(ctx context.Context, userID int64) ([]infra.SignupRecord, error)
+	ListSignupUsers(ctx context.Context, itemID int64) ([]infra.SignupUser, error)
+	LockSignup(ctx context.Context, tx db.Tx, itemID int64) error
 }
 
 // Options 构造参数。
 type Options struct {
-	Repo    Repo
-	Pool    *db.Pool
-	Bus     *eventbus.Bus
-	Kinds   *kind.Registry
-	Dict    dictcontract.Facade
-	Trust   trustcontract.Facade
-	Media   mediacontract.Facade
-	Policy  *policy.Engine
-	Encrypt *sensitive.Encryptor
+	Repo     Repo
+	Pool     *db.Pool
+	Bus      *eventbus.Bus
+	Kinds    *kind.Registry
+	Dict     dictcontract.Facade
+	Trust    trustcontract.Facade
+	Media    mediacontract.Facade
+	Policy   *policy.Engine
+	Encrypt  *sensitive.Encryptor
+	Identity idcontract.Facade
 }
 
 // Service 内容应用服务。
 type Service struct {
-	repo   Repo
-	pool   *db.Pool
-	bus    *eventbus.Bus
-	kinds  *kind.Registry
-	dict   dictcontract.Facade
-	trust  trustcontract.Facade
-	media  mediacontract.Facade
-	policy *policy.Engine
-	enc    *sensitive.Encryptor
+	repo     Repo
+	pool     *db.Pool
+	bus      *eventbus.Bus
+	kinds    *kind.Registry
+	dict     dictcontract.Facade
+	trust    trustcontract.Facade
+	media    mediacontract.Facade
+	policy   *policy.Engine
+	enc      *sensitive.Encryptor
+	identity idcontract.Facade
 }
 
 func New(o Options) *Service {
 	return &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, kinds: o.Kinds, dict: o.Dict,
-		trust: o.Trust, media: o.Media, policy: o.Policy, enc: o.Encrypt}
+		trust: o.Trust, media: o.Media, policy: o.Policy, enc: o.Encrypt, identity: o.Identity}
 }
 
 // Publish 创建内容（草稿=审核中）：校验 Kind 字段 + TagSet；联系方式加密后入库；发 ContentSubmitted。
@@ -238,6 +249,189 @@ func (s *Service) ListByOwner(ctx context.Context, ownerID int64, kindName strin
 		out = append(out, s.toItem(ctx, it, true))
 	}
 	return out, nil
+}
+
+// Signup 报名活动/会议：仅展示中内容；重复报名幂等；满员拒绝。
+func (s *Service) Signup(ctx context.Context, userID, itemID int64) (contentcontract.SignupState, error) {
+	it, err := s.repo.GetItem(ctx, itemID)
+	if err != nil {
+		return contentcontract.SignupState{}, err
+	}
+	if !signupKind(it.Kind) {
+		return contentcontract.SignupState{}, domain.ErrNotSignupable
+	}
+	if it.Status != contentcontract.StatusPublished {
+		return contentcontract.SignupState{}, domain.ErrNotFound
+	}
+	fields, _ := s.repo.GetSub(ctx, it.Kind, itemID)
+	if signupClosed(fields) {
+		return contentcontract.SignupState{}, domain.ErrSignupClosed
+	}
+	state, err := s.SignupState(ctx, userID, itemID)
+	if err != nil {
+		return contentcontract.SignupState{}, err
+	}
+	if state.SignedUp {
+		return state, nil
+	}
+	if state.Limit > 0 && state.Count >= state.Limit {
+		return contentcontract.SignupState{}, domain.ErrSignupFull
+	}
+	if err := s.pool.InTx(ctx, func(tx db.Tx) error {
+		// 同一内容串行化报名，避免并发下超卖/重复计数。
+		if err := s.repo.LockSignup(ctx, tx, itemID); err != nil {
+			return err
+		}
+		st, err := s.SignupState(ctx, userID, itemID)
+		if err != nil {
+			return err
+		}
+		if st.SignedUp {
+			return nil
+		}
+		if st.Limit > 0 && st.Count >= st.Limit {
+			return domain.ErrSignupFull
+		}
+		changed, err := s.repo.SetSignup(ctx, tx, itemID, userID, true)
+		if err != nil {
+			return err
+		}
+		if changed && it.Kind == contentcontract.KindEvent {
+			return s.repo.BumpEventCount(ctx, tx, itemID, 1)
+		}
+		return nil
+	}); err != nil {
+		return contentcontract.SignupState{}, err
+	}
+	return s.SignupState(ctx, userID, itemID)
+}
+
+// CancelSignup 取消报名；未报名幂等；已下架内容仍允许取消。
+func (s *Service) CancelSignup(ctx context.Context, userID, itemID int64) (contentcontract.SignupState, error) {
+	it, err := s.repo.GetItem(ctx, itemID)
+	if err != nil {
+		return contentcontract.SignupState{}, err
+	}
+	if !signupKind(it.Kind) {
+		return contentcontract.SignupState{}, domain.ErrNotSignupable
+	}
+	state, err := s.SignupState(ctx, userID, itemID)
+	if err != nil {
+		return contentcontract.SignupState{}, err
+	}
+	if !state.SignedUp {
+		return state, nil
+	}
+	if err := s.pool.InTx(ctx, func(tx db.Tx) error {
+		if err := s.repo.LockSignup(ctx, tx, itemID); err != nil {
+			return err
+		}
+		changed, err := s.repo.SetSignup(ctx, tx, itemID, userID, false)
+		if err != nil {
+			return err
+		}
+		if changed && it.Kind == contentcontract.KindEvent {
+			return s.repo.BumpEventCount(ctx, tx, itemID, -1)
+		}
+		return nil
+	}); err != nil {
+		return contentcontract.SignupState{}, err
+	}
+	return s.SignupState(ctx, userID, itemID)
+}
+
+// SignupState 报名状态；count 活动取展示总数，会议取有效报名数。
+func (s *Service) SignupState(ctx context.Context, userID, itemID int64) (contentcontract.SignupState, error) {
+	it, err := s.repo.GetItem(ctx, itemID)
+	if err != nil {
+		return contentcontract.SignupState{}, err
+	}
+	if !signupKind(it.Kind) {
+		return contentcontract.SignupState{}, domain.ErrNotSignupable
+	}
+	signed, err := s.repo.SignupActive(ctx, itemID, userID)
+	if err != nil {
+		return contentcontract.SignupState{}, err
+	}
+	var count int
+	if it.Kind == contentcontract.KindEvent {
+		count, err = s.repo.EventCount(ctx, itemID)
+	} else {
+		count, err = s.repo.CountActive(ctx, itemID)
+	}
+	if err != nil {
+		return contentcontract.SignupState{}, err
+	}
+	fields, _ := s.repo.GetSub(ctx, it.Kind, itemID)
+	return contentcontract.SignupState{SignedUp: signed, Count: count, Limit: intField(fields, "participant_limit")}, nil
+}
+
+// ListSignups 我的活动：当前用户已报名的活动/会议。
+func (s *Service) ListSignups(ctx context.Context, userID int64) ([]contentcontract.SignupItem, error) {
+	rows, err := s.repo.ListSignups(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contentcontract.SignupItem, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, contentcontract.SignupItem{Item: s.toItem(ctx, r.Item, true), SignedUpAt: r.SignedUpAt})
+	}
+	return out, nil
+}
+
+// ListSignupUsers 主办方查看报名名单（仅内容所有者）。
+func (s *Service) ListSignupUsers(ctx context.Context, ownerID, itemID int64) ([]contentcontract.SignupUser, error) {
+	it, err := s.repo.GetItem(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	if it.OwnerRef.ID != ownerID {
+		return nil, domain.ErrForbidden
+	}
+	if !signupKind(it.Kind) {
+		return nil, domain.ErrNotSignupable
+	}
+	rows, err := s.repo.ListSignupUsers(ctx, itemID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contentcontract.SignupUser, 0, len(rows))
+	for _, r := range rows {
+		u := contentcontract.SignupUser{UserID: r.UserID, SignedUpAt: r.SignedUpAt}
+		if s.identity != nil {
+			if b, err := s.identity.UserBrief(ctx, r.UserID); err == nil {
+				u.Nickname = b.Nickname
+				u.AvatarFileID = b.AvatarID
+			}
+		}
+		out = append(out, u)
+	}
+	return out, nil
+}
+
+func signupClosed(fields map[string]any) bool {
+	v, ok := fields["end_at"].(string)
+	if !ok || v == "" {
+		return false
+	}
+	end, err := time.Parse(time.RFC3339, v)
+	return err == nil && time.Now().UTC().After(end)
+}
+
+func signupKind(kind string) bool {
+	return kind == contentcontract.KindEvent || kind == contentcontract.KindMeeting
+}
+
+func intField(f map[string]any, key string) int {
+	switch v := f[key].(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	}
+	return 0
 }
 
 // HandleReportConfirmed trust.ReportConfirmed 订阅：举报核实后下架内容（trust 不直接改内容表）。

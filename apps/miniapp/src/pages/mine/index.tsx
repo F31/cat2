@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import Taro, { useDidShow } from '@tarojs/taro'
-import { View, Text } from '@tarojs/components'
+import Taro, { useDidShow, useShareAppMessage } from '@tarojs/taro'
+import { View, Text, Button } from '@tarojs/components'
 import type { Card, Completion, Member } from '@catcube/api-client'
 import { api } from '../../services/request'
 import { ensureLogin } from '../../services/auth'
@@ -13,6 +13,7 @@ export default function Mine() {
   const [card, setCard] = useState<Card | null>(null)
   const [member, setMember] = useState<{ member: Member; active: boolean } | null>(null)
   const [completion, setCompletion] = useState<Completion | null>(null)
+  const [userId, setUserId] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
@@ -20,10 +21,11 @@ export default function Mine() {
     setLoading(true)
     try {
       await ensureLogin()
-      const [c, m, comp] = await Promise.all([api.getMyCard(), api.myMembership(), api.getCompletion()])
+      const [c, m, comp, me] = await Promise.all([api.getMyCard(), api.myMembership(), api.getCompletion(), api.me()])
       setCard(c)
       setMember(m)
       setCompletion(comp)
+      setUserId(me.user_id)
       setError(false)
     } catch {
       setError(true)
@@ -34,7 +36,13 @@ export default function Mine() {
 
   useDidShow(() => {
     void load()
+    void Taro.showShareMenu({ withShareTicket: true }).catch(() => undefined)
   })
+
+  useShareAppMessage(() => ({
+    title: card?.name ? `${card.name}的猫平方名片` : '猫平方名片',
+    path: userId ? `/pages/content/detail?ref=${encodeURIComponent(`user:${userId}`)}` : '/pages/discover/index',
+  }))
 
   const memberActive = member?.active ?? false
 
@@ -52,6 +60,9 @@ export default function Mine() {
             {card?.region_code ? card.region_code : '未设置区域'}
             {completion ? ` · 资料完成度 ${completion.tier}/3` : ''}
           </Text>
+          <Button className="btn-secondary" size="mini" openType="share" style={{ marginTop: '16px' }}>
+            分享我的名片
+          </Button>
         </View>
 
         <View className="member-card">
@@ -81,6 +92,11 @@ export default function Mine() {
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/verify/index' })}>
             <Text>实名认证</Text>
           </View>
+          {memberActive && member?.member.level === 3 ? (
+            <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/subaccounts/index' })}>
+              <Text>子账号管理</Text>
+            </View>
+          ) : null}
           <View className="menu__item" onClick={() => openCircleChannel()}>
             <Text>我的圈子</Text>
           </View>
@@ -91,6 +107,9 @@ export default function Mine() {
 
         <Text className="menu-section__title">内容与社交</Text>
         <View className="menu">
+          <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/mine/activities' })}>
+            <Text>我的活动</Text>
+          </View>
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/content/mine' })}>
             <Text>我的发布</Text>
           </View>
@@ -109,6 +128,9 @@ export default function Mine() {
           </View>
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/support/index' })}>
             <Text>客服</Text>
+          </View>
+          <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/settings/index' })}>
+            <Text>设置</Text>
           </View>
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/channel/index' })}>
             <Text>运营商中心</Text>

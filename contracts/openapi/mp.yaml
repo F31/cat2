@@ -390,6 +390,129 @@ paths:
                             type: array
                             items: { $ref: '#/components/schemas/ContentItem' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /contents/mine/signups:
+    get:
+      tags: [content]
+      summary: 我的活动（已报名的活动/会议）
+      operationId: listMySignups
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 我的活动列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/SignupItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /contents/{id}/signups:
+    get:
+      tags: [content]
+      summary: 主办方查看活动/会议报名名单
+      operationId: listContentSignups
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 报名名单
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/SignupUser' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /contents/{id}/signup:
+    post:
+      tags: [content]
+      summary: 报名活动/会议（重复报名幂等；满员拒绝）
+      operationId: signupContent
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 报名状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SignupState' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { description: 报名人数已满 }
+    delete:
+      tags: [content]
+      summary: 取消报名（未报名幂等）
+      operationId: cancelSignup
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 报名状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SignupState' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    get:
+      tags: [content]
+      summary: 当前用户报名状态
+      operationId: getSignupState
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 报名状态
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SignupState' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /contents/{id}/submit:
     post:
       tags: [content]
@@ -847,7 +970,9 @@ paths:
       tags: [bff]
       summary: 首屏单次聚合（卡片流 + 画像进度 + 未读数；读预计算候选，首屏 ≤3 秒）
       operationId: feed
-      security: [{ bearerAuth: [] }]
+      security:
+        - {}
+        - bearerAuth: []
       parameters:
         - name: limit
           in: query
@@ -855,6 +980,12 @@ paths:
         - name: offset
           in: query
           schema: { type: integer, default: 0, description: 换一批偏移 }
+        - name: type
+          in: query
+          description: 内容类型筛选；空=全部
+          schema:
+            type: string
+            enum: [user, org, content.project, content.product, content.meeting, content.event]
       responses:
         '200':
           description: 聚合结果
@@ -872,7 +1003,9 @@ paths:
       tags: [bff]
       summary: 换一批（同一聚合，客户端传 offset 下翻）
       operationId: feedRefresh
-      security: [{ bearerAuth: [] }]
+      security:
+        - {}
+        - bearerAuth: []
       parameters:
         - name: limit
           in: query
@@ -880,6 +1013,12 @@ paths:
         - name: offset
           in: query
           schema: { type: integer, default: 0 }
+        - name: type
+          in: query
+          description: 内容类型筛选；空=全部
+          schema:
+            type: string
+            enum: [user, org, content.project, content.product, content.meeting, content.event]
       responses:
         '200':
           description: 聚合结果
@@ -2700,6 +2839,38 @@ paths:
         - { name: did, in: path, required: true, schema: { type: string } }
       responses:
         '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { renewed: { type: boolean } } } } } ] } } } }
+  /circles/{id}/feeds/{fid}:
+    delete:
+      tags: [circle]
+      summary: 圈主或作者删除圈内动态（软删除）
+      operationId: deleteCircleFeed
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: fid
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 已删除
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          deleted: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /circles/{id}/mounts:
     get:
       tags: [circle]
@@ -3546,6 +3717,11 @@ components:
         approval_status: { type: integer, description: '0 待确认 / 1 已同意 / 2 已拒绝' }
         status: { type: integer }
         created_at: { type: string, format: date-time }
+        title: { type: string, description: 挂载内容标题（解析失败时为空） }
+        kind: { type: string, description: 内容类型 project/product/meeting/event }
+        start_at: { type: string, description: 活动/会议开始时间（RFC3339） }
+        location: { type: string }
+        can_decide: { type: boolean, description: 当前查看者是否为待确认内容所有者 }
     CircleDemand:
       type: object
       required: [id, circle_id, author_id, title, content, status]
@@ -3865,6 +4041,27 @@ components:
         fields: { type: object, additionalProperties: true, description: 类型子表字段（非会员不含会员可见字段） }
         member_gate: { type: array, items: { type: string }, description: 因非会员被隐藏的字段 }
         unlock_reason: { type: string }
+    SignupState:
+      type: object
+      required: [signed_up, count, limit]
+      properties:
+        signed_up: { type: boolean }
+        count: { type: integer, description: 已报名人数 }
+        limit: { type: integer, description: 人数上限，0=不限 }
+    SignupItem:
+      type: object
+      required: [item, signed_up_at]
+      properties:
+        item: { $ref: '#/components/schemas/ContentItem' }
+        signed_up_at: { type: string, format: date-time }
+    SignupUser:
+      type: object
+      required: [user_id, signed_up_at]
+      properties:
+        user_id: { type: string }
+        nickname: { type: string }
+        avatar_file_id: { type: string }
+        signed_up_at: { type: string, format: date-time }
     ContentPublishInput:
       type: object
       required: [kind, title]

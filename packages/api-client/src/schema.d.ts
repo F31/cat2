@@ -243,6 +243,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/contents/mine/signups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 我的活动（已报名的活动/会议） */
+        get: operations["listMySignups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contents/{id}/signups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 主办方查看活动/会议报名名单 */
+        get: operations["listContentSignups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contents/{id}/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 当前用户报名状态 */
+        get: operations["getSignupState"];
+        put?: never;
+        /** 报名活动/会议（重复报名幂等；满员拒绝） */
+        post: operations["signupContent"];
+        /** 取消报名（未报名幂等） */
+        delete: operations["cancelSignup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/contents/{id}/submit": {
         parameters: {
             query?: never;
@@ -803,6 +856,23 @@ export interface paths {
         get: operations["listDict"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 直接上传图片（multipart/form-data，JPG/PNG ≤5MB；未配置 OSS 时本地落库） */
+        post: operations["uploadMedia"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1640,7 +1710,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 圈内需求列表（生效在前；联系方式会员可见） */
+        /** 圈内需求列表（成员可见；生效在前；联系方式会员可见） */
         get: operations["listCircleDemands"];
         put?: never;
         /** 发布需求（每人每日跨圈合计 3 条；VIP 可选全平台） */
@@ -1668,6 +1738,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/circles/{id}/feeds/{fid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** 圈主或作者删除圈内动态（软删除） */
+        delete: operations["deleteCircleFeed"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/circles/{id}/mounts": {
         parameters: {
             query?: never;
@@ -1675,7 +1762,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 圈内挂载列表（引用不复制，点开进原详情） */
+        /** 圈内挂载列表（成员可见；引用不复制，点开进原详情） */
         get: operations["listCircleMounts"];
         put?: never;
         /** 挂载内容（本人直接；他人需对方确认；单圈 ≤50） */
@@ -2451,6 +2538,15 @@ export interface components {
             status: number;
             /** Format: date-time */
             created_at?: string;
+            /** @description 挂载内容标题（解析失败时为空） */
+            title?: string;
+            /** @description 内容类型 project/product/meeting/event */
+            kind?: string;
+            /** @description 活动/会议开始时间（RFC3339） */
+            start_at?: string;
+            location?: string;
+            /** @description 当前查看者是否为待确认内容所有者 */
+            can_decide?: boolean;
         };
         CircleDemand: {
             id: string;
@@ -2771,6 +2867,25 @@ export interface components {
             /** @description 因非会员被隐藏的字段 */
             member_gate?: string[];
             unlock_reason?: string;
+        };
+        SignupState: {
+            signed_up: boolean;
+            /** @description 已报名人数 */
+            count: number;
+            /** @description 人数上限，0=不限 */
+            limit: number;
+        };
+        SignupItem: {
+            item: components["schemas"]["ContentItem"];
+            /** Format: date-time */
+            signed_up_at: string;
+        };
+        SignupUser: {
+            user_id: string;
+            nickname?: string;
+            avatar_file_id?: string;
+            /** Format: date-time */
+            signed_up_at: string;
         };
         ContentPublishInput: {
             /** @enum {string} */
@@ -3415,6 +3530,144 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    listMySignups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 我的活动列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["SignupItem"][];
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listContentSignups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 报名名单 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["SignupUser"][];
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getSignupState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 报名状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["SignupState"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    signupContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 报名状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["SignupState"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description 报名人数已满 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cancelSignup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 报名状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["SignupState"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     submitContent: {
         parameters: {
             query?: never;
@@ -3911,6 +4164,8 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
+                /** @description 内容类型筛选；空=全部 */
+                type?: "user" | "org" | "content.project" | "content.product" | "content.meeting" | "content.event";
             };
             header?: never;
             path?: never;
@@ -3937,6 +4192,8 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
+                /** @description 内容类型筛选；空=全部 */
+                type?: "user" | "org" | "content.project" | "content.product" | "content.meeting" | "content.event";
             };
             header?: never;
             path?: never;
@@ -4453,6 +4710,38 @@ export interface operations {
                     };
                 };
             };
+        };
+    };
+    uploadMedia: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 文件ID */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            file_id?: string;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
     createUpload: {
@@ -6166,6 +6455,36 @@ export interface operations {
                     };
                 };
             };
+        };
+    };
+    deleteCircleFeed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                fid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            deleted?: boolean;
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listCircleMounts: {

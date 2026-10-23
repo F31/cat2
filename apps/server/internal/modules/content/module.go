@@ -60,11 +60,17 @@ func (m *Module) DependsOn() []string { return []string{"dict", "trust", "media"
 func (m *Module) Register(r *module.Registry) error {
 	m.svc = app.New(app.Options{
 		Repo: infra.NewStore(m.deps.Pool), Pool: m.deps.Pool, Bus: m.deps.Bus, Kinds: m.kinds,
-		Dict: m.deps.Dict, Trust: m.deps.Trust, Media: m.deps.Media, Policy: m.deps.Policy, Encrypt: m.deps.Encryptor,
+		Dict: m.deps.Dict, Trust: m.deps.Trust, Media: m.deps.Media, Policy: m.deps.Policy,
+		Encrypt: m.deps.Encryptor, Identity: m.deps.Identity,
 	})
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/contents", Handler: m.auth(m.handlePublish)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/contents/mine", Handler: m.auth(m.handleMine)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/contents/mine/signups", Handler: m.auth(m.handleMySignups)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/contents/{id}/signups", Handler: m.auth(m.handleSignupUsers)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/contents/{id}/signup", Handler: m.auth(m.handleSignup)},
+		module.Route{Method: http.MethodDelete, Path: "/api/mp/v1/contents/{id}/signup", Handler: m.auth(m.handleCancelSignup)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/contents/{id}/signup", Handler: m.auth(m.handleSignupState)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/contents/{id}/submit", Handler: m.auth(m.handleSubmit)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/contents/{id}", Handler: m.handleGet},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/contents/{id}/close", Handler: m.auth(m.handleClose)},
@@ -112,6 +118,21 @@ func (m *Module) CreateFromCube(ctx context.Context, ownerID int64, title, body 
 
 func (m *Module) Close(ctx context.Context, userID, itemID int64) (contentcontract.Item, error) {
 	return m.svc.Close(ctx, userID, itemID)
+}
+func (m *Module) Signup(ctx context.Context, userID, itemID int64) (contentcontract.SignupState, error) {
+	return m.svc.Signup(ctx, userID, itemID)
+}
+func (m *Module) CancelSignup(ctx context.Context, userID, itemID int64) (contentcontract.SignupState, error) {
+	return m.svc.CancelSignup(ctx, userID, itemID)
+}
+func (m *Module) SignupState(ctx context.Context, userID, itemID int64) (contentcontract.SignupState, error) {
+	return m.svc.SignupState(ctx, userID, itemID)
+}
+func (m *Module) ListSignups(ctx context.Context, userID int64) ([]contentcontract.SignupItem, error) {
+	return m.svc.ListSignups(ctx, userID)
+}
+func (m *Module) ListSignupUsers(ctx context.Context, ownerID, itemID int64) ([]contentcontract.SignupUser, error) {
+	return m.svc.ListSignupUsers(ctx, ownerID, itemID)
 }
 
 // ---- entityref.Resolver（content.<kind>）----
@@ -161,17 +182,20 @@ func statusWord(s int16) string {
 
 // content 错误码（contracts/errors/README.md 11 段）。
 const (
-	codeParamInvalid   = 1      // 000001
-	codeUnauthorized   = 2      // 000002
-	codeForbidden      = 3      // 000003
-	codeNotFound       = 4      // 000004
-	codeInternal       = 9      // 000009
-	codeItemNotFound   = 110001 // 110001 内容不存在
-	codeNoPermission   = 110002 // 110002 无权操作
-	codeFieldInvalid   = 110003 // 110003 字段校验失败
-	codeRealnameNeeded = 110004 // 110004 发布需实名
-	codeRestricted     = 110006 // 110006 账号处于限制期，禁止发布
-	codeKindUnknown    = 110005 // 110005 未知内容类型
+	codeParamInvalid      = 1      // 000001
+	codeUnauthorized      = 2      // 000002
+	codeForbidden         = 3      // 000003
+	codeNotFound          = 4      // 000004
+	codeInternal          = 9      // 000009
+	codeItemNotFound      = 110001 // 110001 内容不存在
+	codeNoPermission      = 110002 // 110002 无权操作
+	codeFieldInvalid      = 110003 // 110003 字段校验失败
+	codeRealnameNeeded    = 110004 // 110004 发布需实名
+	codeRestricted        = 110006 // 110006 账号处于限制期，禁止发布
+	codeKindUnknown       = 110005 // 110005 未知内容类型
+	codeSignupFull        = 110007 // 110007 报名人数已满
+	codeSignupUnsupported = 110008 // 110008 该内容不支持报名
+	codeSignupClosed      = 110009 // 110009 报名已截止
 )
 
 func (m *Module) handlePublish(w http.ResponseWriter, req *http.Request) {
@@ -272,6 +296,71 @@ func (m *Module) auditAdmin(req *http.Request, action, targetRef, reason string)
 	})
 }
 
+func (m *Module) handleSignup(w http.ResponseWriter, req *http.Request) {
+	id, err := pathID(req)
+	if err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	state, err := m.svc.Signup(req.Context(), userIDFrom(req.Context()), id)
+	if err != nil {
+		writeContentErr(w, err)
+		return
+	}
+	writeData(w, state)
+}
+
+func (m *Module) handleCancelSignup(w http.ResponseWriter, req *http.Request) {
+	id, err := pathID(req)
+	if err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	state, err := m.svc.CancelSignup(req.Context(), userIDFrom(req.Context()), id)
+	if err != nil {
+		writeContentErr(w, err)
+		return
+	}
+	writeData(w, state)
+}
+
+func (m *Module) handleSignupState(w http.ResponseWriter, req *http.Request) {
+	id, err := pathID(req)
+	if err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	state, err := m.svc.SignupState(req.Context(), userIDFrom(req.Context()), id)
+	if err != nil {
+		writeContentErr(w, err)
+		return
+	}
+	writeData(w, state)
+}
+
+func (m *Module) handleSignupUsers(w http.ResponseWriter, req *http.Request) {
+	id, err := pathID(req)
+	if err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	items, err := m.svc.ListSignupUsers(req.Context(), userIDFrom(req.Context()), id)
+	if err != nil {
+		writeContentErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"items": items})
+}
+
+func (m *Module) handleMySignups(w http.ResponseWriter, req *http.Request) {
+	items, err := m.svc.ListSignups(req.Context(), userIDFrom(req.Context()))
+	if err != nil {
+		writeContentErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"items": items})
+}
+
 func (m *Module) handleGet(w http.ResponseWriter, req *http.Request) {
 	id, err := pathID(req)
 	if err != nil {
@@ -368,6 +457,12 @@ func writeContentErr(w http.ResponseWriter, err error) {
 		writeErr(w, codeFieldInvalid, err.Error())
 	case errors.Is(err, domain.ErrKindUnknown):
 		writeErr(w, codeKindUnknown, "未知内容类型")
+	case errors.Is(err, domain.ErrNotSignupable):
+		writeErr(w, codeSignupUnsupported, "该内容不支持报名")
+	case errors.Is(err, domain.ErrSignupFull):
+		writeErr(w, codeSignupFull, "报名人数已满")
+	case errors.Is(err, domain.ErrSignupClosed):
+		writeErr(w, codeSignupClosed, "报名已截止")
 	default:
 		var fe *kind.FieldError
 		if errors.As(err, &fe) {
@@ -382,13 +477,15 @@ func httpStatus(code int) int {
 	switch code {
 	case codeUnauthorized:
 		return http.StatusUnauthorized
-	case codeForbidden, codeRealnameNeeded:
+	case codeForbidden, codeRealnameNeeded, codeNoPermission:
 		return http.StatusForbidden
 	case codeRestricted:
 		return http.StatusTooManyRequests
 	case codeItemNotFound:
 		return http.StatusNotFound
-	case codeParamInvalid, codeFieldInvalid, codeKindUnknown:
+	case codeSignupFull:
+		return http.StatusConflict
+	case codeParamInvalid, codeFieldInvalid, codeKindUnknown, codeSignupUnsupported, codeSignupClosed:
 		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError

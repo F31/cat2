@@ -100,6 +100,126 @@ func (s *Store) ListByOwner(ctx context.Context, ownerID int64, kind string) ([]
 	return out, rows.Err()
 }
 
+// SignupRecord 报名记录（内容 + 报名时间）。
+type SignupRecord struct {
+	Item       Item
+	SignedUpAt time.Time
+}
+
+// SignupUser 报名名单行。
+type SignupUser struct {
+	UserID     int64
+	SignedUpAt time.Time
+}
+
+// SignupActive 当前用户是否已报名。
+func (s *Store) SignupActive(ctx context.Context, itemID, userID int64) (bool, error) {
+	var ok bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM cnt_signup WHERE item_id=$1 AND user_id=$2 AND status=1)`, itemID, userID).Scan(&ok)
+	return ok, err
+}
+
+// SetSignup 报名/取消报名；返回是否发生状态变更（重复报名返回 false）。
+func (s *Store) SetSignup(ctx context.Context, tx db.Tx, itemID, userID int64, active bool) (bool, error) {
+	var tag interface{ RowsAffected() int64 }
+	var err error
+	if active {
+		tag, err = tx.Exec(ctx, `INSERT INTO cnt_signup (item_id, user_id, status, created_at)
+			VALUES ($1,$2,1,now())
+			ON CONFLICT (item_id, user_id) DO UPDATE
+			SET status=1, canceled_at=NULL, created_at=now()
+			WHERE cnt_signup.status=0`, itemID, userID)
+	} else {
+		tag, err = tx.Exec(ctx, `UPDATE cnt_signup SET status=0, canceled_at=now()
+			WHERE item_id=$1 AND user_id=$2 AND status=1`, itemID, userID)
+	}
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// LockSignup 同内容报名串行化锁（事务级 advisory lock，随事务结束释放）。
+func (s *Store) LockSignup(ctx context.Context, tx db.Tx, itemID int64) error {
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, itemID)
+	return err
+}
+
+// CountActive 内容有效报名数（会议等无冗余计数字段时使用）。
+func (s *Store) CountActive(ctx context.Context, itemID int64) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM cnt_signup WHERE item_id=$1 AND status=1`, itemID).Scan(&n)
+	return n, err
+}
+
+// EventCount 活动人数（沿用 cnt_event.participant_count 作为对外展示总数）。
+func (s *Store) EventCount(ctx context.Context, itemID int64) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `SELECT COALESCE(participant_count,0) FROM cnt_event WHERE item_id=$1`, itemID).Scan(&n)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return n, err
+}
+
+// BumpEventCount 活动人数增减；与报名记录同事务。
+func (s *Store) BumpEventCount(ctx context.Context, tx db.Tx, itemID int64, delta int) error {
+	_, err := tx.Exec(ctx, `UPDATE cnt_event
+		SET participant_count=GREATEST(COALESCE(participant_count,0)+$2,0) WHERE item_id=$1`, itemID, delta)
+	return err
+}
+
+// ListSignupUsers 某内容的有效报名用户（主办方查看）。
+func (s *Store) ListSignupUsers(ctx context.Context, itemID int64) ([]SignupUser, error) {
+	rows, err := s.pool.Query(ctx, `SELECT user_id, created_at FROM cnt_signup
+		WHERE item_id=$1 AND status=1 ORDER BY created_at, user_id`, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SignupUser
+	for rows.Next() {
+		var u SignupUser
+		if err := rows.Scan(&u.UserID, &u.SignedUpAt); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// ListSignups 当前用户已报名的活动/会议（新报名在前）。
+func (s *Store) ListSignups(ctx context.Context, userID int64) ([]SignupRecord, error) {
+	const cols = `i.id, i.kind, i.owner_type, i.owner_id, i.title, COALESCE(i.cover_file_id,0),
+		COALESCE(i.region_code,''), i.tagset, i.status, COALESCE(i.reject_reason,''),
+		i.published_at, i.visibility, i.search_doc_version`
+	rows, err := s.pool.Query(ctx, `SELECT `+cols+`, s.created_at
+		FROM cnt_signup s JOIN cnt_item i ON i.id=s.item_id
+		WHERE s.user_id=$1 AND s.status=1
+		ORDER BY s.created_at DESC, i.id DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SignupRecord
+	for rows.Next() {
+		var it Item
+		var ts []byte
+		var signedAt time.Time
+		if err := rows.Scan(&it.ID, &it.Kind, &it.OwnerRef.Type, &it.OwnerRef.ID, &it.Title, &it.CoverFileID,
+			&it.RegionCode, &ts, &it.Status, &it.RejectReason, &it.PublishedAt, &it.Visibility,
+			&it.SearchDocVersion, &signedAt); err != nil {
+			return nil, err
+		}
+		if len(ts) > 0 {
+			_ = json.Unmarshal(ts, &it.TagSet)
+		}
+		out = append(out, SignupRecord{Item: it, SignedUpAt: signedAt})
+	}
+	return out, rows.Err()
+}
+
 // AdminList 后台内容列表（kind 空=全部；status<0=全部）。
 func (s *Store) AdminList(ctx context.Context, kind string, status int16, limit int) ([]Item, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+itemCols+` FROM cnt_item

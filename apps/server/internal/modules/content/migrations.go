@@ -71,4 +71,15 @@ CREATE TABLE IF NOT EXISTS cnt_event (
 	signup_method varchar(128),
 	intro text
 );
+
+-- 活动/会议报名：以 (item_id,user_id) 幂等，取消保留记录便于审计/再次报名。
+CREATE TABLE IF NOT EXISTS cnt_signup (
+	item_id bigint NOT NULL,
+	user_id bigint NOT NULL,
+	status smallint NOT NULL DEFAULT 1, -- 0已取消/1已报名
+	created_at timestamptz NOT NULL DEFAULT now(),
+	canceled_at timestamptz,
+	PRIMARY KEY (item_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cnt_signup_user ON cnt_signup(user_id, status, created_at DESC);
 `

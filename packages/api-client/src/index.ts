@@ -100,6 +100,24 @@ export interface FeedData {
   unread: UnreadData
 }
 
+export interface SignupState {
+  signed_up: boolean
+  count: number
+  limit: number
+}
+
+export interface SignupItem {
+  item: ContentItem
+  signed_up_at: string
+}
+
+export interface SignupUser {
+  user_id: string
+  nickname?: string
+  avatar_file_id?: string
+  signed_up_at: string
+}
+
 export interface ContentItem {
   id: string
   kind: string
@@ -526,6 +544,12 @@ export interface CircleMount {
   mount_type: number
   approval_status: number
   status: number
+  created_at?: string
+  title?: string
+  kind?: string
+  start_at?: string
+  location?: string
+  can_decide?: boolean
 }
 
 export interface Notice {
@@ -643,11 +667,11 @@ export function createClient(opts: ClientOptions) {
     },
 
     // ---- 广场 / 搜索 / 聚合 ----
-    getFeed(limit = 20, offset = 0) {
-      return call<FeedData>('GET', `/feed${qs({ limit, offset })}`)
+    getFeed(limit = 20, offset = 0, type?: string) {
+      return call<FeedData>('GET', `/feed${qs({ limit, offset, type })}`)
     },
-    refreshFeed(limit = 20, offset = 0) {
-      return call<FeedData>('POST', `/feed/refresh${qs({ limit, offset })}`)
+    refreshFeed(limit = 20, offset = 0, type?: string) {
+      return call<FeedData>('POST', `/feed/refresh${qs({ limit, offset, type })}`)
     },
     search(p: SearchParams) {
       return call<{ items: DiscoveryCard[] }>(
@@ -770,6 +794,21 @@ export function createClient(opts: ClientOptions) {
     },
     closeContent(id: string) {
       return call<Record<string, unknown>>('POST', `/contents/${id}/close`)
+    },
+    signupContent(id: string) {
+      return call<SignupState>('POST', `/contents/${id}/signup`)
+    },
+    cancelSignup(id: string) {
+      return call<SignupState>('DELETE', `/contents/${id}/signup`)
+    },
+    signupState(id: string) {
+      return call<SignupState>('GET', `/contents/${id}/signup`)
+    },
+    mySignups() {
+      return call<{ items: SignupItem[] }>('GET', '/contents/mine/signups')
+    },
+    contentSignups(id: string) {
+      return call<{ items: SignupUser[] }>('GET', `/contents/${id}/signups`)
     },
 
     // ---- 关注 / 收藏 ----
@@ -1038,6 +1077,9 @@ export function createClient(opts: ClientOptions) {
     },
     listCircleFeeds(id: string, limit = 30) {
       return call<{ items: CircleFeed[] }>('GET', `/circles/${id}/feeds${qs({ limit })}`)
+    },
+    deleteCircleFeed(id: string, fid: string) {
+      return call<{ deleted: boolean }>('DELETE', `/circles/${id}/feeds/${fid}`)
     },
     listCircleApplications(id: string, status = 1) {
       return call<{ items: CircleApplication[] }>('GET', `/circles/${id}/applications${qs({ status })}`)

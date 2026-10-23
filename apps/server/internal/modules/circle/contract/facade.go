@@ -200,6 +200,7 @@ type Facade interface {
 	Discover(ctx context.Context, viewerID int64, f DiscoverFilter) ([]CircleDiscoverItem, string, error)
 	MemberItems(ctx context.Context, circleID, viewerID int64) ([]CircleMember, error)
 	ListFeeds(ctx context.Context, circleID, viewerID int64, limit int) ([]CircleFeed, error)
+	DeleteFeed(ctx context.Context, circleID, feedID, userID int64) error
 	ListApplications(ctx context.Context, circleID, ownerID int64, status int16) ([]CircleApplication, error)
 	DecideApplication(ctx context.Context, circleID, ownerID, applicantID int64, approve bool, reason string) error
 }
@@ -214,4 +215,10 @@ type Mount struct {
 	ApprovalStatus int16     `json:"approval_status"` // 0待确认/1已同意/2已拒绝
 	Status         int16     `json:"status"`
 	CreatedAt      time.Time `json:"created_at"`
+	// 以下为列表展示增强字段（由 content 解析，失败时为空）。
+	Title     string `json:"title,omitempty"`
+	Kind      string `json:"kind,omitempty"`
+	StartAt   string `json:"start_at,omitempty"`
+	Location  string `json:"location,omitempty"`
+	CanDecide bool   `json:"can_decide,omitempty"` // 当前查看者是否为待确认内容的所有者
 }
