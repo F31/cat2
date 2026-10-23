@@ -82,10 +82,4 @@ func (c *Client) CheckText(ctx context.Context, req ports.ModerationRequest) (po
 	return ports.ModerationResult{Pass: pass, Labels: labels}, nil
 }
 
-// CheckMedia 图片异步机检（media_check_async）：回调前内容保持「审核中」。
-func (c *Client) CheckMedia(_ context.Context, _ ports.ModerationRequest) (ports.ModerationResult, error) {
-	// TODO: media_check_async 提交异步检测任务，结论经回调落 trs_moderation_record
-	return ports.ModerationResult{Async: true}, nil
-}
-
 var _ ports.Moderation = (*Client)(nil)

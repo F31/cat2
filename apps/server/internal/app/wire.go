@@ -118,6 +118,9 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		if !validHex32(cfg.IdentityEncKey) || !validHex32(cfg.BlindKey) {
 			return nil, fmt.Errorf("生产环境必须配置 32 字节 hex 的 CATCUBE_IDENTITY_ENC_KEY/CATCUBE_BLIND_KEY")
 		}
+		if cfg.Moderation != "wechat" {
+			return nil, fmt.Errorf("生产环境必须配置 CATCUBE_MODERATION=wechat（禁止空/开发态内容安全）")
+		}
 	}
 	pool, err := db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
@@ -170,6 +173,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	// 小程序接入信息优先从后台「小程序设置」读取（super admin 可改，热生效）；
 	// 未配置时回退环境变量，仍为空则使用开发态实现。
 	wechatClient := wechat.NewDynamicClient(settingsReg, cfg.WeChatAppID, cfg.WeChatAppSecret)
+	notifyClient := wechat.NewNotifyClient(wechatClient.AccessToken)
 	identityDeps.WeChat = wechatClient
 	identityDeps.PhoneCode = wechatClient
 	var miniCoder ports.MiniProgramCoder = wechatClient
@@ -227,9 +231,16 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		slog.Info("内容安全启用开发实现", "mode", cfg.Moderation)
 	}
 	trustMod := trust.New(trust.Deps{Pool: pool, Moderation: moderationClient, Bus: bus, Auth: authFunc, Audit: auditRec,
-		AlertReviewBacklog: cfg.AlertReviewBacklog})
+		AlertReviewBacklog: cfg.AlertReviewBacklog, CallbackToken: cfg.ModerationCallbackToken})
 	dictMod := dict.New(pool)
 	mediaMod := media.New(pool, storage, authFunc)
+	trustMod.SetMediaResolver(func(ctx context.Context, fileID string) (string, error) {
+		id, err := strconv.ParseInt(strings.TrimSpace(fileID), 10, 64)
+		if err != nil || id <= 0 {
+			return "", fmt.Errorf("media: 非法 file_id %q", fileID)
+		}
+		return mediaMod.Facade().URL(ctx, id, "orig")
+	})
 	entityReg := entityref.NewRegistry()
 	profileMod := profile.New(profile.Deps{
 		Pool: pool, Bus: bus, Media: mediaMod.Facade(), Dict: dictMod.Facade(),
@@ -257,13 +268,14 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	discoveryMod := discovery.New(discovery.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Settings: settingsReg, Outbox: outbox,
 	})
+	rbacStore := rbac.New(pool)
 	tradeMod := trade.New(trade.Deps{
 		Pool: pool, Bus: bus, Pay: payClient, Identity: identityMod.Facade(), Audit: auditRec,
-		AlertRetryThreshold: cfg.AlertFulfillRetry,
+		Policy: policyEngine, RBAC: rbacStore, AlertRetryThreshold: cfg.AlertFulfillRetry,
 	})
 	membershipMod := membership.New(membership.Deps{
 		Pool: pool, Bus: bus, Trade: tradeMod.Facade(), Verify: verifyMod.Facade(),
-		Identity: identityMod.Facade(), Settings: settingsReg, Policy: policyEngine, Audit: auditRec,
+		Identity: identityMod.Facade(), Settings: settingsReg, Policy: policyEngine, Audit: auditRec, RBAC: rbacStore,
 	})
 	cubeMod := cube.New(cube.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Policy: policyEngine, Entities: entityReg,
@@ -279,15 +291,15 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	msgMod.SetMemberResolver(cubeMod.SessionMemberResolver())
 	noticeMod := notice.New(notice.Deps{
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Circle: circleMod.Facade(), Audit: auditRec,
+		Notifier: notifyClient, Settings: settingsReg,
 	})
 	flagStore := featureflag.NewStore(pool)
 	schedRunner := scheduler.NewRunner(pool, 20261013)
-	rbacStore := rbac.New(pool)
 	opsMod := ops.New(ops.Deps{Pool: pool, Identity: identityMod.Facade(), Outbox: outbox, Bus: bus,
 		Flags: flagStore, Settings: settingsReg, Storage: storage, Audit: auditRec, Runner: schedRunner, RBAC: rbacStore})
 	aiMod := ai.New(ai.Deps{Pool: pool, Flags: flagStore, LLM: llm.NewDevClient(), Auth: authFunc,
 		Settings: settingsReg, Dict: dictMod.Facade(), Audit: auditRec})
-	channelMod := channel.New(channel.Deps{Pool: pool, Bus: bus, Auth: authFunc, Audit: auditRec, Dict: dictMod.Facade(), Cube: cubeMod.Facade(), Settings: settingsReg, Policy: policyEngine})
+	channelMod := channel.New(channel.Deps{Pool: pool, Bus: bus, Auth: authFunc, Audit: auditRec, Dict: dictMod.Facade(), Cube: cubeMod.Facade(), Settings: settingsReg, Policy: policyEngine, RBAC: rbacStore})
 	// 审核辅助（AI 预分类/摘要）：装配根桥接同阶模块（trust ← ai）
 	trustMod.SetSuggester(aiSuggester{ai: aiMod.Facade()})
 	mods := []module.Module{
@@ -438,7 +450,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		Social: socialMod.Facade(), Msg: msgMod.Facade(), Verify: verifyMod.Facade(),
 		Membership: membershipMod.Facade(), Content: contentMod.Facade(),
 		Cube: cubeMod.Facade(), Circle: circleMod.Facade(), Trust: trustMod.Facade(), Cache: cache,
-		ContactDailyLimit: cfg.ContactDailyLimit, Audit: auditRec,
+		ContactDailyLimit: cfg.ContactDailyLimit, Audit: auditRec, RBAC: rbacStore,
 	}).Register(a.Mux)
 
 	// 跨模块扩展点装配（装配根唯一 import 所有模块）：审核对象提供者

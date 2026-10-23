@@ -1,6 +1,6 @@
 import Taro from '@tarojs/taro'
-import { api } from './request'
-import { getAgreed, setAgreed } from '../utils/agreement'
+import { api, BASE_URL } from './request'
+import { CONSENT_VERSION, getAgreed, setAgreed } from '../utils/agreement'
 import { getToken, setTokens } from '../utils/token'
 
 let inflight: Promise<string> | null = null
@@ -28,7 +28,22 @@ export async function silentLogin(): Promise<string> {
   const { code } = await Taro.login()
   const res = await api.wechatLogin(code)
   setTokens(res.tokens)
+  await recordConsent().catch(() => undefined)
   return res.tokens.access_token
+}
+
+// recordConsent 服务端留痕（协议版本 + 时间 + IP/UA），失败不阻断静默登录。
+async function recordConsent(): Promise<void> {
+  const token = getToken()
+  if (!token) return
+  const res = await Taro.request({
+    url: `${BASE_URL}/consents`,
+    method: 'POST',
+    header: { Authorization: `Bearer ${token}` },
+    data: { terms_version: CONSENT_VERSION, privacy_version: CONSENT_VERSION, agreed: true },
+  })
+  const body = res.data as { code?: number; message?: string }
+  if (body.code !== 0) throw new Error(body.message || '协议留痕失败')
 }
 
 let redirecting = false
@@ -47,5 +62,6 @@ export async function consentLogin(identityType: 1 | 2, phoneCode?: string): Pro
   const { code } = await Taro.login()
   const res = await api.wechatLogin(code, phoneCode, undefined, identityType)
   setTokens(res.tokens)
+  await recordConsent()
   setAgreed()
 }

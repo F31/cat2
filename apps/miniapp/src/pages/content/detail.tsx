@@ -7,6 +7,7 @@ import { ensureLogin } from '../../services/auth'
 import { getToken } from '../../utils/token'
 import StateView from '../../components/StateView'
 import SubscribeAsk from '../../components/SubscribeAsk'
+import { askSubscribe } from '../../services/subscribe'
 import PolicyGate from '../../components/PolicyGate'
 
 const LEVEL_LABEL: Record<number, string> = { 1: 'VIP 会员', 2: 'SVIP 会员', 3: '企业版' }
@@ -368,7 +369,11 @@ export default function ContentDetail() {
         </>
       ) : null}
 
-      <SubscribeAsk visible={justFollowed && detail.following} />
+      <SubscribeAsk
+        visible={justFollowed && detail.following}
+        actionText="开启通知"
+        onAction={() => void askSubscribe()}
+      />
 
       <View className="detail-actions">
         <Button className="btn-secondary" onClick={() => void toggleFollow()}>

@@ -17,6 +17,7 @@ import (
 	"catcube/internal/kernel/module"
 	"catcube/internal/kernel/obs"
 	"catcube/internal/kernel/policy"
+	"catcube/internal/kernel/rbac"
 	"catcube/internal/kernel/settings"
 	idcontract "catcube/internal/modules/identity/contract"
 	memcontract "catcube/internal/modules/membership/contract"
@@ -37,6 +38,7 @@ type Deps struct {
 	Settings *settings.Registry
 	Audit    *audit.Recorder
 	Policy   *policy.Engine
+	RBAC     *rbac.Store
 }
 
 // Module membership 模块。
@@ -64,11 +66,11 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/membership/sub-accounts", Handler: m.auth(m.handleSubs)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/membership/sub-accounts", Handler: m.auth(m.handleInvite)},
 		module.Route{Method: http.MethodDelete, Path: "/api/mp/v1/membership/sub-accounts/{subUserID}", Handler: m.auth(m.handleRemove)},
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/members", Handler: m.auth(m.handleAdminMembers), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/members", Handler: m.auth(m.handleAdminMembers), Admin: true, Perm: "governance:user:read"},
 		// 代操作（p4 §4.4；前后值快照入审计；双人复核待 RBAC #13）
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/memberships/{id}/transfer-master", Handler: m.auth(m.handleTransferMaster), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/memberships/sub-accounts/remove", Handler: m.auth(m.handleForceRemoveSub), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/memberships/{id}/adjust", Handler: m.auth(m.handleAdjustMember), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/memberships/{id}/transfer-master", Handler: m.auth(m.handleTransferMaster), Admin: true, Perm: "membership:member:adjust"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/memberships/sub-accounts/remove", Handler: m.auth(m.handleForceRemoveSub), Admin: true, Perm: "membership:member:adjust"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/memberships/{id}/adjust", Handler: m.auth(m.handleAdjustMember), Admin: true, Perm: "membership:member:adjust"},
 	)
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "membership:master:transfer", Path: "/api/admin/v1/memberships/{id}/transfer-master", Required: true, LogFailed: true, Module: "membership"},
@@ -175,6 +177,7 @@ func (m *Module) Fulfill(ctx context.Context, order tradecontract.Order) error {
 const (
 	codeParamInvalid   = 1      // 000001
 	codeUnauthorized   = 2      // 000002
+	codeForbidden      = 3      // 000003
 	codeConflict       = 5      // 000005
 	codeInternal       = 9      // 000009
 	codeLevelUnknown   = 120001 // 120001
@@ -388,6 +391,8 @@ func httpStatus(code int) int {
 	switch code {
 	case codeUnauthorized:
 		return http.StatusUnauthorized
+	case codeForbidden:
+		return http.StatusForbidden
 	case codeEnterpriseCert, codeNotEnterprise:
 		return http.StatusForbidden
 	case codeSubLimit, codeConflict:

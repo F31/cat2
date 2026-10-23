@@ -50,11 +50,14 @@ docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-co
 | `CATCUBE_WECHAT_APPID` / `CATCUBE_WECHAT_SECRET` | 小程序登录、手机号、小程序码；需配置服务器域名白名单 |
 | `CATCUBE_WECHAT_PAY_*` | 微信支付 V3 商户号/证书序列号/APIv3Key/回调 URL；私钥与平台证书支持 `_FILE` 挂载；未配置回退开发态 |
 | `CATCUBE_IDENTITY_ENC_KEY` / `CATCUBE_BLIND_KEY` | 32 字节 hex；必须由 KMS/密钥管理注入，丢失不可逆 |
-| `CATCUBE_OSS_ENDPOINT` / `_BUCKET` / `CATCUBE_CDN_HOST` / `_AK` / `_SK` | 对象存储与 CDN；未配置时本地 FS 回退（仅开发） |
-| `CATCUBE_MODERATION` | 留空=不机检；生产需接微信内容安全适配器（当前仅 dev/骨架） |
+| `CATCUBE_OSS_ENDPOINT` / `_BUCKET` / `CATCUBE_CDN_HOST` / `_AK` / `_SK` | 对象存储与 CDN；未配置时本地卷 `/data/oss` 回退 |
+| `CATCUBE_MODERATION` | 生产必须 `wechat`（文本同步 + 图片异步）；空/dev 会拒绝启动 |
 | `CATCUBE_OTEL_*` | Collector 地址/采样；默认关闭 |
 | `CATCUBE_DRAIN_SECONDS` | 优雅停机排空窗口（默认 5s） |
 | `CATCUBE_ALERT_*` / `CATCUBE_CONTACT_DAILY_LIMIT` | 告警阈值与联系方式日限频 |
+| `CATCUBE_MODERATION_CALLBACK_TOKEN` | 媒体异步机检回调 token（微信回调 URL 追加 `?token=`） |
+| `notice.wechat_templates`（后台设置） | 订阅消息模板映射：`notice.code=wxTemplateID,...`；未配置时自动回退站内信 |
+| `X-Review-Token`（请求头） | 退款/会员人工调整的双人复核令牌，必须是另一名具备对应权限的后台账号令牌 |
 
 > 生产必须留空 `CATCUBE_SMS_DEV_CODE`；当前短信仅开发固定码，生产短信网关适配器待接入。
 
@@ -65,6 +68,6 @@ docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-co
 | 微信支付 | ✅ V3 适配器已实现（JSAPI 下单/回调验签解密/退款）；生产未配置时自动禁用支付，开发/测试才回退 DevClient | 配置商户号、证书、APIv3Key、回调域名并完成真实小额验证 |
 | 实名核验 | `internal/adapters/realname` 仅 DevClient | 第三方二要素供应商适配器与密钥 |
 | 短信 | 仅 `CATCUBE_SMS_DEV_CODE` | 短信服务商适配器 + 模板报备 |
-| 内容安全 | ✅ 微信文本机检已装配（`MODERATION=wechat`）；图片/音视频异步检测仍 TODO | 配置微信内容安全权限，补媒体异步检测回调 |
-| 对象存储 | ✅ 阿里云 OSS V1 签名已实现（预签名 PUT / 签名 Put/Delete / CDN URL）；未配置 endpoint 时本地兜底 | 配置 bucket/endpoint/AK/SK 并做真实上传验证；非阿里云需另接适配器 |
+| 内容安全 | ✅ 微信文本机检 + 图片等异步检测回调（`MODERATION=wechat`，回调 `/api/mp/v1/moderation/notify`） | 配置微信内容安全权限、`MODERATION_CALLBACK_TOKEN`，并确保 media URL 公网可访问 |
+| 对象存储 | ✅ 阿里云 OSS V1 签名已实现；未配置 endpoint 时落 `/data/oss` 持久卷（本地回退） | 配置 bucket/endpoint/AK/SK 并做真实上传验证；非阿里云需另接适配器 |
 | 小程序码 | `wechat.MiniProgramCode` 已实现 | 生产 appid/secret、页面路径白名单（圈名片依赖） |

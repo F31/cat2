@@ -65,10 +65,10 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cards/me/share", Handler: m.auth(m.handleShare)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cards/{ref}", Handler: m.handlePublicCard},
 		// 后台：画像字段模板（字段池 + 各主体类型渲染结果；p4 §8.1）
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/profile-templates", Handler: m.auth(m.handleAdminTemplates), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/profile-templates", Handler: m.auth(m.handleAdminTemplates), Admin: true, Perm: "content:moderation:decide"},
 		// 后台：组织名片维护（运营管理 → 组织管理）
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/users/{id}/card", Handler: m.auth(m.handleAdminCard), Admin: true},
-		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/users/{id}/card", Handler: m.auth(m.handleAdminPutCard), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/users/{id}/card", Handler: m.auth(m.handleAdminCard), Admin: true, Perm: "governance:user:read"},
+		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/users/{id}/card", Handler: m.auth(m.handleAdminPutCard), Admin: true, Perm: "governance:user:restrict"},
 	)
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "profile:identity:modify:denied", Path: "/api/mp/v1/cards/me", Required: true, LogFailed: true, Module: "profile"},

@@ -565,6 +565,49 @@ func (s *Service) AdminReview(ctx context.Context, itemID int64, approve bool, r
 	return s.toItem(ctx, it, true), nil
 }
 
+// ApplyVerdict 内容安全异步结论回写：审核中→展示/下架；已展示内容若图片复核命中则下架。
+func (s *Service) ApplyVerdict(ctx context.Context, itemID int64, pass bool, reason string) error {
+	it, err := s.repo.GetItem(ctx, itemID)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	switch it.Status {
+	case contentcontract.StatusReviewing:
+		if pass {
+			if err := s.transition(ctx, it, contentcontract.StatusPublished, "", &now,
+				domain.EventPublish, contentcontract.EventContentPublished, "system"); err != nil {
+				return err
+			}
+			it.Status = contentcontract.StatusPublished
+			it.PublishedAt = &now
+		} else {
+			if reason == "" {
+				reason = "内容审核未通过"
+			}
+			if err := s.transition(ctx, it, contentcontract.StatusTakenDown, reason, nil,
+				domain.EventReject, contentcontract.EventContentTakenDown, "system"); err != nil {
+				return err
+			}
+			it.Status = contentcontract.StatusTakenDown
+			it.RejectReason = reason
+		}
+	case contentcontract.StatusPublished:
+		if !pass {
+			if reason == "" {
+				reason = "图片机检未通过"
+			}
+			if err := s.transition(ctx, it, contentcontract.StatusTakenDown, reason, nil,
+				domain.EventTakeDown, contentcontract.EventContentTakenDown, "system"); err != nil {
+				return err
+			}
+			it.Status = contentcontract.StatusTakenDown
+			it.RejectReason = reason
+		}
+	}
+	return nil
+}
+
 // OwnerOf 内容归属人（供 trust 违规记分/限制）。
 func (s *Service) OwnerOf(ctx context.Context, itemID int64) (int64, error) {
 	it, err := s.repo.GetItem(ctx, itemID)

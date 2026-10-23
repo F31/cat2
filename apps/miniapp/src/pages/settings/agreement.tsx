@@ -1,5 +1,6 @@
 import Taro, { useRouter } from '@tarojs/taro'
 import { View, Text } from '@tarojs/components'
+import { CONSENT_VERSION } from '../../utils/agreement'
 
 const TERMS = `猫平方使用须知
 
@@ -60,7 +61,7 @@ export default function Agreement() {
         </Text>
       </View>
       <Text className="form-field__label" style={{ display: 'block', marginTop: '20px' }}>
-        当前为开发版本，正式上线前需由法务确认并更新版本号。
+        当前版本 v{CONSENT_VERSION}；正式上线前由法务确认，版本更新后将重新征得同意。
       </Text>
     </View>
   )

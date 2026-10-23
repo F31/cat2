@@ -3,6 +3,9 @@ package contract
 
 import (
 	"context"
+	"encoding/json"
+	"strconv"
+	"strings"
 	"time"
 
 	dictcontract "catcube/internal/shared/dict/contract"
@@ -55,6 +58,35 @@ type PublishInput struct {
 	TagSet      dictcontract.TagSet `json:"tagset"`
 	OrgRef      int64               `json:"org_ref"`
 	Fields      map[string]any      `json:"fields"`
+}
+
+// UnmarshalJSON 兼容小程序把 file_id 序列化为字符串、后台/测试传数字两种形式。
+func (in *PublishInput) UnmarshalJSON(raw []byte) error {
+	var body struct {
+		Kind        string              `json:"kind"`
+		Title       string              `json:"title"`
+		CoverFileID json.RawMessage     `json:"cover_file_id"`
+		RegionCode  string              `json:"region_code"`
+		TagSet      dictcontract.TagSet `json:"tagset"`
+		OrgRef      int64               `json:"org_ref"`
+		Fields      map[string]any      `json:"fields"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return err
+	}
+	in.Kind, in.Title, in.RegionCode, in.TagSet, in.OrgRef, in.Fields = body.Kind, body.Title, body.RegionCode, body.TagSet, body.OrgRef, body.Fields
+	in.CoverFileID = 0
+	if v := strings.TrimSpace(string(body.CoverFileID)); v != "" && v != "null" {
+		v = strings.Trim(v, `"`)
+		if v != "" {
+			id, err := strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				return err
+			}
+			in.CoverFileID = id
+		}
+	}
+	return nil
 }
 
 // SignupState 当前用户报名状态（活动/会议）。

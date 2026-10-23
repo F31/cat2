@@ -19,6 +19,8 @@ import (
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
 	"catcube/internal/kernel/obs"
+	"catcube/internal/kernel/policy"
+	"catcube/internal/kernel/rbac"
 	idcontract "catcube/internal/modules/identity/contract"
 	"catcube/internal/modules/trade/contract"
 	"catcube/internal/modules/trade/internal/app"
@@ -34,6 +36,8 @@ type Deps struct {
 	Pay      ports.Pay
 	Identity idcontract.Facade
 	Audit    *audit.Recorder
+	Policy   *policy.Engine
+	RBAC     *rbac.Store
 	// AlertRetryThreshold 履约重试告警阈值（0=不告警）
 	AlertRetryThreshold int
 }
@@ -71,9 +75,9 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/orders/{id}/pay", Handler: m.auth(m.handlePay)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/orders/{id}", Handler: m.auth(m.handleGet)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/pay/notify", Handler: m.handleNotify},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/refunds", Handler: m.auth(m.handleRefund), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/fulfillments/{orderID}/retry", Handler: m.auth(m.handleRetryFulfill), Admin: true},
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/orders", Handler: m.auth(m.handleAdminOrders), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/refunds", Handler: m.auth(m.handleRefund), Admin: true, Perm: "trade:refund:approve"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/fulfillments/{orderID}/retry", Handler: m.auth(m.handleRetryFulfill), Admin: true, Perm: "ops:job:run"},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/orders", Handler: m.auth(m.handleAdminOrders), Admin: true, Perm: "trade:order:read"},
 	)
 	r.StateMachines = append(r.StateMachines, domain.Machine)
 	r.Jobs = append(r.Jobs,
@@ -235,7 +239,19 @@ func (m *Module) handleRefund(w http.ResponseWriter, req *http.Request) {
 		writeErr(w, codeParamInvalid, "参数错误")
 		return
 	}
-	r, err := m.svc.Refund(req.Context(), userIDFrom(req.Context()), body.OrderID, body.AmountFen, body.Reason)
+	actorID := userIDFrom(req.Context())
+	if m.deps.Policy != nil && m.deps.Policy.DualControlEnabled(req.Context(), "trade:refund") {
+		reviewerID, rerr := m.reviewerID(req, rbac.PermRefundApprove)
+		if rerr != nil {
+			writeErr(w, codeForbidden, "退款需复核人令牌（X-Review-Token，且与操作人不同）")
+			return
+		}
+		if rerr := m.deps.Policy.EnforceDualControl(req.Context(), "trade:refund", actorID, reviewerID, 0); rerr != nil {
+			writeErr(w, codeForbidden, rerr.Error())
+			return
+		}
+	}
+	r, err := m.svc.Refund(req.Context(), actorID, body.OrderID, body.AmountFen, body.Reason)
 	if err != nil {
 		writeTradeErr(w, err)
 		return
@@ -243,6 +259,28 @@ func (m *Module) handleRefund(w http.ResponseWriter, req *http.Request) {
 	m.auditAdmin(req, "trade:refund:execute", fmt.Sprintf(`{"type":"order","id":"%d"}`, body.OrderID),
 		map[string]any{"reason": body.Reason, "amount_fen": body.AmountFen, "refund_id": strconv.FormatInt(r.ID, 10)})
 	writeData(w, r)
+}
+
+// reviewerID 校验复核人令牌与权限（双人复核；复核人不得为操作人）。
+func (m *Module) reviewerID(req *http.Request, perm string) (int64, error) {
+	token := strings.TrimSpace(req.Header.Get("X-Review-Token"))
+	if token == "" {
+		return 0, fmt.Errorf("缺少复核人令牌")
+	}
+	uid, _, err := m.deps.Identity.Authenticate(req.Context(), token)
+	if err != nil {
+		return 0, err
+	}
+	if b, err := m.deps.Identity.UserBrief(req.Context(), uid); err != nil || b.Status != 0 && b.Status != 1 {
+		return 0, fmt.Errorf("复核人账号不可用")
+	}
+	if m.deps.RBAC != nil {
+		ok, err := m.deps.RBAC.HasPerm(req.Context(), uid, perm)
+		if err != nil || !ok {
+			return 0, fmt.Errorf("复核人无权限")
+		}
+	}
+	return uid, nil
 }
 
 // auditAdmin 后台操作审计（退款/履约补偿）。

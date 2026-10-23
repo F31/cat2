@@ -31,6 +31,7 @@ const (
 	PermBadgeSet       = "verify:badge:set"
 	PermBroadcast      = "notice:announcement:broadcast"
 	PermMemberAdjust   = "membership:member:adjust"
+	PermOrderRead      = "trade:order:read"
 	PermRefundApprove  = "trade:refund:approve"
 	PermCommissionSet  = "channel:commission_rule:set"
 	PermOperatorFeeSet = "channel:operator_fee:set"
@@ -78,12 +79,12 @@ var builtinRoles = []Role{
 var defaultPerms = map[string][]string{
 	RoleOps: {
 		PermUserRead, PermUserRestrict, PermModeration, PermCertReview, PermBadgeSet, PermBroadcast,
-		PermCommissionSet, PermOperatorFeeSet, PermExportCreate, PermAuditRead, PermSettingsRead, PermSettingsSet,
+		PermOrderRead, PermCommissionSet, PermOperatorFeeSet, PermExportCreate, PermAuditRead, PermSettingsRead, PermSettingsSet,
 		PermJobRun, PermDashboardRead, PermRBACManage, PermOrgManage,
 	},
 	RoleAuditor: {PermUserRead, PermModeration, PermCertReview, PermDashboardRead},
 	RoleFinance: {
-		PermUserRead, PermMemberAdjust, PermRefundApprove, PermCommissionSet, PermOperatorFeeSet,
+		PermUserRead, PermMemberAdjust, PermOrderRead, PermRefundApprove, PermCommissionSet, PermOperatorFeeSet,
 		PermSettleReview, PermSettlePay, PermExportCreate, PermAuditRead, PermDashboardRead,
 	},
 	RoleChannelManager: {
@@ -95,7 +96,8 @@ var defaultPerms = map[string][]string{
 var permLabels = map[string]string{
 	PermUserRead: "用户查看/检索", PermUserRestrict: "用户封禁/限制",
 	PermModeration: "内容审核处置", PermCertReview: "认证审核", PermBadgeSet: "标识配置/授予",
-	PermBroadcast: "定向公告", PermMemberAdjust: "会员人工调整", PermRefundApprove: "订单退款",
+	PermBroadcast: "定向公告", PermMemberAdjust: "会员人工调整", PermOrderRead: "订单查看",
+	PermRefundApprove: "订单退款",
 	PermCommissionSet: "佣金规则配置", PermOperatorFeeSet: "代理费/保证金口径配置",
 	PermOperatorReview: "运营商开户审核", PermSettleCreate: "结算发起", PermSettleReview: "结算复核",
 	PermSettlePay: "结算打款", PermExportCreate: "导出中心", PermAuditRead: "审计查询",
@@ -107,7 +109,7 @@ var permLabels = map[string]string{
 func Registry() []PermDef {
 	order := []string{
 		PermUserRead, PermUserRestrict, PermModeration, PermCertReview, PermBadgeSet, PermBroadcast,
-		PermMemberAdjust, PermRefundApprove, PermCommissionSet, PermOperatorFeeSet, PermOperatorReview,
+		PermMemberAdjust, PermOrderRead, PermRefundApprove, PermCommissionSet, PermOperatorFeeSet, PermOperatorReview,
 		PermSettleCreate, PermSettleReview, PermSettlePay, PermExportCreate, PermAuditRead,
 		PermSettingsRead, PermSettingsSet, PermJobRun, PermDashboardRead, PermRBACManage, PermOrgManage,
 	}

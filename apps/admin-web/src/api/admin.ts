@@ -21,8 +21,8 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+async function call<T>(method: string, path: string, body?: unknown, extra?: Record<string, string>): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extra }
   const token = getToken()
   // 后台经 Nginx Basic Auth 时 Authorization 被占用，令牌走独立头；后端兼容两者
   if (token) headers['X-Admin-Token'] = token
@@ -472,8 +472,13 @@ export const adminApi = {
   },
 
   // ---- 退款 / 履约补偿 ----
-  refund(orderId: string, amountFen: number, reason: string) {
-    return call<{ id: string }>('POST', '/admin/v1/refunds', { order_id: orderId, amount_fen: amountFen, reason })
+  refund(orderId: string, amountFen: number, reason: string, reviewToken?: string) {
+    return call<{ id: string }>(
+      'POST',
+      '/admin/v1/refunds',
+      { order_id: orderId, amount_fen: amountFen, reason },
+      reviewToken ? { 'X-Review-Token': reviewToken } : undefined,
+    )
   },
   retryFulfillment(orderId: string) {
     return call<{ reset: boolean }>('POST', `/admin/v1/fulfillments/${orderId}/retry`)
@@ -575,12 +580,13 @@ export const adminApi = {
       reason,
     })
   },
-  adjustMember(userId: string, level: number, reason: string, expireAt?: string) {
-    return call<{ adjusted: boolean }>('POST', `/admin/v1/memberships/${userId}/adjust`, {
-      level,
-      expire_at: expireAt,
-      reason,
-    })
+  adjustMember(userId: string, level: number, reason: string, expireAt?: string, reviewToken?: string) {
+    return call<{ adjusted: boolean }>(
+      'POST',
+      `/admin/v1/memberships/${userId}/adjust`,
+      { level, expire_at: expireAt, reason },
+      reviewToken ? { 'X-Review-Token': reviewToken } : undefined,
+    )
   },
   transferMaster(userId: string, toUserId: string, reason: string) {
     return call<{ transferred: boolean; sub_accounts_moved: number }>(

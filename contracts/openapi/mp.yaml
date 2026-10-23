@@ -921,6 +921,42 @@ paths:
                           order_id: { type: string }
                           already_paid: { type: boolean }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /consents:
+    post:
+      tags: [identity]
+      summary: 记录用户协议/隐私政策同意（按版本留痕）
+      operationId: recordConsent
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [terms_version, privacy_version, agreed]
+              properties:
+                terms_version: { type: string }
+                privacy_version: { type: string }
+                agreed: { type: boolean }
+      responses:
+        '200':
+          description: 已记录
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envelope' }
+  /moderation/notify:
+    post:
+      tags: [trust]
+      summary: 微信 media_check_async 异步机检回调
+      operationId: moderationNotify
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: 已处理 }
+
   /search:
     get:
       tags: [discovery]
@@ -3130,6 +3166,33 @@ paths:
               properties: { template_code: { type: string }, enabled: { type: boolean } }
       responses:
         '200': { description: 结果, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { type: object, properties: { data: { type: object, properties: { saved: { type: boolean } } } } } ] } } } }
+  /subscribe-templates:
+    get:
+      tags: [notice]
+      summary: 已配置的小程序订阅模板（客户端 requestSubscribeMessage 使用）
+      operationId: listSubscribeTemplates
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 模板列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                code: { type: string }
+                                template_id: { type: string }
+
   /subscribe-quota/apply:
     post:
       tags: [notice]

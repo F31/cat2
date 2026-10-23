@@ -60,23 +60,24 @@ func (m *Module) DependsOn() []string { return []string{"identity"} }
 
 func (m *Module) Register(r *module.Registry) error {
 	r.Routes = append(r.Routes,
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/dead-letters", Handler: m.auth(m.handleList), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/dead-letters/{eventID}/replay", Handler: m.auth(m.handleReplay), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/dead-letters", Handler: m.auth(m.handleList), Admin: true, Perm: "ops:job:run"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/dead-letters/{eventID}/replay", Handler: m.auth(m.handleReplay), Admin: true, Perm: "ops:job:run"},
 		// 任务重跑（代操作清单，p4 §4.4）
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/jobs", Handler: m.auth(m.handleJobs), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/jobs/{name}/run", Handler: m.auth(m.handleRunJob), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/jobs", Handler: m.auth(m.handleJobs), Admin: true, Perm: "ops:job:run"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/jobs/{name}/run", Handler: m.auth(m.handleRunJob), Admin: true, Perm: "ops:job:run"},
 		// 导出中心（p4 §7.4）：申请 → 异步生成 → 下载（带水印 + 导出审计）
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/exports", Handler: m.auth(m.handleCreateExport), Admin: true},
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/exports", Handler: m.auth(m.handleListExports), Admin: true},
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/exports/{id}/download", Handler: m.auth(m.handleDownloadExport), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/exports", Handler: m.auth(m.handleCreateExport), Admin: true, Perm: "ops:export:create"},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/exports", Handler: m.auth(m.handleListExports), Admin: true, Perm: "ops:export:create"},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/exports/{id}/download", Handler: m.auth(m.handleDownloadExport), Admin: true, Perm: "ops:export:create"},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/exports/{id}/raw", Handler: m.auth(m.handleExportRaw), Admin: true, Perm: "ops:export:create"},
 		// 小程序埋点（p4 §7.2：独立 tlm_ 存储，仅登记事件可入库）
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/telemetry", Handler: m.auth(m.handleTelemetry)},
 		// 数据概览（p4 §7.1：12 项核心指标）
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/dashboard", Handler: m.auth(m.handleDashboard), Admin: true},
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/dashboard/funnel", Handler: m.auth(m.handleFunnel), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/dashboard", Handler: m.auth(m.handleDashboard), Admin: true, Perm: "ops:dashboard:read"},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/dashboard/funnel", Handler: m.auth(m.handleFunnel), Admin: true, Perm: "ops:dashboard:read"},
 		// 审计查询（治理：who/where/when/what/result 五维筛选；p4 §5.5）
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/audits", Handler: m.auth(m.handleAudits), Admin: true},
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/audits/{id}", Handler: m.auth(m.handleAuditDetail), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/audits", Handler: m.auth(m.handleAudits), Admin: true, Perm: "ops:audit:read"},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/audits/{id}", Handler: m.auth(m.handleAuditDetail), Admin: true, Perm: "ops:audit:read"},
 		// 业务配置（配置三层第三层：后台改，热生效）
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/settings", Handler: m.auth(m.handleSettings), Admin: true, Perm: "ops:settings:read"},
 		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/settings/{key}", Handler: m.auth(m.handleSetSetting), Admin: true, Perm: "ops:settings:set"},
@@ -134,6 +135,7 @@ var Schemas = []settings.Schema{
 	{Key: "miniapp.appid", Type: settings.TypeString, Default: "", Description: "小程序 AppID（留空回退环境变量）"},
 	{Key: "miniapp.secret", Type: settings.TypeString, Default: "", Description: "小程序 AppSecret（敏感；仅超级管理员可改）", Sensitive: true},
 	{Key: "miniapp.env_version", Type: settings.TypeString, Default: "release", Description: "小程序码环境版本（release/trial/develop）"},
+	{Key: "notice.wechat_templates", Type: settings.TypeString, Default: "", Description: "小程序订阅模板映射（notice.code=wxTemplateID，逗号分隔）"},
 
 	// 系统设置 · 登录安全（p4 §3.4；超管/运营管理员在后台「系统设置」配置）
 	{Key: "admin.security.login_fail_threshold", Type: settings.TypeInt, Default: "3",

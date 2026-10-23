@@ -12,6 +12,7 @@ import (
 
 	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/obs"
+	"catcube/internal/kernel/rbac"
 	circlecontract "catcube/internal/modules/circle/contract"
 	contentcontract "catcube/internal/modules/content/contract"
 	cubecontract "catcube/internal/modules/cube/contract"
@@ -40,6 +41,7 @@ type Deps struct {
 	Content    contentcontract.Facade
 	Cube       cubecontract.Facade
 	Circle     circlecontract.Facade
+	RBAC       *rbac.Store
 	// Cache 首屏聚合短 TTL 缓存（可空 = 不缓存）
 	Cache ports.Cache
 	// ContactDailyLimit 单用户每日联系方式查看上限（0=不限）；防批量抓取（p6 §1.5）
@@ -65,12 +67,12 @@ func (a *Aggregator) Register(mux *http.ServeMux) {
 	// 圈详情聚合（非成员裁剪视图：圈信息+成员数+圈主+加入状态）
 	mux.HandleFunc("GET /api/mp/v1/aggregate/circle-detail", a.optionalAuth(a.handleCircleDetail))
 	// 用户 360（后台治理，只读聚合；p4 §4.1）
-	mux.HandleFunc("GET /api/admin/v1/users/{id}/360", a.adminAuth(a.handleUser360))
+	mux.HandleFunc("GET /api/admin/v1/users/{id}/360", a.adminAuthPerm(rbac.PermUserRead, a.handleUser360))
 	// 用户检索筛选（p4 §4.2：昵称/手机号盲精确/状态/实名/会员等级/注册时间）
-	mux.HandleFunc("GET /api/admin/v1/governance/users", a.adminAuth(a.handleGovernanceUsers))
+	mux.HandleFunc("GET /api/admin/v1/governance/users", a.adminAuthPerm(rbac.PermUserRead, a.handleGovernanceUsers))
 	// 运营管理 → 组织管理（六类主体聚合）
-	mux.HandleFunc("GET /api/admin/v1/orgs", a.adminAuth(a.handleAdminOrgs))
-	mux.HandleFunc("GET /api/admin/v1/orgs/{id}", a.adminAuth(a.handleAdminOrgDetail))
+	mux.HandleFunc("GET /api/admin/v1/orgs", a.adminAuthPerm(rbac.PermOrgManage, a.handleAdminOrgs))
+	mux.HandleFunc("GET /api/admin/v1/orgs/{id}", a.adminAuthPerm(rbac.PermOrgManage, a.handleAdminOrgDetail))
 }
 
 // CubeHomeData 猫立方首页聚合。
@@ -388,6 +390,11 @@ func nextDay() time.Time {
 
 // adminAuth 后台只读聚合的硬门槛：登录 + 平台管理员（非管理员 403）。
 func (a *Aggregator) adminAuth(next http.HandlerFunc) http.HandlerFunc {
+	return a.adminAuthPerm("", next)
+}
+
+// adminAuthPerm 在管理员门槛上追加权限点（perm="" 表示仅要求管理员）。
+func (a *Aggregator) adminAuthPerm(perm string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		token := strings.TrimSpace(req.Header.Get("X-Admin-Token"))
 		if token == "" {
@@ -404,10 +411,22 @@ func (a *Aggregator) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 			writeErrCode(w, http.StatusUnauthorized, 2, "登录已失效")
 			return
 		}
-		admin, err := a.deps.Identity.IsAdmin(req.Context(), uid)
-		if err != nil || !admin {
+		admin := false
+		if a.deps.RBAC != nil {
+			admin, _ = a.deps.RBAC.IsAdmin(req.Context(), uid)
+		} else {
+			admin, _ = a.deps.Identity.IsAdmin(req.Context(), uid)
+		}
+		if !admin {
 			writeErrCode(w, http.StatusForbidden, 3, "无后台权限")
 			return
+		}
+		if perm != "" && a.deps.RBAC != nil {
+			ok, err := a.deps.RBAC.HasPerm(req.Context(), uid, perm)
+			if err != nil || !ok {
+				writeErrCode(w, http.StatusForbidden, 3, "无操作权限")
+				return
+			}
 		}
 		next(w, req.WithContext(context.WithValue(req.Context(), ctxUserID{}, uid)))
 	}

@@ -113,7 +113,9 @@ services:
       CATCUBE_OSS_BUCKET: ${OSS_BUCKET:-}
       CATCUBE_OSS_AK: ${OSS_AK:-}
       CATCUBE_OSS_SK: ${OSS_SK:-}
+      CATCUBE_OSS_DIR: /data/oss
       CATCUBE_CDN_HOST: ${CDN_HOST:-}
+      CATCUBE_MODERATION_CALLBACK_TOKEN: ${MODERATION_CALLBACK_TOKEN:-}
       CATCUBE_OTEL_ENABLED: ${OTEL_ENABLED:-false}
       CATCUBE_OTEL_ENDPOINT: ${OTEL_ENDPOINT:-otel-collector:4317}
       CATCUBE_OTEL_SERVICE: catcube-api
@@ -132,6 +134,7 @@ services:
     volumes:
       - ../../contracts:/repo/contracts:ro
       - ./secrets:/run/secrets:ro
+      - ossdata:/data/oss
     healthcheck:
       test: ["CMD", "catcube", "probe"]
       interval: 10s
@@ -163,7 +166,9 @@ services:
       CATCUBE_OSS_BUCKET: ${OSS_BUCKET:-}
       CATCUBE_OSS_AK: ${OSS_AK:-}
       CATCUBE_OSS_SK: ${OSS_SK:-}
+      CATCUBE_OSS_DIR: /data/oss
       CATCUBE_CDN_HOST: ${CDN_HOST:-}
+      CATCUBE_MODERATION_CALLBACK_TOKEN: ${MODERATION_CALLBACK_TOKEN:-}
       CATCUBE_OTEL_ENABLED: ${OTEL_ENABLED:-false}
       CATCUBE_OTEL_ENDPOINT: ${OTEL_ENDPOINT:-otel-collector:4317}
       CATCUBE_OTEL_SERVICE: catcube-worker
@@ -178,6 +183,7 @@ services:
         condition: service_healthy
     volumes:
       - ../../contracts:/repo/contracts:ro
+      - ossdata:/data/oss
     mem_limit: 1024m
     cpus: 1.0
     logging: *logging
@@ -219,6 +225,7 @@ services:
     cpus: 0.3
 
 volumes:
+  ossdata:
   pgdata:
   walarchive:
   pgbackups:

@@ -16,7 +16,9 @@ export default function AuthEnter() {
   const [submitting, setSubmitting] = useState(false)
   const [phoneBusy, setPhoneBusy] = useState(false)
 
-  const showAgreement = (title: string) => Taro.showToast({ title: `《${title}》内容页后续接入`, icon: 'none' })
+  const showAgreement = (type: 'terms' | 'privacy') => {
+    void Taro.navigateTo({ url: `/pages/settings/agreement?type=${type}` })
+  }
 
   const tapLogin = () => {
     if (!agreed) {
@@ -78,11 +80,11 @@ export default function AuthEnter() {
         </Text>
         <Text className="agreement__text">
           已阅读并同意
-          <Text className="auth-enter__link" onClick={() => showAgreement('用户服务协议')}>
+          <Text className="auth-enter__link" onClick={() => showAgreement('terms')}>
             《用户服务协议》
           </Text>
           与
-          <Text className="auth-enter__link" onClick={() => showAgreement('隐私政策')}>
+          <Text className="auth-enter__link" onClick={() => showAgreement('privacy')}>
             《隐私政策》
           </Text>
         </Text>

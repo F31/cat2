@@ -7,12 +7,12 @@ func TestDefaultPermissionMatrix(t *testing.T) {
 	want := map[string]map[string]bool{
 		RoleOps: setOf(
 			PermUserRead, PermUserRestrict, PermModeration, PermCertReview, PermBadgeSet, PermBroadcast,
-			PermCommissionSet, PermOperatorFeeSet, PermExportCreate, PermAuditRead, PermSettingsRead,
+			PermOrderRead, PermCommissionSet, PermOperatorFeeSet, PermExportCreate, PermAuditRead, PermSettingsRead,
 			PermSettingsSet, PermJobRun, PermDashboardRead, PermRBACManage, PermOrgManage,
 		),
 		RoleAuditor: setOf(PermUserRead, PermModeration, PermCertReview, PermDashboardRead),
 		RoleFinance: setOf(
-			PermUserRead, PermMemberAdjust, PermRefundApprove, PermCommissionSet, PermOperatorFeeSet,
+			PermUserRead, PermMemberAdjust, PermOrderRead, PermRefundApprove, PermCommissionSet, PermOperatorFeeSet,
 			PermSettleReview, PermSettlePay, PermExportCreate, PermAuditRead, PermDashboardRead,
 		),
 		RoleChannelManager: setOf(

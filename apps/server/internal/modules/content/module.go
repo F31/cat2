@@ -74,11 +74,11 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/contents/{id}/submit", Handler: m.auth(m.handleSubmit)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/contents/{id}", Handler: m.handleGet},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/contents/{id}/close", Handler: m.auth(m.handleClose)},
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/contents", Handler: m.auth(m.handleAdminList), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/products", Handler: m.auth(m.handleAdminCreateProduct), Admin: true},
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/contents/{id}", Handler: m.auth(m.handleAdminGet), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/contents/{id}/review", Handler: m.auth(m.handleAdminReview), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/contents/{id}/takedown", Handler: m.auth(m.handleAdminTakedown), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/contents", Handler: m.auth(m.handleAdminList), Admin: true, Perm: "content:moderation:decide"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/products", Handler: m.auth(m.handleAdminCreateProduct), Admin: true, Perm: "content:moderation:decide"},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/contents/{id}", Handler: m.auth(m.handleAdminGet), Admin: true, Perm: "content:moderation:decide"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/contents/{id}/review", Handler: m.auth(m.handleAdminReview), Admin: true, Perm: "content:moderation:decide"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/contents/{id}/takedown", Handler: m.auth(m.handleAdminTakedown), Admin: true, Perm: "content:moderation:decide"},
 	)
 	if m.deps.EntityRegistry != nil {
 		for _, k := range []string{contentcontract.KindProject, contentcontract.KindProduct, contentcontract.KindMeeting, contentcontract.KindEvent} {
@@ -91,6 +91,7 @@ func (m *Module) Register(r *module.Registry) error {
 		Topic: trustcontract.EventReportConfirmed, Handler: m.svc.HandleReportConfirmed,
 	})
 	r.AuditPoints = append(r.AuditPoints,
+		audit.Point{Action: "content:review", Path: "/api/admin/v1/contents/{id}/review", Required: true, LogFailed: true, Module: "content"},
 		audit.Point{Action: "content:takedown", Path: "/api/admin/v1/contents/{id}/takedown", Required: true, LogFailed: true, Module: "content"},
 	)
 	return nil
@@ -168,7 +169,9 @@ func (p reviewProvider) Extract(ctx context.Context, subjectID int64) (string, [
 func (p reviewProvider) OwnerOf(ctx context.Context, subjectID int64) (int64, error) {
 	return p.m.svc.OwnerOf(ctx, subjectID)
 }
-func (p reviewProvider) ApplyVerdict(_ context.Context, _ int64, _ bool, _ string) error { return nil }
+func (p reviewProvider) ApplyVerdict(ctx context.Context, subjectID int64, pass bool, reason string) error {
+	return p.m.svc.ApplyVerdict(ctx, subjectID, pass, reason)
+}
 
 func statusWord(s int16) string {
 	switch s {

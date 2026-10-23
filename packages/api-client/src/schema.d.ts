@@ -553,6 +553,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/consents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 记录用户协议/隐私政策同意（按版本留痕） */
+        post: operations["recordConsent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/moderation/notify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 微信 media_check_async 异步机检回调 */
+        post: operations["moderationNotify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/search": {
         parameters: {
             query?: never;
@@ -1904,6 +1938,23 @@ export interface paths {
         get: operations["listNoticePreferences"];
         /** 设置通知偏好 */
         put: operations["setNoticePreference"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/subscribe-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 已配置的小程序订阅模板（客户端 requestSubscribeMessage 使用） */
+        get: operations["listSubscribeTemplates"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -4170,6 +4221,58 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+        };
+    };
+    recordConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    terms_version: string;
+                    privacy_version: string;
+                    agreed: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description 已记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
+    moderationNotify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description 已处理 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     search: {
@@ -6884,6 +6987,33 @@ export interface operations {
                     "application/json": components["schemas"]["Envelope"] & {
                         data?: {
                             saved?: boolean;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    listSubscribeTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 模板列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: {
+                                code?: string;
+                                template_id?: string;
+                            }[];
                         };
                     };
                 };

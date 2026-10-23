@@ -19,6 +19,7 @@ export default function Orders() {
   const [refunding, setRefunding] = useState<AdminOrder | null>(null)
   const [amount, setAmount] = useState(0)
   const [reason, setReason] = useState('')
+  const [reviewToken, setReviewToken] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -40,6 +41,7 @@ export default function Orders() {
     setRefunding(o)
     setAmount(o.amount_fen)
     setReason('')
+    setReviewToken('')
   }
 
   const confirmRefund = async () => {
@@ -49,7 +51,7 @@ export default function Orders() {
       return
     }
     try {
-      await adminApi.refund(refunding.id, amount, reason)
+      await adminApi.refund(refunding.id, amount, reason, reviewToken.trim() || undefined)
       message.success('退款已执行')
       setRefunding(null)
       void load()
@@ -133,6 +135,11 @@ export default function Orders() {
             addonBefore="金额（分）"
           />
           <Input.TextArea rows={3} placeholder="退款原因（必填，写入审计）" value={reason} onChange={(e) => setReason(e.target.value)} />
+          <Input.Password
+            placeholder="复核人令牌 X-Review-Token（双人复核开启时必填，且不能与当前账号相同）"
+            value={reviewToken}
+            onChange={(e) => setReviewToken(e.target.value)}
+          />
         </Space>
       </Modal>
     </>

@@ -130,19 +130,19 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/apportion/pledge", Handler: m.auth(m.handlePledgeApportion)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/cubes/{id}/apportion/exit", Handler: m.auth(m.handleExitApportion)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/cube-apportions/{groupID}", Handler: m.auth(m.handleApportionDetail)},
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/cubes", Handler: m.auth(m.handleAdminList), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/cubes", Handler: m.auth(m.handleAdminList), Admin: true, Perm: "content:moderation:decide"},
 	)
 	// 平台代操作：封禁/解散（p4 §4.4）
 	// 注：z 顺序保持声明式，执行由 adminOps 提供
 	r.Routes = append(r.Routes,
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/cubes/{id}", Handler: m.auth(m.handleAdminDetail), Admin: true},
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/cubes/{id}/projects", Handler: m.auth(m.handleAdminProjects), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/cubes/{id}/members/{uid}/remove", Handler: m.auth(m.handleAdminRemoveMember), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/cubes/{id}/leader", Handler: m.auth(m.handleAdminSetLeader), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/cubes/{id}/honey", Handler: m.auth(m.handleAdminSetHoney), Admin: true},
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/cubes/{id}/chats", Handler: m.auth(m.handleAdminChats), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/cubes/{id}/ban", Handler: m.auth(m.handleAdminBanCube), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/cubes/{id}/dissolve", Handler: m.auth(m.handleAdminDissolveCube), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/cubes/{id}", Handler: m.auth(m.handleAdminDetail), Admin: true, Perm: "content:moderation:decide"},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/cubes/{id}/projects", Handler: m.auth(m.handleAdminProjects), Admin: true, Perm: "content:moderation:decide"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/cubes/{id}/members/{uid}/remove", Handler: m.auth(m.handleAdminRemoveMember), Admin: true, Perm: "content:moderation:decide"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/cubes/{id}/leader", Handler: m.auth(m.handleAdminSetLeader), Admin: true, Perm: "content:moderation:decide"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/cubes/{id}/honey", Handler: m.auth(m.handleAdminSetHoney), Admin: true, Perm: "content:moderation:decide"},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/cubes/{id}/chats", Handler: m.auth(m.handleAdminChats), Admin: true, Perm: "content:moderation:decide"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/cubes/{id}/ban", Handler: m.auth(m.handleAdminBanCube), Admin: true, Perm: "content:moderation:decide"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/cubes/{id}/dissolve", Handler: m.auth(m.handleAdminDissolveCube), Admin: true, Perm: "content:moderation:decide"},
 	)
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "cube:admin:ban", Path: "/api/admin/v1/cubes/{id}/ban", Required: true, LogFailed: true, Module: "cube"},

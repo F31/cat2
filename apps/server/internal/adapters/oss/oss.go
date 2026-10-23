@@ -170,6 +170,14 @@ func (c *Client) Put(ctx context.Context, bucket, objectKey string, r io.Reader)
 	return c.doSigned(ctx, http.MethodPut, bucket, objectKey, r)
 }
 
+// Open 读取对象；本适配器仅本地回退支持流式读取，远端走 URL/重定向。
+func (c *Client) Open(_ context.Context, bucket, objectKey string) (io.ReadCloser, error) {
+	if c.Endpoint != "" {
+		return nil, fmt.Errorf("oss: 远端对象请使用 URL")
+	}
+	return os.Open(localPath(bucket, objectKey))
+}
+
 func (c *Client) Delete(ctx context.Context, bucket, objectKey string) error {
 	if c.Endpoint == "" {
 		err := os.Remove(localPath(bucket, objectKey))

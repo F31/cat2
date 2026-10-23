@@ -35,6 +35,8 @@ type Storage interface {
 	// URL 访问地址（可带规格，如缩略图）。
 	URL(ctx context.Context, bucket, objectKey, spec string) (string, error)
 	Put(ctx context.Context, bucket, objectKey string, r io.Reader) error
+	// Open 读取对象（本地回退/导出下载兜底；远端实现可返回错误并改用 URL）。
+	Open(ctx context.Context, bucket, objectKey string) (io.ReadCloser, error)
 	Delete(ctx context.Context, bucket, objectKey string) error
 }
 
@@ -69,13 +71,15 @@ type ModerationRequest struct {
 	SubjectType string // content / image / audio / video
 	Text        string
 	ImageIDs    []string
+	MediaURL    string // 图片/音视频公网可访问地址（media_check_async 使用）
 }
 
 // ModerationResult 检测结果。
 type ModerationResult struct {
-	Pass   bool
-	Labels []string
-	Async  bool // 异步检测（回调前内容保持「审核中」）
+	Pass    bool
+	Labels  []string
+	Async   bool   // 异步检测（回调前内容保持「审核中」）
+	TraceID string // 异步检测任务号（media_check_async）
 }
 
 // Moderation 内容安全端口（谁都不直接调微信接口）。

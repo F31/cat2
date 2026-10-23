@@ -103,7 +103,7 @@ docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-co
   exec api catcube grant-admin 13800000000
 ```
 
-> 注意：当前 admin-web 登录走开发态微信适配器（手机号当 code）。**若配置了真实 WECHAT_APPID/SECRET，后台登录会失败**；生产前需补后台账号体系（密码/SSO/短信），这是上公网前的阻塞项。
+> 后台登录走手机号 + 密码（`ADMIN_PHONE` / `ADMIN_PASSWORD_HASH`）；找回密码依赖短信通道，通道未接入前由运维通过 CLI/DB 重置。
 
 > 域名已接入 EdgeOne/CDN 时，TLS-ALPN 或 HTTP-01 验证可能被 CDN 拦截。需先暂停该子域名的 CDN/代理，或改用 DNS-01。
 
@@ -126,12 +126,12 @@ docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-co
 
 | 项 | 现状 | 影响 |
 | --- | --- | --- |
-| 后台登录 | 开发态手机号登录 | 配真实微信后无法登录；公网前必须补账号体系 |
-| 微信支付 | V3 适配器已实现，未配置商户证书时回退 DevClient | 需配置商户号/证书/APIv3Key/回调 URL 并真实小额验证 |
+| 后台登录 | 手机号 + 密码登录已实现 | 忘记密码需短信通道；未接入前走运维重置 |
+| 微信支付 | V3 适配器已实现；生产未配置时明确禁用（不回退 DevClient） | 需配置商户号/证书/APIv3Key/回调 URL 并真实小额验证 |
 | 实名核验 | 仅 DevClient | 真实实名不可用 |
 | 短信 | 仅开发固定码 | 后台二次验证/通知短信不可用 |
-| 内容安全 | 微信文本机检已装配（`MODERATION=wechat`）；图片/音视频异步仍 TODO | 文本合规可用；媒体合规待补 |
-| 对象存储 | 阿里云 OSS V1 签名已实现（预签名 PUT / Put/Delete / CDN URL）；未配置时本地兜底 | 需配置 bucket/AK/SK 并真实上传验证；非阿里云需适配 |
+| 内容安全 | 文本机检 + 图片异步回调已实现；生产强制 `MODERATION=wechat` | 配置内容安全权限和回调 token；媒体 URL 必须公网可访问 |
+| 对象存储 | 阿里云 OSS V1 签名已实现；未配置时落 `/data/oss` 持久卷 | 需配置 bucket/AK/SK 并真实上传验证；非阿里云需适配 |
 | 小程序审核/发版 | 外部 | 用户无法正式使用 |
 
 **结论**：该单机编排适合“内测/试运行 + 生产基础设施预演”；在补齐上述适配器与后台登录前，不要直接对外收取真实资金。
@@ -153,11 +153,11 @@ docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-co
 - 生产默认 `CATCUBE_REALNAME_MANUAL_REVIEW=true`：小程序上传身份证正反面（2 张）+ 姓名/身份证号，本地做格式、出生日期、GB 11643 校验位校验，进入平台待审。
 - 运营/审核员在「内容管理 → 认证审核」查看材料并审批；通过后回写 `realname_status=1` 并授予实名 Badge，驳回回写 `2`。
 - 开发/自动化测试可设 `CATCUBE_REALNAME_MANUAL_REVIEW=false` 继续使用 DevClient 直通；生产禁止关闭。
-- 未配置 OSS 时材料落 `med_blob`（≤5MB/张），生产仍建议接 OSS。
+- 未配置 OSS 时材料落 `med_blob`（≤5MB/张）或本地卷 `/data/oss`；生产仍建议接 OSS/CDN。
 
 ## 10. 组织管理与资质材料
 
 - 组织管理在「运营管理 → 组织管理」，六类主体：合作圈、商协会/校友会、大学/科研、服务机构、企业、商务人士。
 - 组织认证审批需要 `verify:cert:review`；组织维护/成员辅助加入需要 `governance:org:manage`（默认授予运营角色，超管隐含全部）。
-- 未配置对象存储时，后台资质材料通过 `POST /api/admin/v1/media/upload` 落入 `med_blob`（单文件 ≤5MB），读取走受后台令牌保护的 `/api/admin/v1/media/{id}/raw`；生产仍建议接入 OSS。
+- 未配置对象存储时，上传落 `/data/oss` 持久卷并可由后台读取；导出下载走受令牌保护的 `/api/admin/v1/exports/{id}/raw`。生产仍建议接入 OSS。
 - `catcube seed` 会导入六类主体配置；历史 `gov_service` 仅停用不删除。

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/obs"
+	"catcube/internal/kernel/rbac"
 	"catcube/pkg/ids"
 	"catcube/pkg/mask"
 )
@@ -127,7 +129,32 @@ func (m *Module) handleDownloadExport(w http.ResponseWriter, req *http.Request) 
 		writeErr(w, 9, "服务错误")
 		return
 	}
+	// 本地回退返回文件路径，不能直接在浏览器打开；改为受后台令牌保护的流式下载。
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		url = fmt.Sprintf("/api/admin/v1/exports/%d/raw", id)
+	}
 	writeData(w, map[string]any{"url": url, "watermark": true})
+}
+
+// handleExportRaw 本地对象存储兜底下载（OSS 配置时 download 返回预签名/CDN URL）。
+func (m *Module) handleExportRaw(w http.ResponseWriter, req *http.Request) {
+	id, _ := strconv.ParseInt(req.PathValue("id"), 10, 64)
+	var key string
+	var status int16
+	if err := m.deps.Pool.QueryRow(req.Context(), `
+		SELECT COALESCE(object_key,''), status FROM sys_export_task WHERE id=$1`, id).Scan(&key, &status); err != nil || status != 2 || key == "" {
+		writeErr(w, 4, "文件尚未生成")
+		return
+	}
+	rc, err := m.deps.Storage.Open(req.Context(), "default", key)
+	if err != nil {
+		writeErr(w, 9, "文件读取失败")
+		return
+	}
+	defer rc.Close()
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="export-%d.csv"`, id))
+	_, _ = io.Copy(w, rc)
 }
 
 // exportRunner 生成待处理导出（worker 定时任务）。
@@ -192,6 +219,11 @@ func (m *Module) renderExport(ctx context.Context, template string, from, to, re
 	}
 	if to == 0 {
 		to = time.Now().Unix()
+	}
+	var regions []string
+	var subtree bool
+	if m.deps.RBAC != nil && requester != 0 {
+		regions, subtree, _ = m.deps.RBAC.RegionScope(ctx, requester)
 	}
 	var buf bytes.Buffer
 	buf.WriteString("# 水印：" + fmt.Sprintf("catcube export requester=%d %s", requester, time.Now().UTC().Format(time.RFC3339)) + "\n")
@@ -299,6 +331,9 @@ func (m *Module) renderExport(ctx context.Context, template string, from, to, re
 			var paidAt *time.Time
 			if err := rows.Scan(&id, &opID, &region, &month, &commission, &adjust, &payable, &status, &reviewedBy, &paidBy, &paidAt, &voucher); err != nil {
 				return nil, 0, err
+			}
+			if len(regions) > 0 && !rbac.RegionAllowed(regions, subtree, region) {
+				continue
 			}
 			var paidStr string
 			if paidAt != nil {

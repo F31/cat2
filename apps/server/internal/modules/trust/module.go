@@ -33,6 +33,10 @@ type Deps struct {
 	Bus        *eventbus.Bus
 	Auth       AuthFunc
 	Audit      *audit.Recorder
+	// MediaURL 将 media file_id 转为公网 URL（由装配根注入 media Facade；nil=图片机检不可用）
+	MediaURL func(ctx context.Context, fileID string) (string, error)
+	// CallbackToken 微信媒体机检回调 URL 校验 token（可选；配置后要求 ?token= 一致）
+	CallbackToken string
 	// AlertReviewBacklog 审核积压告警阈值（0=不告警）
 	AlertReviewBacklog int
 }
@@ -63,13 +67,15 @@ func (m *Module) Register(r *module.Registry) error {
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/report-reasons", Handler: m.handleReasons},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/reports", Handler: m.auth(m.handleReport)},
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/review-tasks", Handler: m.auth(m.handleQueue), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/review-tasks/{id}/resolve", Handler: m.auth(m.handleResolve), Admin: true},
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/review-metrics", Handler: m.auth(m.handleMetrics), Admin: true},
+		// 微信 media_check_async 回调（无登录态；用 trace_id 关联待审记录）
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/moderation/notify", Handler: m.handleMediaCallback},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/review-tasks", Handler: m.auth(m.handleQueue), Admin: true, Perm: "content:moderation:decide"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/review-tasks/{id}/resolve", Handler: m.auth(m.handleResolve), Admin: true, Perm: "content:moderation:decide"},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/review-metrics", Handler: m.auth(m.handleMetrics), Admin: true, Perm: "content:moderation:decide"},
 		// 限制发布（代操作；二次确认由前端负责，服务端审计）
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/users/{id}/restrict", Handler: m.auth(m.handleAdminRestrict), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/users/{id}/restrict", Handler: m.auth(m.handleAdminRestrict), Admin: true, Perm: "governance:user:restrict"},
 		// 审核辅助（AI 预分类/摘要，只读建议；未启用或上游不可用时 available=false，不影响审核）
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/review-tasks/{id}/suggestion", Handler: m.auth(m.handleSuggestion), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/review-tasks/{id}/suggestion", Handler: m.auth(m.handleSuggestion), Admin: true, Perm: "content:moderation:decide"},
 	)
 	r.Jobs = append(r.Jobs,
 		// 审核积压与 SLA 监控（看板 + 告警，p6 §5.3/§5.4）
@@ -248,6 +254,60 @@ func (m *Module) Review(ctx context.Context, subjectType string, subjectID int64
 		_ = m.emit(ctx, contract.NewModerationRejected(ids.New().String(), contract.ModerationPayload{SubjectType: subjectType, SubjectID: subjectID, ReasonCode: "machine_reject"}))
 		return contract.OutcomeRejected, nil
 	}
+	// 图片/音视频异步机检：提交后内容保持「审核中」，由回调落结论。
+	if len(imageIDs) > 0 && m.deps.Moderation != nil {
+		pending, rejected := false, false
+		for _, fileID := range imageIDs {
+			if strings.TrimSpace(fileID) == "" || fileID == "0" {
+				continue
+			}
+			mediaURL := ""
+			if m.deps.MediaURL != nil {
+				u, err := m.deps.MediaURL(ctx, fileID)
+				if err != nil {
+					_ = m.createTask(ctx, contract.SourceMachine, subjectType, subjectID, 0, 3, "媒体地址解析失败:"+fileID)
+					pending = true
+					continue
+				}
+				mediaURL = u
+			}
+			res, err := m.deps.Moderation.CheckMedia(ctx, ports.ModerationRequest{SubjectType: subjectType, MediaURL: mediaURL})
+			if err != nil {
+				_ = m.createTask(ctx, contract.SourceMachine, subjectType, subjectID, 0, 3, "媒体机检提交失败:"+err.Error())
+				pending = true
+				continue
+			}
+			if res.Async {
+				if res.TraceID == "" {
+					_ = m.createTask(ctx, contract.SourceMachine, subjectType, subjectID, 0, 3, "媒体机检缺少 trace_id")
+					pending = true
+					continue
+				}
+				if _, err := m.deps.Pool.Exec(ctx, `
+					INSERT INTO trs_media_check (trace_id, subject_type, subject_id, media_id, status)
+					VALUES ($1,$2,$3,$4,0) ON CONFLICT (trace_id) DO NOTHING`,
+					res.TraceID, subjectType, subjectID, fileID); err != nil {
+					_ = m.createTask(ctx, contract.SourceMachine, subjectType, subjectID, 0, 3, "媒体机检记录失败")
+					pending = true
+					continue
+				}
+				pending = true
+				continue
+			}
+			if !res.Pass {
+				rejected = true
+			}
+		}
+		if rejected {
+			_ = m.createTask(ctx, contract.SourceMachine, subjectType, subjectID, 0, 2, "图片机检命中")
+			_ = m.applyVerdict(ctx, subjectType, subjectID, false, "media_reject")
+			_ = m.emit(ctx, contract.NewModerationRejected(ids.New().String(), contract.ModerationPayload{SubjectType: subjectType, SubjectID: subjectID, ReasonCode: "media_reject"}))
+			return contract.OutcomeRejected, nil
+		}
+		if pending {
+			return contract.OutcomePending, nil
+		}
+	}
 	// 高风险类目人工抽检（不阻塞展示）
 	if cat := highRiskCategory(text); cat != "" {
 		_ = m.createTask(ctx, contract.SourceHighRisk, subjectType, subjectID, 0, 3, "高风险类目抽检:"+cat)
@@ -388,6 +448,11 @@ func (m *Module) ViolationPoints(ctx context.Context, userID int64) (int, error)
 
 // SetSuggester 注入审核辅助提供者（装配根调用；nil=不提供建议）。
 func (m *Module) SetSuggester(s contract.Suggester) { m.suggester = s }
+
+// SetMediaResolver 注入媒体 URL 解析器（装配根在 media 模块构造后调用）。
+func (m *Module) SetMediaResolver(f func(ctx context.Context, fileID string) (string, error)) {
+	m.deps.MediaURL = f
+}
 
 // handleAdminRestrict 限制发布（days=限制天数；0 表示解除）。
 func (m *Module) handleAdminRestrict(w http.ResponseWriter, req *http.Request) {

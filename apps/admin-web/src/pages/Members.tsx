@@ -24,6 +24,7 @@ export default function Members() {
   const [expireAt, setExpireAt] = useState('')
   const [toUser, setToUser] = useState('')
   const [subUser, setSubUser] = useState('')
+  const [reviewToken, setReviewToken] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -47,6 +48,7 @@ export default function Members() {
     setExpireAt('')
     setToUser('')
     setSubUser('')
+    setReviewToken('')
     setNewLevel(row.level || 3)
   }
 
@@ -58,7 +60,7 @@ export default function Members() {
     }
     try {
       if (act.kind === 'adjust') {
-        await adminApi.adjustMember(act.row.user_id, newLevel, reason, expireAt.trim() || undefined)
+        await adminApi.adjustMember(act.row.user_id, newLevel, reason, expireAt.trim() || undefined, reviewToken.trim() || undefined)
       } else if (act.kind === 'transfer') {
         if (!toUser.trim()) return message.warning('目标账号必填')
         await adminApi.transferMaster(act.row.user_id, toUser.trim(), reason)
@@ -177,6 +179,13 @@ export default function Members() {
               onChange={(v) => setSubUser(v == null ? '' : String(v))}
             />
           )}
+          {act?.kind === 'adjust' ? (
+            <Input.Password
+              placeholder="复核人令牌 X-Review-Token（双人复核开启时必填，且不能与当前账号相同）"
+              value={reviewToken}
+              onChange={(e) => setReviewToken(e.target.value)}
+            />
+          ) : null}
           <Input.TextArea rows={3} placeholder="原因（必填，写入审计）" value={reason} onChange={(e) => setReason(e.target.value)} />
         </Space>
       </Modal>

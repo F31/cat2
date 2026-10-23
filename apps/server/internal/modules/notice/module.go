@@ -11,10 +11,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"catcube/internal/ports"
+
 	"catcube/internal/kernel/audit"
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
+	"catcube/internal/kernel/settings"
 	circlecontract "catcube/internal/modules/circle/contract"
 	idcontract "catcube/internal/modules/identity/contract"
 	noticecontract "catcube/internal/modules/notice/contract"
@@ -30,6 +33,8 @@ type Deps struct {
 	Identity idcontract.Facade
 	Circle   circlecontract.Facade
 	Audit    *audit.Recorder
+	Notifier ports.Notify
+	Settings *settings.Registry
 }
 
 // Module notice 模块。
@@ -72,17 +77,31 @@ const (
 )
 
 func (m *Module) Register(r *module.Registry) error {
-	m.svc = app.New(app.Options{Repo: infra.NewStore(m.deps.Pool), Pool: m.deps.Pool, Bus: m.deps.Bus, Circle: m.deps.Circle})
+	m.svc = app.New(app.Options{
+		Repo: infra.NewStore(m.deps.Pool), Pool: m.deps.Pool, Bus: m.deps.Bus, Circle: m.deps.Circle,
+		Subscribe: m.deps.Notifier, OpenID: m.deps.Identity.OpenID,
+		TemplateID: func(ctx context.Context, code string) (string, bool) {
+			if m.deps.Settings == nil {
+				return "", false
+			}
+			raw, err := m.deps.Settings.Get(ctx, 1, "notice.wechat_templates")
+			if err != nil {
+				return "", false
+			}
+			return wechatTemplateID(raw, code)
+		},
+	})
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/notices", Handler: m.auth(m.handleList)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/notices/{id}/read", Handler: m.auth(m.handleRead)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/notice-preferences", Handler: m.auth(m.handlePreferences)},
 		module.Route{Method: http.MethodPut, Path: "/api/mp/v1/notice-preferences", Handler: m.auth(m.handleSetPreference)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/subscribe-quota/apply", Handler: m.auth(m.handleApplyQuota)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/subscribe-templates", Handler: m.auth(m.handleSubscribeTemplates)},
 		// 后台：模板与公告管理（页面随 p4；此处提供只读列表）
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/notice-templates", Handler: m.auth(m.handleAdminTemplates), Admin: true},
-		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/notice-templates/{code}", Handler: m.auth(m.handleAdminTemplateUpdate), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/notices/broadcast", Handler: m.auth(m.handleAdminBroadcast), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/notice-templates", Handler: m.auth(m.handleAdminTemplates), Admin: true, Perm: "notice:announcement:broadcast"},
+		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/notice-templates/{code}", Handler: m.auth(m.handleAdminTemplateUpdate), Admin: true, Perm: "notice:announcement:broadcast"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/notices/broadcast", Handler: m.auth(m.handleAdminBroadcast), Admin: true, Perm: "notice:announcement:broadcast"},
 	)
 	// 订阅全部业务事件（事件驱动触达）
 	for _, topic := range app.Topics() {
@@ -369,4 +388,31 @@ func (m *Module) handleAdminBroadcast(w http.ResponseWriter, req *http.Request) 
 		})
 	}
 	writeData(w, map[string]any{"sent": sent})
+}
+
+// wechatTemplateID 解析后台配置：`notice.code=wxTemplateID,notice.code2=wxTemplateID2`。
+func wechatTemplateID(raw, code string) (string, bool) {
+	for _, part := range strings.Split(raw, ",") {
+		k, v, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if ok && strings.TrimSpace(k) == code && strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v), true
+		}
+	}
+	return "", false
+}
+
+// handleSubscribeTemplates 返回已配置的小程序订阅模板（客户端 wx.requestSubscribeMessage 使用）。
+func (m *Module) handleSubscribeTemplates(w http.ResponseWriter, req *http.Request) {
+	items := []map[string]string{}
+	if m.deps.Settings != nil {
+		if raw, err := m.deps.Settings.Get(req.Context(), 1, "notice.wechat_templates"); err == nil {
+			for _, part := range strings.Split(raw, ",") {
+				k, v, ok := strings.Cut(strings.TrimSpace(part), "=")
+				if ok && strings.TrimSpace(k) != "" && strings.TrimSpace(v) != "" {
+					items = append(items, map[string]string{"code": strings.TrimSpace(k), "template_id": strings.TrimSpace(v)})
+				}
+			}
+		}
+	}
+	writeData(w, map[string]any{"items": items})
 }

@@ -70,13 +70,13 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/affiliations/pending", Handler: m.auth(m.handlePendingAffiliations)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/affiliations/{id}/verify", Handler: m.auth(m.handleVerifyAffiliation)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/affiliations/{id}/primary", Handler: m.auth(m.handleSetPrimary)},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/affiliations/{id}/resolve", Handler: m.auth(m.handleResolveAffiliation), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/affiliations/{id}/resolve", Handler: m.auth(m.handleResolveAffiliation), Admin: true, Perm: "governance:org:manage"},
 		// 认证标识配置（后台：新增类型=加配置，不改接口）
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/badges", Handler: m.auth(m.handleBadgeDefs), Admin: true},
-		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/badges/{code}", Handler: m.auth(m.handleUpsertBadge), Admin: true},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/badges/grant", Handler: m.auth(m.handleGrantBadge), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/badges", Handler: m.auth(m.handleBadgeDefs), Admin: true, Perm: "verify:badge:set"},
+		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/badges/{code}", Handler: m.auth(m.handleUpsertBadge), Admin: true, Perm: "verify:badge:set"},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/badges/grant", Handler: m.auth(m.handleGrantBadge), Admin: true, Perm: "verify:badge:set"},
 		// 平台代处理：超期未核验归属（p4 §4.4）
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/affiliations/overdue", Handler: m.auth(m.handleOverdueAffiliations), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/affiliations/overdue", Handler: m.auth(m.handleOverdueAffiliations), Admin: true, Perm: "verify:cert:review"},
 		// 组织管理（运营）：认证提交、成员辅助加入/移除、管理员查看
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/orgs/{id}/certifications", Handler: m.auth(m.handleAdminSubmitOrgCert), Admin: true, Perm: rbac.PermOrgManage},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/orgs/{id}/members", Handler: m.auth(m.handleAdminOrgMembers), Admin: true, Perm: rbac.PermOrgManage},
@@ -87,7 +87,7 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/orgs/{id}/admins", Handler: m.auth(m.handleInviteOrgAdmin)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/orgs/{id}/admins", Handler: m.auth(m.handleOrgAdmins)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/org-admin-invites/{id}/confirm", Handler: m.auth(m.handleConfirmOrgAdmin)},
-		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/orgs/{id}/admins/reset", Handler: m.auth(m.handleResetOrgAdmin), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/orgs/{id}/admins/reset", Handler: m.auth(m.handleResetOrgAdmin), Admin: true, Perm: "governance:org:manage"},
 	)
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "verify:cert:review", Path: "/api/admin/v1/certs/{id}/review", Required: true, LogFailed: true, Module: "verify"},

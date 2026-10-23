@@ -16,6 +16,7 @@ import (
 	"catcube/internal/kernel/eventbus"
 	"catcube/internal/kernel/module"
 	"catcube/internal/kernel/policy"
+	"catcube/internal/kernel/rbac"
 	"catcube/internal/kernel/settings"
 	"catcube/internal/kernel/statemachine"
 	"catcube/internal/modules/channel/contract"
@@ -52,6 +53,7 @@ type Deps struct {
 	Cube     cubecontract.Facade
 	Settings *settings.Registry
 	Policy   *policy.Engine
+	RBAC     *rbac.Store // 后台数据范围（渠道经理按区域过滤）
 }
 
 // Module channel 模块。
@@ -459,6 +461,18 @@ func (m *Module) Commissions(ctx context.Context, operatorID int64, month string
 	return m.commissions(ctx, operatorID, month, limit)
 }
 
+// scope 当前后台用户的数据范围；RBAC 未注入或超管=不限。
+func (m *Module) scope(ctx context.Context, uid int64) ([]string, bool) {
+	if m.deps.RBAC == nil || uid == 0 {
+		return nil, false
+	}
+	regions, subtree, err := m.deps.RBAC.RegionScope(ctx, uid)
+	if err != nil {
+		return []string{"__deny__"}, false
+	}
+	return regions, subtree
+}
+
 // ListOperators 后台列表。
 func (m *Module) ListOperators(ctx context.Context, status int16, regionCode string, limit int) ([]contract.Operator, error) {
 	if limit <= 0 || limit > 200 {
@@ -668,6 +682,16 @@ func (m *Module) handleListOperators(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		writeErr(w, codeInternal, "服务错误")
 		return
+	}
+	regions, subtree := m.scope(req.Context(), userIDFrom(req.Context()))
+	if len(regions) > 0 {
+		filtered := items[:0]
+		for _, it := range items {
+			if rbac.RegionAllowed(regions, subtree, it.RegionCode) {
+				filtered = append(filtered, it)
+			}
+		}
+		items = filtered
 	}
 	writeData(w, map[string]any{"items": items})
 }

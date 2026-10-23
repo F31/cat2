@@ -74,3 +74,32 @@ func TestCheckTextUpstreamError(t *testing.T) {
 		t.Fatal("上游错误应返回错误（调用方保持审核中）")
 	}
 }
+
+func TestCheckMediaAsync(t *testing.T) {
+	var body map[string]any
+	c, closeFn := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/wxa/media_check_async" || r.URL.Query().Get("access_token") != "token-1" {
+			t.Fatalf("请求错误: %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_, _ = w.Write([]byte(`{"errcode":0,"errmsg":"ok","trace_id":"trace-1"}`))
+	})
+	defer closeFn()
+	res, err := c.CheckMedia(context.Background(), ports.ModerationRequest{MediaURL: "https://cdn.example.com/a.png"})
+	if err != nil || !res.Async || res.TraceID != "trace-1" {
+		t.Fatalf("应返回异步 trace: %+v %v", res, err)
+	}
+	if body["media_url"] != "https://cdn.example.com/a.png" || int(body["media_type"].(float64)) != 2 {
+		t.Fatalf("请求体错误: %+v", body)
+	}
+}
+
+func TestCheckMediaRejectsNonPublicURL(t *testing.T) {
+	c, closeFn := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		t.Fatal("不应请求上游")
+	})
+	defer closeFn()
+	if _, err := c.CheckMedia(context.Background(), ports.ModerationRequest{MediaURL: "/tmp/a.png"}); err == nil {
+		t.Fatal("本地路径应拒绝（微信要求公网 URL）")
+	}
+}

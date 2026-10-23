@@ -126,9 +126,9 @@ func (m *Module) Register(r *module.Registry) error {
 		// 能力开关清单（前端据此决定是否展示 AI 入口）
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/ai/features", Handler: m.auth(m.handleFeatures)},
 		// 后台管理（p5 §7.2）：提示词版本与用量/采纳率/成本
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/ai/prompts", Handler: m.auth(m.handleAdminPrompts), Admin: true},
-		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/ai/prompts", Handler: m.auth(m.handleAdminSavePrompt), Admin: true},
-		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/ai/usage", Handler: m.auth(m.handleAdminUsage), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/ai/prompts", Handler: m.auth(m.handleAdminPrompts), Admin: true, Perm: "ops:settings:read"},
+		module.Route{Method: http.MethodPut, Path: "/api/admin/v1/ai/prompts", Handler: m.auth(m.handleAdminSavePrompt), Admin: true, Perm: "ops:settings:set"},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/ai/usage", Handler: m.auth(m.handleAdminUsage), Admin: true, Perm: "ops:settings:read"},
 	)
 	r.AuditPoints = append(r.AuditPoints,
 		audit.Point{Action: "ai:prompt:save", Path: "/api/admin/v1/ai/prompts", Required: true, LogFailed: true, Module: "ai"},

@@ -1725,6 +1725,13 @@ type MountCircleItemJSONBody struct {
 	ItemRef string `json:"item_ref"`
 }
 
+// RecordConsentJSONBody defines parameters for RecordConsent.
+type RecordConsentJSONBody struct {
+	Agreed         bool   `json:"agreed"`
+	PrivacyVersion string `json:"privacy_version"`
+	TermsVersion   string `json:"terms_version"`
+}
+
 // PublishContentParams defines parameters for PublishContent.
 type PublishContentParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
@@ -1935,6 +1942,9 @@ type InviteSubAccountJSONBody struct {
 	SubUserId string `json:"sub_user_id"`
 }
 
+// ModerationNotifyJSONBody defines parameters for ModerationNotify.
+type ModerationNotifyJSONBody map[string]interface{}
+
 // SetNoticePreferenceJSONBody defines parameters for SetNoticePreference.
 type SetNoticePreferenceJSONBody struct {
 	Enabled      bool   `json:"enabled"`
@@ -2102,6 +2112,9 @@ type PublishCircleFeedJSONRequestBody PublishCircleFeedJSONBody
 // MountCircleItemJSONRequestBody defines body for MountCircleItem for application/json ContentType.
 type MountCircleItemJSONRequestBody MountCircleItemJSONBody
 
+// RecordConsentJSONRequestBody defines body for RecordConsent for application/json ContentType.
+type RecordConsentJSONRequestBody RecordConsentJSONBody
+
 // PublishContentJSONRequestBody defines body for PublishContent for application/json ContentType.
 type PublishContentJSONRequestBody = ContentPublishInput
 
@@ -2179,6 +2192,9 @@ type OpenMembershipJSONRequestBody = OpenMembershipInput
 
 // InviteSubAccountJSONRequestBody defines body for InviteSubAccount for application/json ContentType.
 type InviteSubAccountJSONRequestBody InviteSubAccountJSONBody
+
+// ModerationNotifyJSONRequestBody defines body for ModerationNotify for application/json ContentType.
+type ModerationNotifyJSONRequestBody ModerationNotifyJSONBody
 
 // SetNoticePreferenceJSONRequestBody defines body for SetNoticePreference for application/json ContentType.
 type SetNoticePreferenceJSONRequestBody SetNoticePreferenceJSONBody
@@ -2395,6 +2411,9 @@ type ServerInterface interface {
 	// MountCircleItem 挂载内容（本人直接；他人需对方确认；单圈 ≤50）
 	// (POST /circles/{id}/mounts)
 	MountCircleItem(w http.ResponseWriter, r *http.Request, id string)
+	// RecordConsent 记录用户协议/隐私政策同意（按版本留痕）
+	// (POST /consents)
+	RecordConsent(w http.ResponseWriter, r *http.Request)
 	// PublishContent 创建内容（草稿=审核中；kind 区分四类，Fields 按 ContentKind schema 校验）
 	// (POST /contents)
 	PublishContent(w http.ResponseWriter, r *http.Request, params PublishContentParams)
@@ -2611,6 +2630,9 @@ type ServerInterface interface {
 	// RemoveSubAccount 移除子账号（企业版主账号）
 	// (DELETE /membership/sub-accounts/{subUserID})
 	RemoveSubAccount(w http.ResponseWriter, r *http.Request, subUserID string)
+	// ModerationNotify 微信 media_check_async 异步机检回调
+	// (POST /moderation/notify)
+	ModerationNotify(w http.ResponseWriter, r *http.Request)
 	// ListNoticePreferences 通知偏好列表（资金与审核类不可关闭）
 	// (GET /notice-preferences)
 	ListNoticePreferences(w http.ResponseWriter, r *http.Request)
@@ -2671,6 +2693,9 @@ type ServerInterface interface {
 	// ApplySubscribeQuota 申请订阅消息授权额度（上下文动作处调用）
 	// (POST /subscribe-quota/apply)
 	ApplySubscribeQuota(w http.ResponseWriter, r *http.Request)
+	// ListSubscribeTemplates 已配置的小程序订阅模板（客户端 requestSubscribeMessage 使用）
+	// (GET /subscribe-templates)
+	ListSubscribeTemplates(w http.ResponseWriter, r *http.Request)
 	// ReportTelemetry 小程序埋点批量上报（≤50 条；仅登记事件入库，props 白名单）
 	// (POST /telemetry)
 	ReportTelemetry(w http.ResponseWriter, r *http.Request)
@@ -4309,6 +4334,20 @@ func (siw *ServerInterfaceWrapper) MountCircleItem(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MountCircleItem(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RecordConsent operation middleware
+func (siw *ServerInterfaceWrapper) RecordConsent(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RecordConsent(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6414,6 +6453,20 @@ func (siw *ServerInterfaceWrapper) RemoveSubAccount(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ModerationNotify operation middleware
+func (siw *ServerInterfaceWrapper) ModerationNotify(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ModerationNotify(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListNoticePreferences operation middleware
 func (siw *ServerInterfaceWrapper) ListNoticePreferences(w http.ResponseWriter, r *http.Request) {
 
@@ -7022,6 +7075,20 @@ func (siw *ServerInterfaceWrapper) ApplySubscribeQuota(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// ListSubscribeTemplates operation middleware
+func (siw *ServerInterfaceWrapper) ListSubscribeTemplates(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSubscribeTemplates(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ReportTelemetry operation middleware
 func (siw *ServerInterfaceWrapper) ReportTelemetry(w http.ResponseWriter, r *http.Request) {
 
@@ -7252,6 +7319,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/orders/{id}", wrapper.GetOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/orders/{id}/pay", wrapper.PayOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/pay/notify", wrapper.PayNotify)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/consents", wrapper.RecordConsent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/moderation/notify", wrapper.ModerationNotify)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/search", wrapper.Search)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/feed", wrapper.Feed)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/feed/refresh", wrapper.FeedRefresh)
@@ -7346,6 +7415,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/notices/{id}/read", wrapper.ReadNotice)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/notice-preferences", wrapper.ListNoticePreferences)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/notice-preferences", wrapper.SetNoticePreference)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/subscribe-templates", wrapper.ListSubscribeTemplates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/subscribe-quota/apply", wrapper.ApplySubscribeQuota)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/onboard-draft", wrapper.AiOnboardDraft)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/ai/publish-draft", wrapper.AiPublishDraft)

@@ -62,4 +62,15 @@ CREATE TABLE IF NOT EXISTS idn_deactivation_log (
 	reason varchar(256),
 	created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS idn_consent (
+	id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+	user_id bigint NOT NULL,
+	doc_type varchar(16) NOT NULL, -- terms/privacy
+	version varchar(32) NOT NULL,
+	agreed_at timestamptz NOT NULL DEFAULT now(),
+	ip varchar(64) NOT NULL DEFAULT '',
+	user_agent varchar(255) NOT NULL DEFAULT '',
+	UNIQUE (user_id, doc_type, version)
+);
+
 `

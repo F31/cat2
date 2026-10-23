@@ -692,6 +692,7 @@ func TestIntegrationTrustReportFlow(t *testing.T) {
 func TestIntegrationAdminOpsAudited(t *testing.T) {
 	h := newTestApp(t)
 	_, adminTok := loginAdmin(t, h)
+	_, reviewerTok := loginAdmin(t, h)
 
 	// 下架已展示内容
 	_, ownerTok := loginUser(t, h)
@@ -735,9 +736,14 @@ func TestIntegrationAdminOpsAudited(t *testing.T) {
 	_, _ = h.do(http.MethodPost, "/api/mp/v1/pay/notify", "", map[string]any{
 		"out_trade_no": pp.OutTradeNo, "amount_fen": 9900, "sign": "ok",
 	})
-	if status, env := h.do(http.MethodPost, "/api/admin/v1/refunds", adminTok, map[string]any{
+	if status, _ := h.do(http.MethodPost, "/api/admin/v1/refunds", adminTok, map[string]any{
 		"order_id": fmt.Sprintf("%d", opened.OrderID), "amount_fen": 9900, "reason": "用户体验",
-	}); status != http.StatusOK || env.Code != 0 {
+	}); status != http.StatusForbidden {
+		t.Fatalf("退款缺少复核人令牌应 403: %d", status)
+	}
+	if status, env := h.doH(http.MethodPost, "/api/admin/v1/refunds", adminTok, map[string]any{
+		"order_id": fmt.Sprintf("%d", opened.OrderID), "amount_fen": 9900, "reason": "用户体验",
+	}, map[string]string{"X-Review-Token": reviewerTok}); status != http.StatusOK || env.Code != 0 {
 		t.Fatalf("退款失败: %d %+v", status, env)
 	}
 	_ = h.app.Pool.QueryRow(context.Background(),
@@ -970,9 +976,10 @@ func TestIntegrationTradeFlow(t *testing.T) {
 
 	// 后台退款（幂等）
 	_, admTok := loginAdmin(t, h)
-	_, env = h.do(http.MethodPost, "/api/admin/v1/refunds", admTok, map[string]any{
+	_, reviewerTok := loginAdmin(t, h)
+	_, env = h.doH(http.MethodPost, "/api/admin/v1/refunds", admTok, map[string]any{
 		"order_id": fmt.Sprintf("%d", order.ID), "amount_fen": 9900, "reason": "重复支付原路退回",
-	})
+	}, map[string]string{"X-Review-Token": reviewerTok})
 	var refund struct {
 		ID int64 `json:"id,string"`
 	}
@@ -980,9 +987,9 @@ func TestIntegrationTradeFlow(t *testing.T) {
 	if refund.ID == 0 {
 		t.Fatalf("退款失败: %+v", env)
 	}
-	_, env = h.do(http.MethodPost, "/api/admin/v1/refunds", admTok, map[string]any{
+	_, env = h.doH(http.MethodPost, "/api/admin/v1/refunds", admTok, map[string]any{
 		"order_id": fmt.Sprintf("%d", order.ID), "amount_fen": 9900, "reason": "重复支付原路退回",
-	})
+	}, map[string]string{"X-Review-Token": reviewerTok})
 	var refund2 struct {
 		ID int64 `json:"id,string"`
 	}
@@ -3660,8 +3667,9 @@ func TestIntegrationNoticeQuotaDegrade(t *testing.T) {
 			inappCnt++
 		}
 	}
-	if subscribeCnt != 1 || inappCnt != 1 {
-		t.Fatalf("订阅额度应用后应 1 订阅 1 降级站内: sub=%d inapp=%d", subscribeCnt, inappCnt)
+	// 未配置微信模板映射时，即使有额度也回退站内信（避免“标记 subscribe 但未真实发送”）。
+	if subscribeCnt != 0 || inappCnt != 2 {
+		t.Fatalf("未配置模板应全部回退站内: sub=%d inapp=%d", subscribeCnt, inappCnt)
 	}
 }
 
@@ -5614,6 +5622,24 @@ func TestIntegrationExportAndTelemetryDashboard(t *testing.T) {
 	if env.Code != 0 || len(env.Data) == 0 {
 		t.Fatalf("下载应返回地址: %+v", env)
 	}
+	var dl struct {
+		URL string `json:"url"`
+	}
+	_ = json.Unmarshal(env.Data, &dl)
+	if !strings.Contains(dl.URL, "/raw") {
+		t.Fatalf("本地回退应返回受保护 raw 地址: %q", dl.URL)
+	}
+	rawReq, _ := http.NewRequest(http.MethodGet, h.srv.URL+dl.URL, nil)
+	rawReq.Header.Set("Authorization", "Bearer "+admTok)
+	rawResp, err := http.DefaultClient.Do(rawReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawBody, _ := io.ReadAll(rawResp.Body)
+	rawResp.Body.Close()
+	if rawResp.StatusCode != http.StatusOK || !strings.Contains(string(rawBody), "# 水印") {
+		t.Fatalf("raw 下载失败: %d %q", rawResp.StatusCode, string(rawBody[:min(80, len(rawBody))]))
+	}
 	// 导出审计（action=export:create）
 	var auditN int
 	_ = h.app.Pool.QueryRow(ctx, `SELECT count(1) FROM sys_audit WHERE action='export:create'`).Scan(&auditN)
@@ -5933,6 +5959,7 @@ func TestIntegrationGovernanceUserSearchAndRestrict(t *testing.T) {
 func TestIntegrationAdminOperations(t *testing.T) {
 	h := newTestApp(t)
 	_, admTok := loginAdmin(t, h)
+	_, reviewerTok := loginAdmin(t, h)
 	adminID, _ := loginUser(t, h)
 	ctx := context.Background()
 	_ = adminID
@@ -5989,8 +6016,8 @@ func TestIntegrationAdminOperations(t *testing.T) {
 
 	// 3) 会员人工调整（含前后值快照审计）
 	target, targetTok := loginUser(t, h)
-	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/memberships/%d/adjust", target), admTok,
-		map[string]any{"level": 3, "reason": "商务补偿开通"}); s != http.StatusOK || e.Code != 0 {
+	if s, e := h.doH(http.MethodPost, fmt.Sprintf("/api/admin/v1/memberships/%d/adjust", target), admTok,
+		map[string]any{"level": 3, "reason": "商务补偿开通"}, map[string]string{"X-Review-Token": reviewerTok}); s != http.StatusOK || e.Code != 0 {
 		t.Fatalf("会员调整失败: %d %+v", s, e)
 	}
 	var lvl int16
@@ -6009,8 +6036,8 @@ func TestIntegrationAdminOperations(t *testing.T) {
 	// 4) 企业版主账号转移（目标须为生效企业版）
 	other, otherTok := loginUser(t, h)
 	for _, u := range []int64{target, other} {
-		if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/memberships/%d/adjust", u), admTok,
-			map[string]any{"level": 3, "reason": "为企业版准备"}); s != http.StatusOK || e.Code != 0 {
+		if s, e := h.doH(http.MethodPost, fmt.Sprintf("/api/admin/v1/memberships/%d/adjust", u), admTok,
+			map[string]any{"level": 3, "reason": "为企业版准备"}, map[string]string{"X-Review-Token": reviewerTok}); s != http.StatusOK || e.Code != 0 {
 			t.Fatalf("预置企业版失败: %d %+v", s, e)
 		}
 	}
@@ -6504,6 +6531,11 @@ func TestIntegrationAdminRBAC(t *testing.T) {
 	}
 	if s, _ := h.do(http.MethodGet, "/api/admin/v1/roles", atok, nil); s != http.StatusOK {
 		t.Fatalf("审核员应可访问后台: %d", s)
+	}
+	// 操作级权限：审核员不得封禁用户（仅管理员门槛不再放行）
+	banTarget, _ := loginUser(t, h)
+	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/users/%d/ban", banTarget), atok, map[string]any{"reason": "越权测试"}); s != http.StatusForbidden {
+		t.Fatalf("审核员不应能封禁用户: %d %+v", s, e)
 	}
 	_, env = h.do(http.MethodGet, "/api/admin/v1/menus", atok, nil)
 	var menus struct {
@@ -7023,6 +7055,40 @@ func TestIntegrationAdminDataScope(t *testing.T) {
 		t.Fatalf("渠道经理数据范围未生效: %+v", roles.Items)
 	}
 
+	// 区域强制过滤：渠道经理只看到授权区域运营商
+	regionA := fmt.Sprintf("98%04d", time.Now().UnixNano()%10000)
+	regionB := fmt.Sprintf("97%04d", time.Now().UnixNano()%10000)
+	if s, e := h.do(http.MethodPut, "/api/admin/v1/roles/channel_manager/scope", admTok, map[string]any{
+		"region_codes": []string{regionA}, "include_subtree": false,
+	}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("设置单区域范围失败: %d %+v", s, e)
+	}
+	cmID, cmTok := loginUser(t, h)
+	if s, e := h.do(http.MethodPut, fmt.Sprintf("/api/admin/v1/admin-users/%d/roles", cmID), admTok, map[string]any{"roles": []string{"channel_manager"}}); s != http.StatusOK || e.Code != 0 {
+		t.Fatalf("分配渠道经理失败: %d %+v", s, e)
+	}
+	otherID, _ := loginUser(t, h)
+	for _, it := range []struct {
+		uid    int64
+		region string
+	}{{cmID, regionA}, {otherID, regionB}} {
+		if _, err := h.app.Pool.Exec(context.Background(), `
+			INSERT INTO chn_operator (id, user_id, region_code, name, status)
+			VALUES ($1,$2,$3,$4,1)`, int64(ids.New()), it.uid, it.region, "范围测试"+it.region); err != nil {
+			t.Fatalf("插入运营商失败: %v", err)
+		}
+	}
+	_, env = h.do(http.MethodGet, "/api/admin/v1/channel/operators", cmTok, nil)
+	var ops struct {
+		Items []struct {
+			RegionCode string `json:"region_code"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &ops)
+	if len(ops.Items) != 1 || ops.Items[0].RegionCode != regionA {
+		t.Fatalf("数据范围未过滤运营商: %+v", ops.Items)
+	}
+
 	// 超管范围不可改
 	if s, _ := h.do(http.MethodPut, "/api/admin/v1/roles/super/scope", admTok, map[string]any{"region_codes": []string{"310000"}}); s != http.StatusBadRequest {
 		t.Fatalf("超管数据范围应不可改: %d", s)
@@ -7165,4 +7231,99 @@ func TestIntegrationAICustomerService(t *testing.T) {
 		t.Fatalf("超长应 400/030002: %d %+v", s, e)
 	}
 	_ = ctx
+}
+
+// 图片异步机检：提交后保持审核中；回调通过→展示，回调命中→下架。
+func TestIntegrationMediaModerationAsync(t *testing.T) {
+	h := newTestApp(t)
+	owner, tok := loginUser(t, h)
+	_ = owner
+	if _, env := h.do(http.MethodPost, "/api/mp/v1/certs", tok, map[string]any{
+		"cert_type": 1, "real_name": "张三", "id_card_no": "110101199003070019", "agreed": true,
+	}); env.Code != 0 {
+		t.Fatalf("实名失败: %+v", env)
+	}
+	fileID := int64(987654321)
+	if _, err := h.app.Pool.Exec(context.Background(), `
+		INSERT INTO med_file (id, bucket, object_key, mime, size_bytes, ref_count, status, created_at)
+		VALUES ($1,'default','test/media-moderation.png','image/png',1024,1,1,now())
+		ON CONFLICT (id) DO NOTHING`, fileID); err != nil {
+		t.Fatal(err)
+	}
+	mk := func(title string) int64 {
+		_, env := h.do(http.MethodPost, "/api/mp/v1/contents", tok, map[string]any{
+			"kind": "project", "title": title, "cover_file_id": strconv.FormatInt(fileID, 10),
+			"tagset": map[string]any{"region": "310000", "industry": []string{"A01"}},
+			"fields": map[string]any{"amount_wan": 100, "intro": "媒体机检"},
+		})
+		var item struct {
+			ID int64 `json:"id,string"`
+		}
+		_ = json.Unmarshal(env.Data, &item)
+		if item.ID == 0 {
+			t.Fatalf("建草稿失败: %+v", env)
+		}
+		return item.ID
+	}
+	traceOf := func(itemID int64) string {
+		var trace string
+		if err := h.app.Pool.QueryRow(context.Background(),
+			`SELECT trace_id FROM trs_media_check WHERE subject_id=$1 ORDER BY id DESC LIMIT 1`, itemID).Scan(&trace); err != nil {
+			t.Fatalf("媒体机检记录缺失: %v", err)
+		}
+		return trace
+	}
+	statusOf := func(itemID int64) int16 {
+		var status int16
+		_ = h.app.Pool.QueryRow(context.Background(), `SELECT status FROM cnt_item WHERE id=$1`, itemID).Scan(&status)
+		return status
+	}
+	notify := func(trace string, suggest string) {
+		body := map[string]any{"trace_id": trace, "errcode": 0, "errmsg": "ok", "result": map[string]any{"suggest": suggest}}
+		if s, env := h.do(http.MethodPost, "/api/mp/v1/moderation/notify", "", body); s != http.StatusOK || env.Code != 0 {
+			t.Fatalf("回调失败: %d %+v", s, env)
+		}
+	}
+
+	passID := mk("图片通过")
+	if _, env := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/contents/%d/submit", passID), tok, nil); env.Code != 0 {
+		t.Fatalf("提交失败: %+v", env)
+	}
+	if st := statusOf(passID); st != 0 {
+		t.Fatalf("图片异步机检中应审核中，实际 %d", st)
+	}
+	notify(traceOf(passID), "pass")
+	if st := statusOf(passID); st != 1 {
+		t.Fatalf("回调通过后应展示中，实际 %d", st)
+	}
+
+	rejectID := mk("图片命中")
+	if _, env := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/contents/%d/submit", rejectID), tok, nil); env.Code != 0 {
+		t.Fatalf("提交失败: %+v", env)
+	}
+	notify(traceOf(rejectID), "risky")
+	if st := statusOf(rejectID); st != 2 {
+		t.Fatalf("回调命中后应下架，实际 %d", st)
+	}
+}
+
+// 协议同意按版本留痕；旧版本拒绝。
+func TestIntegrationConsentRecord(t *testing.T) {
+	h := newTestApp(t)
+	uid, tok := loginUser(t, h)
+	_, env := h.do(http.MethodPost, "/api/mp/v1/consents", tok, map[string]any{
+		"terms_version": "2026-10-24", "privacy_version": "2026-10-24", "agreed": true,
+	})
+	if env.Code != 0 {
+		t.Fatalf("协议留痕失败: %+v", env)
+	}
+	var n int
+	if err := h.app.Pool.QueryRow(context.Background(), `SELECT count(1) FROM idn_consent WHERE user_id=$1 AND version='2026-10-24'`, uid).Scan(&n); err != nil || n != 2 {
+		t.Fatalf("应留痕 terms+privacy 两条: n=%d err=%v", n, err)
+	}
+	if _, e := h.do(http.MethodPost, "/api/mp/v1/consents", tok, map[string]any{
+		"terms_version": "old", "privacy_version": "old", "agreed": true,
+	}); e.Code == 0 {
+		t.Fatal("旧版本应拒绝")
+	}
 }

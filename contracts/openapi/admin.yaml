@@ -1807,6 +1807,24 @@ paths:
             schema: { type: object, required: [user_id], properties: { user_id: { type: string }, remove: { type: boolean } } }
       responses:
         '200': { description: 结果, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /exports/{id}/raw:
+    get:
+      tags: [ops]
+      summary: 本地对象存储兜底下载导出文件
+      operationId: downloadExportRaw
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: CSV 文件
+          content:
+            text/csv:
+              schema: { type: string, format: binary }
+
 components:
   securitySchemes:
     bearerAuth:

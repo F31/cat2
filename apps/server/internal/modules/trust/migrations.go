@@ -68,4 +68,18 @@ CREATE TABLE IF NOT EXISTS trs_moderation_record (
 	result jsonb,
 	created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS trs_media_check (
+	id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+	trace_id varchar(128) NOT NULL UNIQUE,
+	subject_type varchar(32) NOT NULL,
+	subject_id bigint NOT NULL,
+	media_id varchar(64) NOT NULL DEFAULT '',
+	status smallint NOT NULL DEFAULT 0, -- 0待回调/1通过/2拒绝/3其它媒体已拒绝取消
+	result jsonb,
+	created_at timestamptz NOT NULL DEFAULT now(),
+	updated_at timestamptz NOT NULL DEFAULT now(),
+	checked_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_trs_media_subject ON trs_media_check(subject_type, subject_id, status);
+
 `

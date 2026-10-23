@@ -107,8 +107,20 @@ func Storage(t *testing.T, st ports.Storage) {
 	if err := st.Put(ctx, "suite", key, strings.NewReader("hello")); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
-	if u, err := st.URL(ctx, "suite", key, ""); err != nil || u == "" {
+	u, err := st.URL(ctx, "suite", key, "")
+	if err != nil || u == "" {
 		t.Fatalf("URL 非空: %q err=%v", u, err)
+	}
+	if rc, err := st.Open(ctx, "suite", key); err == nil {
+		raw, _ := io.ReadAll(rc)
+		_ = rc.Close()
+		if string(raw) != "hello" {
+			t.Fatalf("Open 内容错误: %q", raw)
+		}
+	} else if strings.HasPrefix(u, "http") {
+		// 远端实现可只提供 URL；不强制 Open。
+	} else {
+		t.Fatalf("Open: %v", err)
 	}
 	if err := st.Delete(ctx, "suite", key); err != nil {
 		t.Fatalf("Delete: %v", err)

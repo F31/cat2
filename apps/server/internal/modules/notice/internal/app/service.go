@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/eventbus"
@@ -44,26 +45,39 @@ type Repo interface {
 }
 
 // Options 构造参数。
+// SubscribeSender 订阅消息发送端口（notice 只依赖最小接口，避免绑定短信通道）。
+type SubscribeSender interface {
+	SendSubscribeMessage(ctx context.Context, openID, templateID string, data map[string]string) error
+}
+
 type Options struct {
-	Repo   Repo
-	Pool   *db.Pool
-	Bus    *eventbus.Bus
-	Circle CircleFacade
+	Repo       Repo
+	Pool       *db.Pool
+	Bus        *eventbus.Bus
+	Circle     CircleFacade
+	Subscribe  SubscribeSender
+	OpenID     func(ctx context.Context, userID int64) (string, error)
+	TemplateID func(ctx context.Context, code string) (string, bool)
 }
 
 // Service notice 应用服务。
 type Service struct {
-	repo   Repo
-	pool   *db.Pool
-	bus    *eventbus.Bus
-	circle CircleFacade
+	repo       Repo
+	pool       *db.Pool
+	bus        *eventbus.Bus
+	circle     CircleFacade
+	subscribe  SubscribeSender
+	openID     func(ctx context.Context, userID int64) (string, error)
+	templateID func(ctx context.Context, code string) (string, bool)
 
 	mu        sync.RWMutex
 	templates map[string]domain.Template
 }
 
 func New(o Options) *Service {
-	s := &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, circle: o.Circle, templates: map[string]domain.Template{}}
+	s := &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, circle: o.Circle,
+		subscribe: o.Subscribe, openID: o.OpenID, templateID: o.TemplateID,
+		templates: map[string]domain.Template{}}
 	for _, t := range Templates {
 		s.templates[t.EventCode] = t
 	}
@@ -133,10 +147,46 @@ func (s *Service) Handle(ctx context.Context, e eventbus.Event) error {
 	if hasChannel(tpl.Channels, domain.ChannelSMS) && channel == domain.ChannelSubscribe {
 		channel = domain.ChannelSMS // 资金类优先短信（额度已消耗）
 	}
+	if channel == domain.ChannelSubscribe && !s.sendSubscribe(ctx, userID, tpl.Code, title, content) {
+		channel = domain.ChannelInApp // 模板未配置/发送失败：回退站内信，不丢通知
+	}
 	return s.repo.InsertNotice(ctx, s.pool, infra.Notice{
 		ID: int64(ids.New()), UserID: userID, TemplateCode: tpl.Code,
 		Title: title, Content: content, Ref: noticeRef(payload, e.ID), Channel: channel,
 	})
+}
+
+// sendSubscribe 发送微信订阅消息；模板未配置/无 openid/上游失败均返回 false 由调用方回退站内信。
+func (s *Service) sendSubscribe(ctx context.Context, userID int64, code, title, content string) bool {
+	if s.subscribe == nil || s.openID == nil || s.templateID == nil {
+		return false
+	}
+	tid, ok := s.templateID(ctx, code)
+	if !ok || tid == "" {
+		return false
+	}
+	openid, err := s.openID(ctx, userID)
+	if err != nil || openid == "" {
+		return false
+	}
+	data := map[string]string{
+		"thing1": clip(title, 20),
+		"thing2": clip(content, 20),
+		"time3":  time.Now().Format("2006-01-02 15:04"),
+	}
+	if err := s.subscribe.SendSubscribeMessage(ctx, openid, tid, data); err != nil {
+		slog.Warn("订阅消息发送失败，回退站内信", "template", code, "user", userID, "err", err)
+		return false
+	}
+	return true
+}
+
+func clip(s string, max int) string {
+	if utf8.RuneCountInString(s) <= max {
+		return s
+	}
+	r := []rune(s)
+	return string(r[:max])
 }
 
 // RunDigest 日结：同圈同日合并为一条（本人不收）。

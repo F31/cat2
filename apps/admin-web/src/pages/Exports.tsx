@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button, DatePicker, InputNumber, message, Select, Space, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { adminApi } from '../api/admin'
+import { getToken } from '../auth'
 
 interface ExportTask {
   id: string
@@ -66,7 +67,20 @@ export default function Exports() {
   const download = async (id: string) => {
     try {
       const res = await adminApi.downloadExport(id)
-      window.open(res.url, '_blank')
+      if (!res.url.startsWith('/api/')) {
+        window.open(res.url, '_blank')
+        return
+      }
+      const token = getToken()
+      const r = await fetch(res.url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      if (!r.ok) throw new Error('下载失败')
+      const blob = await r.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `export-${id}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
     } catch (e) {
       message.error(e instanceof Error ? e.message : '下载失败')
     }

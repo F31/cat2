@@ -3,7 +3,10 @@ package moderation
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"catcube/internal/ports"
 )
@@ -24,8 +27,15 @@ func (DevClient) CheckText(_ context.Context, req ports.ModerationRequest) (port
 	return ports.ModerationResult{Pass: true}, nil
 }
 
-func (DevClient) CheckMedia(_ context.Context, _ ports.ModerationRequest) (ports.ModerationResult, error) {
-	return ports.ModerationResult{Async: true}, nil
+// CheckMedia 开发态异步占位：每次提交返回唯一 trace_id，测试通过回调接口驱动结论。
+func (DevClient) CheckMedia(_ context.Context, req ports.ModerationRequest) (ports.ModerationResult, error) {
+	if req.MediaURL == "" {
+		return ports.ModerationResult{}, errors.New("moderation(dev): media_url 为空")
+	}
+	n := atomic.AddUint64(&devMediaSeq, 1)
+	return ports.ModerationResult{Async: true, TraceID: fmt.Sprintf("dev-media-%d-%d", time.Now().UnixNano(), n)}, nil
 }
+
+var devMediaSeq uint64
 
 var _ ports.Moderation = DevClient{}

@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"catcube/internal/kernel/audit"
+	"catcube/internal/kernel/rbac"
 	memcontract "catcube/internal/modules/membership/contract"
 )
 
@@ -109,6 +111,18 @@ func (m *Module) handleAdjustMember(w http.ResponseWriter, req *http.Request) {
 		writeErr(w, codeParamInvalid, "参数错误（必须给原因）")
 		return
 	}
+	actorID := userIDFrom(req.Context())
+	if m.deps.Policy != nil && m.deps.Policy.DualControlEnabled(req.Context(), "membership:adjust") {
+		reviewerID, rerr := m.reviewerID(req)
+		if rerr != nil {
+			writeErr(w, codeForbidden, "会员调整需复核人令牌（X-Review-Token，且与操作人不同）")
+			return
+		}
+		if rerr := m.deps.Policy.EnforceDualControl(req.Context(), "membership:adjust", actorID, reviewerID, 0); rerr != nil {
+			writeErr(w, codeForbidden, rerr.Error())
+			return
+		}
+	}
 	before, ok, err := m.svc.Me(req.Context(), userID)
 	if err != nil {
 		writeErr(w, codeInternal, "服务错误")
@@ -137,4 +151,26 @@ func (m *Module) handleAdjustMember(w http.ResponseWriter, req *http.Request) {
 
 func userRef(id int64) string {
 	return fmt.Sprintf(`{"id":"%d","type":"user"}`, id)
+}
+
+// reviewerID 校验复核人令牌与会员调整权限。
+func (m *Module) reviewerID(req *http.Request) (int64, error) {
+	token := strings.TrimSpace(req.Header.Get("X-Review-Token"))
+	if token == "" {
+		return 0, fmt.Errorf("缺少复核人令牌")
+	}
+	uid, _, err := m.deps.Identity.Authenticate(req.Context(), token)
+	if err != nil {
+		return 0, err
+	}
+	if b, err := m.deps.Identity.UserBrief(req.Context(), uid); err != nil || (b.Status != 0 && b.Status != 1) {
+		return 0, fmt.Errorf("复核人账号不可用")
+	}
+	if m.deps.RBAC != nil {
+		ok, err := m.deps.RBAC.HasPerm(req.Context(), uid, rbac.PermMemberAdjust)
+		if err != nil || !ok {
+			return 0, fmt.Errorf("复核人无权限")
+		}
+	}
+	return uid, nil
 }

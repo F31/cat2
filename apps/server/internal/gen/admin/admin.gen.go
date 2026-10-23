@@ -1328,6 +1328,9 @@ type ServerInterface interface {
 	// AdminDownloadExport 下载导出文件（带水印）
 	// (GET /exports/{id}/download)
 	AdminDownloadExport(w http.ResponseWriter, r *http.Request, id string)
+	// DownloadExportRaw 本地对象存储兜底下载导出文件
+	// (GET /exports/{id}/raw)
+	DownloadExportRaw(w http.ResponseWriter, r *http.Request, id string)
 	// AdminFeatureFlags 特性开关列表（灰度）
 	// (GET /feature-flags)
 	AdminFeatureFlags(w http.ResponseWriter, r *http.Request)
@@ -3123,6 +3126,32 @@ func (siw *ServerInterfaceWrapper) AdminDownloadExport(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// DownloadExportRaw operation middleware
+func (siw *ServerInterfaceWrapper) DownloadExportRaw(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadExportRaw(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AdminFeatureFlags operation middleware
 func (siw *ServerInterfaceWrapper) AdminFeatureFlags(w http.ResponseWriter, r *http.Request) {
 
@@ -4803,6 +4832,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/certs/pending", wrapper.AdminPendingCerts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/affiliations/{id}/resolve", wrapper.AdminResolveAffiliation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/orgs/{id}/admins/reset", wrapper.AdminResetOrgAdmin)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/exports/{id}/raw", wrapper.DownloadExportRaw)
 
 	return m
 }

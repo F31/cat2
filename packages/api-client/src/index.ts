@@ -1141,6 +1141,9 @@ export function createClient(opts: ClientOptions) {
     applySubscribeQuota(templateCode: string, n = 1) {
       return call<{ applied: boolean }>('POST', '/subscribe-quota/apply', { template_code: templateCode, n })
     },
+    subscribeTemplates() {
+      return call<{ items: Array<{ code: string; template_id: string }> }>('GET', '/subscribe-templates')
+    },
   }
 }
 
