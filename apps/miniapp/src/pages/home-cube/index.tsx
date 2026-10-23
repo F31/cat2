@@ -46,6 +46,7 @@ export default function CubeTab() {
 
   return (
     <View className="page">
+      <Text className="channel-hint">小群体深度协作与履约空间</Text>
       {cubes.length > 0 ? (
         <View className="search-row">
           <Button className="btn-primary" size="mini" onClick={() => Taro.navigateTo({ url: '/pages/cube/create' })}>

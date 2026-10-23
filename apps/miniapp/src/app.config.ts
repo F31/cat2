@@ -1,8 +1,8 @@
-// 小程序入口配置：4 Tab（广场/猫立方/消息/我的，均为主包壳页）；
-// 圈子并入广场双频道；重功能（详情/开通/搜索）放分包按需加载。
+// 小程序入口配置：4 Tab（发现/猫立方/消息/我的，均为主包壳页）；
+// 发现 = 广场 + 圈子双频道；重功能（详情/开通/搜索）放分包按需加载。
 export default defineAppConfig({
   pages: [
-    'pages/square/index',
+    'pages/discover/index',
     'pages/home-circle/index',
     'pages/home-cube/index',
     'pages/messages/index',
@@ -35,8 +35,8 @@ export default defineAppConfig({
     borderStyle: 'black',
     list: [
       {
-        pagePath: 'pages/square/index',
-        text: '广场',
+        pagePath: 'pages/discover/index',
+        text: '发现',
         iconPath: 'assets/tabbar/square.png',
         selectedIconPath: 'assets/tabbar/square-active.png',
       },

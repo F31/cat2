@@ -39,8 +39,8 @@ export default function Mine() {
   const memberActive = member?.active ?? false
 
   const openCircleChannel = () => {
-    Taro.setStorageSync('catcube.square.channel', 'circle')
-    Taro.switchTab({ url: '/pages/square/index' })
+    Taro.setStorageSync('catcube.discover.channel', 'circle')
+    Taro.switchTab({ url: '/pages/discover/index' })
   }
 
   return (

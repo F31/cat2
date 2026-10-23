@@ -35,7 +35,7 @@ export default function ChannelJoin() {
         <Text className="support-head__sub">{state === 'loading' ? '处理中…' : msg}</Text>
       </View>
       <View className="support-chat">
-        <Button className="btn-secondary" size="mini" onClick={() => Taro.reLaunch({ url: '/pages/square/index' })}>
+        <Button className="btn-secondary" size="mini" onClick={() => Taro.reLaunch({ url: '/pages/discover/index' })}>
           返回首页
         </Button>
       </View>

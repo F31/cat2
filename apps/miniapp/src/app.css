@@ -524,6 +524,12 @@ page {
   color: #ffffff;
   font-weight: 600;
 }
+.channel-hint {
+  display: block;
+  margin: -8px 8px 20px;
+  color: #999;
+  font-size: 22px;
+}
 .tabs {
   display: flex;
   flex-wrap: wrap;

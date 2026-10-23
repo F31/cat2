@@ -10,15 +10,15 @@ import StateView from '../../components/StateView'
 import CircleChannel from '../../components/CircleChannel'
 
 const PAGE = 20
-const CHANNEL_KEY = 'catcube.square.channel'
+const CHANNEL_KEY = 'catcube.discover.channel'
 
-// 广场 Tab：搜索框 + 完善资料提示条 + 匹配卡片流 + 换一批（单次聚合接口，读预计算候选）。
+// 发现 Tab：外层导航壳，内层分「广场 / 圈子」两个频道；广场承载个体/组织发布与合作。
 export default function Square() {
   const [feed, setFeed] = useState<FeedData | null>(null)
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
-  const [channel, setChannel] = useState<'recommend' | 'circle'>('recommend')
+  const [channel, setChannel] = useState<'square' | 'circle'>('square')
   const [circleRefresh, setCircleRefresh] = useState(0)
 
   const load = async (nextOffset: number, append: boolean) => {
@@ -49,7 +49,7 @@ export default function Square() {
     void load(0, false)
   })
 
-  const openChannel = (next: 'recommend' | 'circle') => {
+  const openChannel = (next: 'square' | 'circle') => {
     setChannel(next)
     if (next === 'circle') setCircleRefresh((k) => k + 1)
   }
@@ -60,10 +60,10 @@ export default function Square() {
     <View className="page">
       <View className="channel-switch">
         <Text
-          className={channel === 'recommend' ? 'channel-switch__item channel-switch__item--active' : 'channel-switch__item'}
-          onClick={() => openChannel('recommend')}
+          className={channel === 'square' ? 'channel-switch__item channel-switch__item--active' : 'channel-switch__item'}
+          onClick={() => openChannel('square')}
         >
-          推荐
+          广场
         </Text>
         <Text
           className={channel === 'circle' ? 'channel-switch__item channel-switch__item--active' : 'channel-switch__item'}
@@ -72,8 +72,11 @@ export default function Square() {
           圈子
         </Text>
       </View>
+      <Text className="channel-hint">
+        {channel === 'square' ? '个体与组织的公开发布与合作' : '主题化群体聚合与合作'}
+      </Text>
 
-      {channel === 'recommend' ? (
+      {channel === 'square' ? (
         <>
           <View className="search-row">
             <View className="searchbar" onClick={() => Taro.navigateTo({ url: '/pages/search/index' })}>

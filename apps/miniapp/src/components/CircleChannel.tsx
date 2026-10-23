@@ -12,7 +12,7 @@ interface Props {
   refreshKey?: number
 }
 
-// 广场-圈子频道：发现圈子 + 我的圈子 + 创建/邀请码加入。
+// 发现-圈子频道：主题化群体聚合与合作。
 export default function CircleChannel({ refreshKey = 0 }: Props) {
   const [tab, setTab] = useState<'discover' | 'mine'>('discover')
   const [discover, setDiscover] = useState<CircleDiscoverItem[]>([])
