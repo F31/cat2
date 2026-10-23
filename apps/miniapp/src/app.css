@@ -374,6 +374,25 @@ page {
   font-size: 22px;
   margin-top: 6px;
 }
+.session-item__meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.session-item__preview {
+  color: #777;
+  font-size: 24px;
+  margin-top: 6px;
+  max-width: 430px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-item__time {
+  color: #aaa;
+  font-size: 20px;
+  white-space: nowrap;
+}
 .badge {
   min-width: 32px;
   height: 32px;
@@ -423,6 +442,12 @@ page {
 .member-card__action {
   color: #d4411e;
   font-size: 28px;
+}
+.menu-section__title {
+  display: block;
+  margin: 28px 8px 12px;
+  color: #999;
+  font-size: 22px;
 }
 .menu {
   background: #ffffff;
@@ -477,6 +502,27 @@ page {
 .search-row .searchbar {
   flex: 1;
   margin-bottom: 0;
+}
+.channel-switch {
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  margin-bottom: 20px;
+  background: #ffffff;
+  border-radius: 40px;
+}
+.channel-switch__item {
+  flex: 1;
+  text-align: center;
+  padding: 14px 0;
+  border-radius: 32px;
+  color: #777;
+  font-size: 26px;
+}
+.channel-switch__item--active {
+  background: #d4411e;
+  color: #ffffff;
+  font-weight: 600;
 }
 .tabs {
   display: flex;

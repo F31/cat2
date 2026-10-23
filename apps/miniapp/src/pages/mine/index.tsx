@@ -38,6 +38,11 @@ export default function Mine() {
 
   const memberActive = member?.active ?? false
 
+  const openCircleChannel = () => {
+    Taro.setStorageSync('catcube.square.channel', 'circle')
+    Taro.switchTab({ url: '/pages/square/index' })
+  }
+
   return (
     <View className="page">
       <StateView loading={loading} error={error} onRetry={() => void load()}>
@@ -68,30 +73,39 @@ export default function Mine() {
           </Text>
         </View>
 
+        <Text className="menu-section__title">账号与认证</Text>
         <View className="menu">
-          <View className="menu__item" onClick={() => Taro.switchTab({ url: '/pages/home-circle/index' })}>
-            <Text>我的圈子</Text>
-          </View>
-          <View className="menu__item" onClick={() => Taro.switchTab({ url: '/pages/home-cube/index' })}>
-            <Text>我的猫立方</Text>
-          </View>
-          <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/msg/notices' })}>
-            <Text>系统通知</Text>
-          </View>
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/card/edit' })}>
             <Text>完善资料 / 编辑名片</Text>
           </View>
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/verify/index' })}>
             <Text>实名认证</Text>
           </View>
-          <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/social/favorites' })}>
-            <Text>我的收藏</Text>
+          <View className="menu__item" onClick={() => openCircleChannel()}>
+            <Text>我的圈子</Text>
           </View>
+          <View className="menu__item" onClick={() => Taro.switchTab({ url: '/pages/home-cube/index' })}>
+            <Text>我的猫立方</Text>
+          </View>
+        </View>
+
+        <Text className="menu-section__title">内容与社交</Text>
+        <View className="menu">
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/content/mine' })}>
             <Text>我的发布</Text>
           </View>
+          <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/social/favorites' })}>
+            <Text>我的收藏</Text>
+          </View>
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/social/follows' })}>
             <Text>关注与粉丝</Text>
+          </View>
+        </View>
+
+        <Text className="menu-section__title">服务与设置</Text>
+        <View className="menu">
+          <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/msg/notices' })}>
+            <Text>系统通知</Text>
           </View>
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/support/index' })}>
             <Text>客服</Text>
