@@ -1533,6 +1533,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/circles/from-content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 活动/会议自动建圈（内容所有者；幂等；自动挂载活动） */
+        post: operations["createCircleFromContent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/circles/mounts/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 内容所有者待确认挂载（跨圈，不要求圈成员） */
+        get: operations["listPendingMounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/circles/{id}": {
         parameters: {
             query?: never;
@@ -2547,6 +2581,8 @@ export interface components {
             location?: string;
             /** @description 当前查看者是否为待确认内容所有者 */
             can_decide?: boolean;
+            /** @description 待确认中心展示圈子名称 */
+            circle_name?: string;
         };
         CircleDemand: {
             id: string;
@@ -2834,6 +2870,16 @@ export interface components {
             out_trade_no: string;
             prepay_id: string;
             amount_fen: number;
+            /** @description 微信支付调起时间戳 */
+            timeStamp?: string;
+            /** @description 微信支付调起随机串 */
+            nonceStr?: string;
+            /** @description prepay_id=... */
+            package?: string;
+            /** @description 签名类型（RSA） */
+            signType?: string;
+            /** @description 微信支付调起签名 */
+            paySign?: string;
         };
         TagSet: {
             industry?: string[];
@@ -6102,6 +6148,63 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+        };
+    };
+    createCircleFromContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description content.event:<id> 或 content.meeting:<id> */
+                    content_ref: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 圈子摘要 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["Circle"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listPendingMounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 待确认挂载列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["CircleMount"][];
+                        };
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     getCircle: {

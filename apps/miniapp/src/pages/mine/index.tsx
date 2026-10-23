@@ -113,6 +113,9 @@ export default function Mine() {
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/content/mine' })}>
             <Text>我的发布</Text>
           </View>
+          <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/circle/mounts' })}>
+            <Text>挂载申请</Text>
+          </View>
           <View className="menu__item" onClick={() => Taro.navigateTo({ url: '/pages/social/favorites' })}>
             <Text>我的收藏</Text>
           </View>

@@ -15,7 +15,17 @@ const (
 	EventContentPublished = "content.ContentPublished.v1"
 	EventContentTakenDown = "content.ContentTakenDown.v1"
 	EventContentClosed    = "content.ContentClosed.v1"
+	EventSignupCreated    = "content.SignupCreated.v1"
 )
+
+// SignupPayload 活动/会议报名事件（供圈子「报名即入圈」等订阅方使用）。
+type SignupPayload struct {
+	ItemID   int64    `json:"item_id,string"`
+	Kind     string   `json:"kind"`
+	OwnerRef OwnerRef `json:"owner_ref"`
+	Title    string   `json:"title"`
+	UserID   int64    `json:"user_id,string"`
+}
 
 // ContentPayload 内容事件载荷（含 SearchDoc 投影要素）。
 type ContentPayload struct {
@@ -32,6 +42,11 @@ type ContentPayload struct {
 }
 
 // NewEvent 构造内容事件。
+func NewSignupEvent(id string, p SignupPayload) eventbus.Event {
+	payload, _ := json.Marshal(p)
+	return eventbus.Event{ID: id, Topic: EventSignupCreated, OccurredAt: time.Now().UTC(), SpaceID: 1, Payload: payload}
+}
+
 func NewEvent(id, topic string, p ContentPayload) eventbus.Event {
 	payload, _ := json.Marshal(p)
 	return eventbus.Event{ID: id, Topic: topic, OccurredAt: time.Now().UTC(), SpaceID: 1, Payload: payload}

@@ -43,6 +43,18 @@ export type AdminUser = Req<
 
 export type AdminContent = Req<'ContentItem', 'id' | 'kind' | 'title' | 'status'> & {
   reject_reason?: string
+  owner_ref?: { type: string; id: string }
+  region_code?: string
+}
+
+export interface AdminProductInput {
+  owner_id: string
+  title: string
+  region_code?: string
+  industry_codes?: string[]
+  need_codes?: string[]
+  offer_codes?: string[]
+  fields?: Record<string, unknown>
 }
 
 export type AdminOrder = Req<'Order', 'id' | 'biz_type' | 'amount_fen' | 'status' | 'pay_expire_at'>
@@ -282,6 +294,15 @@ export const adminApi = {
     if (params.status !== undefined) qs.set('status', String(params.status))
     qs.set('limit', '100')
     return call<{ items: AdminContent[] }>('GET', `/admin/v1/contents?${qs.toString()}`)
+  },
+  contentDetail(id: string) {
+    return call<AdminContent & { fields?: Record<string, unknown> }>('GET', `/admin/v1/contents/${id}`)
+  },
+  createProduct(body: AdminProductInput) {
+    return call<AdminContent & { fields?: Record<string, unknown> }>('POST', '/admin/v1/products', body)
+  },
+  reviewContent(id: string, approve: boolean, reason: string) {
+    return call<AdminContent>('POST', `/admin/v1/contents/${id}/review`, { approve, reason })
   },
   takedownContent(id: string, reason: string) {
     return call<{ id: string }>('POST', `/admin/v1/contents/${id}/takedown`, { reason })

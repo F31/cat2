@@ -1339,6 +1339,74 @@ func TestIntegrationAdminFlow(t *testing.T) {
 	}
 }
 
+// 后台产品库：三步入库 → 审核通过 → 展示；重复审核拒绝。
+func TestIntegrationAdminProductLibrary(t *testing.T) {
+	h := newTestApp(t)
+	_, adminTok := loginAdmin(t, h)
+	ownerID, _ := loginUser(t, h)
+
+	_, env := h.do(http.MethodPost, "/api/admin/v1/products", adminTok, map[string]any{
+		"owner_id": fmt.Sprintf("%d", ownerID), "title": "后台入库产品",
+		"region_code": "310000", "industry_codes": []string{"A01"},
+		"need_codes": []string{"N1"}, "offer_codes": []string{"O1"},
+		"fields": map[string]any{
+			"target_customers": "政府", "target_channels": "代理渠道",
+			"core_strength": "技术优势", "key_points": "关键点", "intro": "产品简介",
+			"carousel_file_ids": []string{},
+		},
+	})
+	var created struct {
+		ID     int64  `json:"id,string"`
+		Status int16  `json:"status"`
+		Title  string `json:"title"`
+	}
+	_ = json.Unmarshal(env.Data, &created)
+	if created.ID == 0 || created.Status != 0 || created.Title != "后台入库产品" {
+		t.Fatalf("产品入库失败: %+v", env)
+	}
+	// 详情包含产品字段
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/admin/v1/contents/%d", created.ID), adminTok, nil)
+	var detail struct {
+		Fields map[string]any `json:"fields"`
+	}
+	_ = json.Unmarshal(env.Data, &detail)
+	if detail.Fields["core_strength"] != "技术优势" {
+		t.Fatalf("后台详情字段缺失: %+v", detail)
+	}
+	// 审核通过 → 展示中
+	_, env = h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/contents/%d/review", created.ID), adminTok,
+		map[string]any{"approve": true})
+	var approved struct {
+		Status int16 `json:"status"`
+	}
+	_ = json.Unmarshal(env.Data, &approved)
+	if approved.Status != 1 {
+		t.Fatalf("审核通过后应展示中: %+v", env)
+	}
+	// 非审核中不可重复审核
+	if status, env := h.do(http.MethodPost, fmt.Sprintf("/api/admin/v1/contents/%d/review", created.ID), adminTok,
+		map[string]any{"approve": true}); status != http.StatusConflict || env.Code != 110010 {
+		t.Fatalf("重复审核应 110010/409: %d %+v", status, env)
+	}
+	// 产品库列表可见
+	_, env = h.do(http.MethodGet, "/api/admin/v1/contents?kind=product&status=1", adminTok, nil)
+	var list struct {
+		Items []struct {
+			ID int64 `json:"id,string"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &list)
+	found := false
+	for _, it := range list.Items {
+		if it.ID == created.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("产品库列表应包含新产品: %+v", list)
+	}
+}
+
 // BFF 聚合（5.8）：首屏聚合（卡片+画像进度+未读）与详情聚合。
 func TestIntegrationBFFAggregate(t *testing.T) {
 	h := newTestApp(t)
@@ -3110,10 +3178,29 @@ func TestIntegrationCircleMountToCube(t *testing.T) {
 	if mountResp.Direct || mountResp.Mount.ID == 0 || mountResp.Mount.ApprovalStatus != 0 {
 		t.Fatalf("他人内容挂载应待确认: %+v", env)
 	}
+	// B 不是圈成员，也可通过待确认中心看到并处理挂载
+	_, env = h.do(http.MethodGet, "/api/mp/v1/circles/mounts/pending", bTok, nil)
+	var pending struct {
+		Items []struct {
+			ID         int64  `json:"id,string"`
+			Title      string `json:"title"`
+			CircleName string `json:"circle_name"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &pending)
+	if len(pending.Items) != 1 || pending.Items[0].ID != mountResp.Mount.ID ||
+		pending.Items[0].Title != "B的项目" || pending.Items[0].CircleName != "挂载圈" {
+		t.Fatalf("待确认中心数据错误: %+v", pending)
+	}
 	// B 确认
 	if s, e := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/circles/mounts/%d/decide", mountResp.Mount.ID), bTok,
 		map[string]any{"approve": true}); s != http.StatusOK || e.Code != 0 {
 		t.Fatalf("内容所有者确认失败: %d %+v", s, e)
+	}
+	_, env = h.do(http.MethodGet, "/api/mp/v1/circles/mounts/pending", bTok, nil)
+	_ = json.Unmarshal(env.Data, &pending)
+	if len(pending.Items) != 0 {
+		t.Fatalf("处理后待确认中心应为空: %+v", pending)
 	}
 
 	// 挂载列表带内容摘要：标题/类型来自 content，未展示内容仍保留 item_ref。
@@ -3315,6 +3402,86 @@ func TestIntegrationBFFCollaboration(t *testing.T) {
 		t.Fatalf("圈详情聚合不符: %d %+v", status, detail)
 	}
 	_ = bTok
+}
+
+// 活动自动建圈 + 报名即入圈 + 圈内活动展示。
+func TestIntegrationAutoCircleSignupJoin(t *testing.T) {
+	h := newTestApp(t)
+	ownerID, owner := loginPhone(t, h, randPhone())
+	if s, env := h.do(http.MethodPost, "/api/mp/v1/certs", owner, map[string]any{
+		"cert_type": 1, "real_name": "活动主办方", "id_card_no": "110101199003070019", "agreed": true,
+	}); s != http.StatusOK || env.Code != 0 {
+		t.Fatalf("主办方实名失败: %d %+v", s, env)
+	}
+	start := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
+	end := time.Now().Add(26 * time.Hour).Format(time.RFC3339)
+	_, env := h.do(http.MethodPost, "/api/mp/v1/contents", owner, map[string]any{
+		"kind": "event", "title": "自动建圈活动",
+		"fields": map[string]any{"start_at": start, "end_at": end, "location": "上海市", "intro": "活动简介"},
+	})
+	var item struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &item)
+	if _, env := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/contents/%d/submit", item.ID), owner, nil); env.Code != 0 {
+		t.Fatalf("提交活动失败: %+v", env)
+	}
+	ref := fmt.Sprintf("content.event:%d", item.ID)
+	_, env = h.do(http.MethodPost, "/api/mp/v1/circles/from-content", owner, map[string]any{"content_ref": ref})
+	var circle struct {
+		ID   int64  `json:"id,string"`
+		Name string `json:"name"`
+	}
+	_ = json.Unmarshal(env.Data, &circle)
+	if circle.ID == 0 || circle.Name != "自动建圈活动" {
+		t.Fatalf("自动建圈失败: %+v", env)
+	}
+	// 幂等：再次请求返回同一圈
+	_, env = h.do(http.MethodPost, "/api/mp/v1/circles/from-content", owner, map[string]any{"content_ref": ref})
+	var same struct {
+		ID int64 `json:"id,string"`
+	}
+	_ = json.Unmarshal(env.Data, &same)
+	if same.ID != circle.ID {
+		t.Fatalf("自动建圈应幂等: %d != %d", same.ID, circle.ID)
+	}
+	// 圈内活动标签可见
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/circles/%d/mounts", circle.ID), owner, nil)
+	var mounts struct {
+		Items []struct {
+			Title string `json:"title"`
+			Kind  string `json:"kind"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &mounts)
+	if len(mounts.Items) != 1 || mounts.Items[0].Title != "自动建圈活动" || mounts.Items[0].Kind != "event" {
+		t.Fatalf("自动建圈应挂载活动: %+v", mounts)
+	}
+	// 报名 → 事件投递 → 自动入圈
+	attendeeID, attendee := loginPhone(t, h, randPhone())
+	if _, env := h.do(http.MethodPost, fmt.Sprintf("/api/mp/v1/contents/%d/signup", item.ID), attendee, nil); env.Code != 0 {
+		t.Fatalf("报名失败: %+v", env)
+	}
+	if _, err := h.app.Bus.Relay(context.Background(), "test", 500); err != nil {
+		t.Fatalf("事件投递失败: %v", err)
+	}
+	_, env = h.do(http.MethodGet, fmt.Sprintf("/api/mp/v1/circles/%d/members", circle.ID), owner, nil)
+	var members struct {
+		Items []struct {
+			UserID string `json:"user_id"`
+		} `json:"items"`
+	}
+	_ = json.Unmarshal(env.Data, &members)
+	found := false
+	for _, m := range members.Items {
+		if m.UserID == fmt.Sprintf("%d", attendeeID) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("报名后应自动入圈: %+v", members)
+	}
+	_ = ownerID
 }
 
 // 圈内动态删除：作者可删自己的，圈主可删任意，非成员不可删。

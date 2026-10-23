@@ -1452,6 +1452,98 @@ paths:
                       data: { $ref: '#/components/schemas/ContentItem' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /products:
+    post:
+      tags: [admin-content]
+      summary: 产品库三步入库（代企业创建产品，进入审核中）
+      operationId: adminCreateProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [owner_id, title]
+              properties:
+                owner_id: { type: string, description: 企业主体用户 ID }
+                title: { type: string, maxLength: 50 }
+                region_code: { type: string }
+                industry_codes: { type: array, items: { type: string } }
+                need_codes: { type: array, items: { type: string } }
+                offer_codes: { type: array, items: { type: string } }
+                fields:
+                  type: object
+                  additionalProperties: true
+                  description: 产品字段（carousel_file_ids/core_strength/key_points/intro 等）
+      responses:
+        '200':
+          description: 创建的产品（审核中）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContentItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /contents/{id}:
+    get:
+      tags: [admin-content]
+      summary: 后台内容完整详情
+      operationId: adminGetContent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 内容详情
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContentItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /contents/{id}/review:
+    post:
+      tags: [admin-content]
+      summary: 内容/产品入库人工审核
+      operationId: adminReviewContent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approve]
+              properties:
+                approve: { type: boolean }
+                reason: { type: string }
+      responses:
+        '200':
+          description: 审核后的内容
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ContentItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /review-tasks:
     get:
       tags: [admin-trust]

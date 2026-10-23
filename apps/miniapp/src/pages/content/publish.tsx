@@ -6,6 +6,7 @@ import { draftPublish, AI_PUBLISH } from '../../services/ai'
 import { ensureLogin } from '../../services/auth'
 import AiEntry from '../../ai-entry'
 import FormField from '../../components/FormField'
+import DateTimeField from '../../components/DateTimeField'
 import TagPicker from '../../components/TagPicker'
 import Uploader from '../../components/Uploader'
 
@@ -15,6 +16,7 @@ interface FieldDef {
   required?: boolean
   multiline?: boolean
   number?: boolean
+  datetime?: boolean
 }
 
 const KINDS: { key: string; label: string }[] = [
@@ -46,8 +48,8 @@ const FIELDS: Record<string, FieldDef[]> = {
     { key: 'contact_phone', label: '联系方式' },
   ],
   meeting: [
-    { key: 'start_at', label: '开始时间（ISO）', required: true },
-    { key: 'end_at', label: '结束时间（ISO）', required: true },
+    { key: 'start_at', label: '开始时间', required: true, datetime: true },
+    { key: 'end_at', label: '结束时间', required: true, datetime: true },
     { key: 'location', label: '地点', required: true },
     { key: 'venue_point', label: '场馆点位' },
     { key: 'participant_limit', label: '人数上限', number: true },
@@ -55,8 +57,8 @@ const FIELDS: Record<string, FieldDef[]> = {
     { key: 'intro', label: '简介', multiline: true },
   ],
   event: [
-    { key: 'start_at', label: '开始时间（ISO）', required: true },
-    { key: 'end_at', label: '结束时间（ISO）', required: true },
+    { key: 'start_at', label: '开始时间', required: true, datetime: true },
+    { key: 'end_at', label: '结束时间', required: true, datetime: true },
     { key: 'location', label: '地点', required: true },
     { key: 'participant_limit', label: '人数上限', number: true },
     { key: 'participant_count', label: '已报名人数', number: true },
@@ -77,6 +79,7 @@ export default function Publish() {
   const [fields, setFields] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [aiCallID, setAiCallID] = useState('')
+  const [autoCircle, setAutoCircle] = useState(false)
 
   // 采纳反馈（仅在有草稿且已提交时记录）
   const markAdopted = (adopted: boolean) => {
@@ -118,8 +121,21 @@ export default function Publish() {
       })
       const id = String(item.id ?? '')
       if (id) await api.submitContent(id)
+      let circleCreated = false
+      let circleFailed = false
+      if (id && autoCircle && (kind === 'event' || kind === 'meeting')) {
+        try {
+          await api.createCircleFromContent(`content.${kind}:${id}`)
+          circleCreated = true
+        } catch {
+          circleFailed = true
+        }
+      }
       markAdopted(true) // AI 草稿被采用（人在回路确认后）
-      Taro.showToast({ title: '已提交审核', icon: 'success' })
+      Taro.showToast({
+        title: circleCreated ? '已提交并创建活动圈' : circleFailed ? '已提交，自动建圈失败' : '已提交审核',
+        icon: circleCreated ? 'success' : 'none',
+      })
       setTimeout(() => Taro.navigateBack(), 700)
     } catch (e) {
       // 110004：发布需先实名 → 引导实名认证；其余为表单/网络错误。
@@ -144,6 +160,7 @@ export default function Publish() {
             onClick={() => {
               setKind(k.key)
               setFields({})
+              setAutoCircle(false)
             }}
           >
             {k.label}
@@ -179,16 +196,36 @@ export default function Publish() {
       <TagPicker label="合作需求" dimension="cooperation_demand" value={need} onChange={setNeed} />
       <TagPicker label="合作供给" dimension="cooperation_supply" value={offer} onChange={setOffer} />
 
-      {defs.map((d) => (
-        <FormField
-          key={d.key}
-          label={d.label}
-          required={d.required}
-          multiline={d.multiline}
-          value={fields[d.key] ?? ''}
-          onChange={(v) => setField(d.key, v)}
-        />
-      ))}
+      {defs.map((d) =>
+        d.datetime ? (
+          <DateTimeField
+            key={d.key}
+            label={d.label}
+            required={d.required}
+            value={fields[d.key] ?? ''}
+            onChange={(v) => setField(d.key, v)}
+          />
+        ) : (
+          <FormField
+            key={d.key}
+            label={d.label}
+            required={d.required}
+            multiline={d.multiline}
+            value={fields[d.key] ?? ''}
+            onChange={(v) => setField(d.key, v)}
+          />
+        ),
+      )}
+
+      {kind === 'event' || kind === 'meeting' ? (
+        <View className="menu__item" onClick={() => setAutoCircle((v) => !v)}>
+          <View className="menu__row">
+            <Text>自动创建圈子</Text>
+            <Text className="row-tag">{autoCircle ? '已开启' : '关闭'}</Text>
+          </View>
+          <Text className="form-field__label">开启后，报名者自动加入本活动圈子；活动结束后圈子保留。</Text>
+        </View>
+      ) : null}
 
       <Button className="btn-primary" loading={submitting} onClick={() => void submit()}>
         提交审核

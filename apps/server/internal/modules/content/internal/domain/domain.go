@@ -13,6 +13,7 @@ import (
 var (
 	ErrNotFound      = errors.New("content: 内容不存在")
 	ErrForbidden     = errors.New("content: 无权操作该内容")
+	ErrInvalidState  = errors.New("content: 当前状态不可操作")
 	ErrTitleRequired = errors.New("content: 标题必填")
 	ErrTitleTooLong  = errors.New("content: 标题超长（≤50字）")
 	ErrNotRealname   = errors.New("content: 发布需先完成实名认证")

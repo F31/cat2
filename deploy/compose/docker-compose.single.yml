@@ -88,6 +88,7 @@ services:
     restart: unless-stopped
     command: ["serve"]
     environment:
+      CATCUBE_ENV: ${CATCUBE_ENV:-production}
       CATCUBE_DATABASE_URL: postgres://catcube:${POSTGRES_PASSWORD}@db:5432/catcube?sslmode=disable
       CATCUBE_HTTP_ADDR: ":8080"
       CATCUBE_ROLES: api,admin
@@ -95,6 +96,12 @@ services:
       CATCUBE_REDIS_PASSWORD: ${REDIS_PASSWORD}
       CATCUBE_WECHAT_APPID: ${WECHAT_APPID:-}
       CATCUBE_WECHAT_SECRET: ${WECHAT_SECRET:-}
+      CATCUBE_WECHAT_PAY_MCHID: ${WECHAT_PAY_MCHID:-}
+      CATCUBE_WECHAT_PAY_SERIAL_NO: ${WECHAT_PAY_SERIAL_NO:-}
+      CATCUBE_WECHAT_PAY_PRIVATE_KEY_FILE: ${WECHAT_PAY_PRIVATE_KEY_FILE:-}
+      CATCUBE_WECHAT_PAY_API_V3_KEY: ${WECHAT_PAY_API_V3_KEY:-}
+      CATCUBE_WECHAT_PAY_PLATFORM_CERT_FILE: ${WECHAT_PAY_PLATFORM_CERT_FILE:-}
+      CATCUBE_WECHAT_PAY_NOTIFY_URL: ${WECHAT_PAY_NOTIFY_URL:-}
       CATCUBE_ADMIN_PHONE: ${ADMIN_PHONE:-}
       CATCUBE_ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
       CATCUBE_IDENTITY_ENC_KEY: ${IDENTITY_ENC_KEY:?set IDENTITY_ENC_KEY}
@@ -124,6 +131,7 @@ services:
         condition: service_healthy
     volumes:
       - ../../contracts:/repo/contracts:ro
+      - ./secrets:/run/secrets:ro
     healthcheck:
       test: ["CMD", "catcube", "probe"]
       interval: 10s

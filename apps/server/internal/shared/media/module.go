@@ -14,7 +14,6 @@ import (
 
 	"catcube/internal/kernel/db"
 	"catcube/internal/kernel/module"
-	idcontract "catcube/internal/modules/identity/contract"
 	"catcube/internal/ports"
 	"catcube/internal/shared/media/contract"
 	"catcube/pkg/ids"
@@ -29,11 +28,12 @@ const maxSizeBytes = 5 << 20 // 5MB
 type Module struct {
 	pool     *db.Pool
 	storage  ports.Storage
-	identity idcontract.Facade
+	authUser func(ctx context.Context, token string) (int64, error)
 }
 
-func New(pool *db.Pool, storage ports.Storage, identity idcontract.Facade) *Module {
-	return &Module{pool: pool, storage: storage, identity: identity}
+// New 构造媒体模块；authUser 由装配根注入，避免共享层直接依赖高阶 identity 模块。
+func New(pool *db.Pool, storage ports.Storage, authUser func(ctx context.Context, token string) (int64, error)) *Module {
+	return &Module{pool: pool, storage: storage, authUser: authUser}
 }
 
 func (m *Module) Name() string        { return "media" }
@@ -226,11 +226,11 @@ func (m *Module) auth(next http.HandlerFunc) http.HandlerFunc {
 			writeMediaErr(w, http.StatusUnauthorized, 2, "未登录")
 			return
 		}
-		if m.identity == nil {
+		if m.authUser == nil {
 			writeMediaErr(w, http.StatusUnauthorized, 2, "未登录")
 			return
 		}
-		if _, _, err := m.identity.Authenticate(req.Context(), strings.TrimPrefix(h, "Bearer ")); err != nil {
+		if _, err := m.authUser(req.Context(), strings.TrimPrefix(h, "Bearer ")); err != nil {
 			writeMediaErr(w, http.StatusUnauthorized, 2, "登录已失效")
 			return
 		}

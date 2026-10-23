@@ -120,8 +120,8 @@ func Pay(t *testing.T, p ports.Pay) {
 	t.Helper()
 	ctx := context.Background()
 	prepay, err := p.Prepay(ctx, ports.PayRequest{OutTradeNo: "SUITE-1", AmountFen: 100, Subject: "单测"})
-	if err != nil || prepay == "" {
-		t.Fatalf("Prepay 非空: %q err=%v", prepay, err)
+	if err != nil || prepay.PrepayID == "" {
+		t.Fatalf("Prepay 非空: %+v err=%v", prepay, err)
 	}
 	no, amt, err := p.VerifyNotify(ctx, nil, []byte(`{"out_trade_no":"SUITE-1","amount_fen":100,"sign":"ok"}`))
 	if err != nil || no != "SUITE-1" || amt != 100 {
@@ -130,7 +130,7 @@ func Pay(t *testing.T, p ports.Pay) {
 	if _, _, err := p.VerifyNotify(ctx, nil, []byte(`{"out_trade_no":"SUITE-1","sign":"bad"}`)); err == nil {
 		t.Fatal("验签失败应报错")
 	}
-	if err := p.Refund(ctx, "SUITE-1", "RF-1", 100); err != nil {
+	if err := p.Refund(ctx, "SUITE-1", "RF-1", 100, 100); err != nil {
 		t.Fatalf("Refund: %v", err)
 	}
 }

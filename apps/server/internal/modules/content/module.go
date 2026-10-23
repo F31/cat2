@@ -75,6 +75,9 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/contents/{id}", Handler: m.handleGet},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/contents/{id}/close", Handler: m.auth(m.handleClose)},
 		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/contents", Handler: m.auth(m.handleAdminList), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/products", Handler: m.auth(m.handleAdminCreateProduct), Admin: true},
+		module.Route{Method: http.MethodGet, Path: "/api/admin/v1/contents/{id}", Handler: m.auth(m.handleAdminGet), Admin: true},
+		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/contents/{id}/review", Handler: m.auth(m.handleAdminReview), Admin: true},
 		module.Route{Method: http.MethodPost, Path: "/api/admin/v1/contents/{id}/takedown", Handler: m.auth(m.handleAdminTakedown), Admin: true},
 	)
 	if m.deps.EntityRegistry != nil {
@@ -196,6 +199,7 @@ const (
 	codeSignupFull        = 110007 // 110007 报名人数已满
 	codeSignupUnsupported = 110008 // 110008 该内容不支持报名
 	codeSignupClosed      = 110009 // 110009 报名已截止
+	codeInvalidState      = 110010 // 110010 当前状态不可操作
 )
 
 func (m *Module) handlePublish(w http.ResponseWriter, req *http.Request) {
@@ -259,6 +263,71 @@ func (m *Module) handleAdminList(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	writeData(w, map[string]any{"items": items})
+}
+
+func (m *Module) handleAdminCreateProduct(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		OwnerID       int64          `json:"owner_id,string"`
+		Title         string         `json:"title"`
+		RegionCode    string         `json:"region_code"`
+		IndustryCodes []string       `json:"industry_codes"`
+		NeedCodes     []string       `json:"need_codes"`
+		OfferCodes    []string       `json:"offer_codes"`
+		Fields        map[string]any `json:"fields"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	item, err := m.svc.AdminCreateProduct(req.Context(), body.OwnerID, contentcontract.PublishInput{
+		Kind: contentcontract.KindProduct, Title: body.Title, RegionCode: body.RegionCode,
+		TagSet: dictcontract.TagSet{Industry: body.IndustryCodes, Need: body.NeedCodes, Offer: body.OfferCodes},
+		Fields: body.Fields,
+	})
+	if err != nil {
+		writeContentErr(w, err)
+		return
+	}
+	m.auditAdmin(req, "content:product:create", fmt.Sprintf(`{"type":"content.product","id":"%d"}`, item.ID), "")
+	writeData(w, item)
+}
+
+func (m *Module) handleAdminGet(w http.ResponseWriter, req *http.Request) {
+	id, err := pathID(req)
+	if err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	item, err := m.svc.AdminGet(req.Context(), id)
+	if err != nil {
+		writeContentErr(w, err)
+		return
+	}
+	writeData(w, item)
+}
+
+func (m *Module) handleAdminReview(w http.ResponseWriter, req *http.Request) {
+	id, err := pathID(req)
+	if err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	var body struct {
+		Approve bool   `json:"approve"`
+		Reason  string `json:"reason"`
+	}
+	_ = json.NewDecoder(req.Body).Decode(&body)
+	item, err := m.svc.AdminReview(req.Context(), id, body.Approve, body.Reason)
+	if err != nil {
+		writeContentErr(w, err)
+		return
+	}
+	action := "content:review:reject"
+	if body.Approve {
+		action = "content:review:approve"
+	}
+	m.auditAdmin(req, action, fmt.Sprintf(`{"type":"content.%s","id":"%d"}`, item.Kind, item.ID), body.Reason)
+	writeData(w, item)
 }
 
 func (m *Module) handleAdminTakedown(w http.ResponseWriter, req *http.Request) {
@@ -463,6 +532,8 @@ func writeContentErr(w http.ResponseWriter, err error) {
 		writeErr(w, codeSignupFull, "报名人数已满")
 	case errors.Is(err, domain.ErrSignupClosed):
 		writeErr(w, codeSignupClosed, "报名已截止")
+	case errors.Is(err, domain.ErrInvalidState):
+		writeErr(w, codeInvalidState, "当前状态不可操作")
 	default:
 		var fe *kind.FieldError
 		if errors.As(err, &fe) {
@@ -483,7 +554,7 @@ func httpStatus(code int) int {
 		return http.StatusTooManyRequests
 	case codeItemNotFound:
 		return http.StatusNotFound
-	case codeSignupFull:
+	case codeSignupFull, codeInvalidState:
 		return http.StatusConflict
 	case codeParamInvalid, codeFieldInvalid, codeKindUnknown, codeSignupUnsupported, codeSignupClosed:
 		return http.StatusBadRequest

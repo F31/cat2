@@ -5,6 +5,7 @@ import AdminLayout from './layout/AdminLayout'
 import Login from './pages/Login'
 import Users from './pages/Users'
 import Contents from './pages/Contents'
+import Products from './pages/Products'
 import Reviews from './pages/Reviews'
 import Orders from './pages/Orders'
 import Members from './pages/Members'
@@ -55,6 +56,7 @@ export default function App() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="users" element={<Users />} />
         <Route path="contents" element={<Contents />} />
+        <Route path="products" element={<Products />} />
         <Route path="reviews" element={<Reviews />} />
         <Route path="orders" element={<Orders />} />
         <Route path="members" element={<Members />} />

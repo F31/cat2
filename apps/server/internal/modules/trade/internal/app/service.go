@@ -60,25 +60,28 @@ type Repo interface {
 
 // Options 构造参数。
 type Options struct {
-	Repo Repo
-	Pool *db.Pool
-	Bus  *eventbus.Bus
-	Pay  ports.Pay
+	Repo   Repo
+	Pool   *db.Pool
+	Bus    *eventbus.Bus
+	Pay    ports.Pay
+	OpenID func(ctx context.Context, userID int64) (string, error)
 }
 
 // Service trade 应用服务。
 type Service struct {
-	repo Repo
-	pool *db.Pool
-	bus  *eventbus.Bus
-	pay  ports.Pay
+	repo   Repo
+	pool   *db.Pool
+	bus    *eventbus.Bus
+	pay    ports.Pay
+	openID func(ctx context.Context, userID int64) (string, error)
 
 	mu         sync.RWMutex
 	fulfillers map[string]contract.OrderFulfiller
 }
 
 func New(o Options) *Service {
-	return &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, pay: o.Pay, fulfillers: map[string]contract.OrderFulfiller{}}
+	return &Service{repo: o.Repo, pool: o.Pool, bus: o.Bus, pay: o.Pay, openID: o.OpenID,
+		fulfillers: map[string]contract.OrderFulfiller{}}
 }
 
 // RegisterFulfiller 注册履约方。
@@ -144,14 +147,27 @@ func (s *Service) Pay(ctx context.Context, buyerID, orderID int64) (contract.Pay
 	}); err != nil {
 		return contract.PayParams{}, err
 	}
-	prepay := "dev-prepay-" + out
-	if s.pay != nil {
-		prepay, err = s.pay.Prepay(ctx, ports.PayRequest{OutTradeNo: out, AmountFen: o.AmountFen, Subject: "猫平方订单"})
+	openID := ""
+	if s.openID != nil {
+		openID, err = s.openID(ctx, buyerID)
 		if err != nil {
 			return contract.PayParams{}, err
 		}
 	}
-	return contract.PayParams{OrderID: o.ID, OutTradeNo: out, PrepayID: prepay, AmountFen: o.AmountFen}, nil
+	if s.pay == nil {
+		return contract.PayParams{}, domain.ErrNotPayable
+	}
+	prepay, err := s.pay.Prepay(ctx, ports.PayRequest{
+		OutTradeNo: out, AmountFen: o.AmountFen, Subject: "猫平方订单", OpenID: openID,
+	})
+	if err != nil {
+		return contract.PayParams{}, err
+	}
+	return contract.PayParams{
+		OrderID: o.ID, OutTradeNo: out, PrepayID: prepay.PrepayID, AmountFen: o.AmountFen,
+		TimeStamp: prepay.TimeStamp, NonceStr: prepay.NonceStr, Package: prepay.Package,
+		SignType: prepay.SignType, PaySign: prepay.PaySign,
+	}, nil
 }
 
 // HandleNotify 支付回调：验签 → 幂等 → 状态机 → 履约待办 + OrderPaid。
@@ -264,7 +280,7 @@ func (s *Service) Refund(ctx context.Context, operatorID, orderID, amountFen int
 	}
 	status := int16(1)
 	if s.pay != nil {
-		if err := s.pay.Refund(ctx, pay.OutTradeNo, r.RefundNo, amountFen); err != nil {
+		if err := s.pay.Refund(ctx, pay.OutTradeNo, r.RefundNo, amountFen, pay.AmountFen); err != nil {
 			status = 2
 		}
 	}

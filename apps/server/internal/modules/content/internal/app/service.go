@@ -97,6 +97,14 @@ func (s *Service) Publish(ctx context.Context, userID int64, in contentcontract.
 			return contentcontract.Item{}, fmt.Errorf("content: tagset 非法: %w", err)
 		}
 	}
+	if in.Kind == contentcontract.KindProduct {
+		if in.Fields == nil {
+			in.Fields = map[string]any{}
+		}
+		if _, ok := in.Fields["warehouse_status"]; !ok {
+			in.Fields["warehouse_status"] = 0
+		}
+	}
 	fields, err := s.prepareFields(in.Fields)
 	if err != nil {
 		return contentcontract.Item{}, err
@@ -296,10 +304,20 @@ func (s *Service) Signup(ctx context.Context, userID, itemID int64) (contentcont
 		if err != nil {
 			return err
 		}
-		if changed && it.Kind == contentcontract.KindEvent {
-			return s.repo.BumpEventCount(ctx, tx, itemID, 1)
+		if !changed {
+			return nil
 		}
-		return nil
+		if it.Kind == contentcontract.KindEvent {
+			if err := s.repo.BumpEventCount(ctx, tx, itemID, 1); err != nil {
+				return err
+			}
+		}
+		if s.bus == nil {
+			return nil
+		}
+		return s.bus.Publish(ctx, tx, contentcontract.NewSignupEvent(ids.New().String(), contentcontract.SignupPayload{
+			ItemID: it.ID, Kind: it.Kind, OwnerRef: it.OwnerRef, Title: it.Title, UserID: userID,
+		}))
 	}); err != nil {
 		return contentcontract.SignupState{}, err
 	}
@@ -487,6 +505,64 @@ func (s *Service) AdminTakedown(ctx context.Context, itemID int64, reason string
 	it.Status = contentcontract.StatusTakenDown
 	it.RejectReason = reason
 	return s.toItem(ctx, it, false), nil
+}
+
+// AdminGet 后台读取完整内容（不做会员字段过滤）。
+func (s *Service) AdminGet(ctx context.Context, itemID int64) (contentcontract.Item, error) {
+	it, err := s.repo.GetItem(ctx, itemID)
+	if err != nil {
+		return contentcontract.Item{}, err
+	}
+	return s.toItem(ctx, it, true), nil
+}
+
+// AdminCreateProduct 后台产品库三步入库：代企业创建产品草稿，进入审核中。
+func (s *Service) AdminCreateProduct(ctx context.Context, ownerID int64, in contentcontract.PublishInput) (contentcontract.Item, error) {
+	if ownerID == 0 {
+		return contentcontract.Item{}, domain.ErrNotFound
+	}
+	if s.identity != nil {
+		if _, err := s.identity.UserBrief(ctx, ownerID); err != nil {
+			return contentcontract.Item{}, domain.ErrNotFound
+		}
+	}
+	in.Kind = contentcontract.KindProduct
+	if in.Fields == nil {
+		in.Fields = map[string]any{}
+	}
+	in.Fields["warehouse_status"] = 1 // 后台入库=待审
+	return s.Publish(ctx, ownerID, in)
+}
+
+// AdminReview 产品入库/内容人工审核：审核中→展示中或已下架。
+func (s *Service) AdminReview(ctx context.Context, itemID int64, approve bool, reason string) (contentcontract.Item, error) {
+	it, err := s.repo.GetItem(ctx, itemID)
+	if err != nil {
+		return contentcontract.Item{}, err
+	}
+	if it.Status != contentcontract.StatusReviewing {
+		return contentcontract.Item{}, domain.ErrInvalidState
+	}
+	now := time.Now().UTC()
+	if approve {
+		if err := s.transition(ctx, it, contentcontract.StatusPublished, "", &now,
+			domain.EventPublish, contentcontract.EventContentPublished, "system"); err != nil {
+			return contentcontract.Item{}, err
+		}
+		it.Status = contentcontract.StatusPublished
+		it.PublishedAt = &now
+		return s.toItem(ctx, it, true), nil
+	}
+	if reason == "" {
+		reason = "审核未通过"
+	}
+	if err := s.transition(ctx, it, contentcontract.StatusTakenDown, reason, nil,
+		domain.EventReject, contentcontract.EventContentTakenDown, "system"); err != nil {
+		return contentcontract.Item{}, err
+	}
+	it.Status = contentcontract.StatusTakenDown
+	it.RejectReason = reason
+	return s.toItem(ctx, it, true), nil
 }
 
 // OwnerOf 内容归属人（供 trust 违规记分/限制）。

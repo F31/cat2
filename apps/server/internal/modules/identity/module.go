@@ -281,6 +281,15 @@ func (m *Module) UserBrief(ctx context.Context, userID int64) (contract.UserBrie
 	}, nil
 }
 
+// OpenID 返回用户当前微信 openid（支付 JSAPI 使用）。
+func (m *Module) OpenID(ctx context.Context, userID int64) (string, error) {
+	u, err := m.store.UserByID(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	return u.OpenID, nil
+}
+
 // AuthzBump 权限变更递增授权版本（消除令牌陈旧窗口）。
 func (m *Module) AuthzBump(ctx context.Context, userID int64) error {
 	_, err := m.deps.Pool.Exec(ctx,

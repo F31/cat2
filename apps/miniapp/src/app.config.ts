@@ -22,7 +22,7 @@ export default defineAppConfig({
     { root: 'pages/auth', pages: ['enter'] },
     { root: 'pages/verify', pages: ['index'] },
     { root: 'pages/cube', pages: ['create', 'detail', 'edit', 'project', 'task', 'report', 'plan'] },
-    { root: 'pages/circle', pages: ['create', 'detail', 'applications', 'publish', 'settings'] },
+    { root: 'pages/circle', pages: ['create', 'detail', 'applications', 'publish', 'settings', 'mounts'] },
     { root: 'pages/support', pages: ['index'] },
     { root: 'pages/channel', pages: ['index', 'join'] },
   ],

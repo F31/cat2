@@ -55,6 +55,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/password/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 修改后台主管理员密码（校验旧密码，写入 DB 后热生效） */
+        post: operations["adminPasswordChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/password/reset/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 发送后台找回密码短信验证码 */
+        post: operations["adminPasswordResetCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/password/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 通过短信验证码重置后台密码 */
+        post: operations["adminPasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/jobs": {
         parameters: {
             query?: never;
@@ -877,6 +928,177 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 组织列表（六类主体；运营管理） */
+        get: operations["adminOrgs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 组织详情（账号/名片/认证/成员/管理员） */
+        get: operations["adminOrgDetail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{id}/certifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 平台代组织提交企业/机构认证（资质材料；运营管理权限） */
+        post: operations["adminSubmitOrgCert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 组织成员列表 */
+        get: operations["adminOrgMembers"];
+        put?: never;
+        /** 管理端辅助加入组织（成员须已实名，直接核验通过） */
+        post: operations["adminAddOrgMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{id}/members/{uid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** 移除组织成员 */
+        delete: operations["adminRemoveOrgMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{id}/admins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 组织管理员列表 */
+        get: operations["adminOrgAdmins"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 后台申请资质材料预签名上传（JPG/PNG ≤5MB） */
+        post: operations["adminMediaUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 后台上传资质材料（multipart/form-data，JPG/PNG ≤5MB） */
+        post: operations["adminMediaUploadFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 后台获取材料访问地址 */
+        get: operations["adminMediaURL"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/{id}/raw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 后台读取本地落库材料（需后台令牌） */
+        get: operations["adminMediaRaw"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/{id}/restrict": {
         parameters: {
             query?: never;
@@ -1212,6 +1434,25 @@ export interface paths {
         /** 编辑用户资料（昵称/手机号/主体类型；手机号留空不改） */
         put: operations["adminUpdateUser"];
         post?: never;
+        /** 软删除/注销用户（保留历史数据，禁止登录） */
+        delete: operations["adminDeleteUser"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 后台读取用户/组织名片（不做对外展示过滤） */
+        get: operations["adminGetUserCard"];
+        /** 后台维护组织名片（跳过认证锁定；保留联系方式和资质材料） */
+        put: operations["adminUpdateOrgCard"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1280,6 +1521,57 @@ export interface paths {
         put?: never;
         /** 下架内容（记录原因） */
         post: operations["adminTakedownContent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 产品库三步入库（代企业创建产品，进入审核中） */
+        post: operations["adminCreateProduct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 后台内容完整详情 */
+        get: operations["adminGetContent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contents/{id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 内容/产品入库人工审核 */
+        post: operations["adminReviewContent"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1397,6 +1689,23 @@ export interface paths {
         };
         /** 会员列表（按等级/状态） */
         get: operations["adminListMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/certs/{id}/realname": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 实名审核详情（姓名/证件号/正反面材料；需认证审核权限，查看写审计） */
+        get: operations["adminRealnameDetail"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1552,6 +1861,84 @@ export interface components {
             phone_masked?: string;
             /** Format: date-time */
             created_at?: string;
+        };
+        AdminGovernanceUser: {
+            id?: string;
+            nickname?: string;
+            /** @description 0 正常 / 1 限制 / 2 停用 / 3 注销 */
+            status?: number;
+            /** @description 1 个人 / 2 组织 */
+            identity_type?: number;
+            /** @description 0 未实名 / 1 已实名 / 2 核验失败 */
+            realname_status?: number;
+            /** @description 姓名（已通过实名优先，否则为后台录入） */
+            real_name?: string;
+            /** @description 身份证号脱敏（前 4 后 4） */
+            id_card_masked?: string;
+            phone_masked?: string;
+            region_code?: string;
+            industry_codes?: string[];
+            /** @description Unix 秒 */
+            created_at?: number;
+            member_level?: number;
+            member_active?: boolean;
+        };
+        RealnameDetail: {
+            cert_id?: string;
+            user_id?: string;
+            real_name?: string;
+            /** @description 仅认证审核权限可见 */
+            id_card_no?: string;
+            material_file_ids?: number[];
+            status?: number;
+            /** Format: date-time */
+            submitted_at?: string;
+        };
+        AdminOrg: {
+            id?: string;
+            name?: string;
+            nickname?: string;
+            status?: number;
+            realname_status?: number;
+            phone_masked?: string;
+            real_name?: string;
+            id_card_masked?: string;
+            category?: string;
+            category_label?: string;
+            region_code?: string;
+            industry_codes?: string[];
+            cert_status?: number;
+            cert_type?: number;
+            /** Format: date-time */
+            cert_submitted_at?: string;
+            member_count?: number;
+            member_pending?: number;
+            admin_count?: number;
+            created_at?: number;
+        };
+        AdminOrgCardInput: {
+            org_type_code: string;
+            name: string;
+            region_code?: string;
+            industry_codes?: string[];
+            need_codes?: string[];
+            offer_codes?: string[];
+            core_strength?: string;
+            intro?: string;
+        };
+        AdminOrgCertInput: {
+            /** @enum {integer} */
+            cert_type: 4 | 5;
+            agreed: boolean;
+            material_file_ids: number[];
+            extra?: {
+                [key: string]: string;
+            };
+        };
+        AdminOrgMemberInput: {
+            user_id: string;
+            role?: string;
+            proof_file_ids?: number[];
         };
         TagSet: {
             industry?: string[];
@@ -1753,6 +2140,88 @@ export interface operations {
             content: {
                 "application/json": {
                     code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
+    adminPasswordChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    old_password: string;
+                    new_password: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    adminPasswordResetCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    phone: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
+    adminPasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    phone: string;
+                    code: string;
+                    new_password: string;
                 };
             };
         };
@@ -3117,10 +3586,285 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["AdminGovernanceUser"][];
+                        };
+                    };
                 };
             };
             403: components["responses"]["Forbidden"];
+        };
+    };
+    adminOrgs: {
+        parameters: {
+            query?: {
+                q?: string;
+                category?: "cooperation_circle" | "association" | "research" | "service_org" | "company" | "business_person";
+                status?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 组织列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: {
+                            items?: components["schemas"]["AdminOrg"][];
+                            total?: number;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    adminOrgDetail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
+    adminSubmitOrgCert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminOrgCertInput"];
+            };
+        };
+        responses: {
+            /** @description 已提交 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
+    adminOrgMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成员 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
+    adminAddOrgMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminOrgMemberInput"];
+            };
+        };
+        responses: {
+            /** @description 已加入 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
+    adminRemoveOrgMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已移除 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
+    adminOrgAdmins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 管理员 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
+    adminMediaUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    filename: string;
+                    content_type: string;
+                    size: number;
+                };
+            };
+        };
+        responses: {
+            /** @description 上传凭证 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
+    adminMediaUploadFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 文件ID */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
+    adminMediaURL: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 访问地址 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
+    adminMediaRaw: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 文件二进制 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                };
+            };
         };
     };
     adminRestrictUser: {
@@ -3647,6 +4391,9 @@ export interface operations {
                     phone: string;
                     /** @enum {integer} */
                     identity_type: 1 | 2;
+                    real_name?: string;
+                    id_card_no?: string;
+                    region_code?: string;
                 };
             };
         };
@@ -3679,6 +4426,9 @@ export interface operations {
                     phone?: string;
                     /** @enum {integer} */
                     identity_type: 1 | 2;
+                    real_name?: string;
+                    id_card_no?: string;
+                    region_code?: string;
                 };
             };
         };
@@ -3693,6 +4443,76 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    adminDeleteUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
+    adminGetUserCard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 名片 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
+        };
+    };
+    adminUpdateOrgCard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminOrgCardInput"];
+            };
+        };
+        responses: {
+            /** @description 已保存 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"];
+                };
+            };
         };
     };
     adminBanUser: {
@@ -3798,6 +4618,105 @@ export interface operations {
         };
         responses: {
             /** @description 下架后的内容 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["ContentItem"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    adminCreateProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description 企业主体用户 ID */
+                    owner_id: string;
+                    title: string;
+                    region_code?: string;
+                    industry_codes?: string[];
+                    need_codes?: string[];
+                    offer_codes?: string[];
+                    /** @description 产品字段（carousel_file_ids/core_strength/key_points/intro 等） */
+                    fields?: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description 创建的产品（审核中） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["ContentItem"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    adminGetContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 内容详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["ContentItem"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminReviewContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    approve: boolean;
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 审核后的内容 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4011,6 +4930,31 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    adminRealnameDetail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 实名详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope"] & {
+                        data?: components["schemas"]["RealnameDetail"];
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
         };
     };
     adminReviewCert: {

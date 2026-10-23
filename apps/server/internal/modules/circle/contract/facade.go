@@ -150,6 +150,7 @@ type CreateInput struct {
 	Type          int16
 	DurationDays  int
 	OrgID         int64
+	SourceRef     string // 活动/会议自动建圈来源（content.<kind>:<id>）
 }
 
 // DemandInput 发布需求入参。
@@ -172,6 +173,7 @@ type Facade interface {
 	ListMine(ctx context.Context, userID int64) ([]CircleBrief, error)
 	Detail(ctx context.Context, viewerID, circleID int64) (CircleDetail, error)
 	Create(ctx context.Context, userID int64, in CreateInput) (CircleBrief, error)
+	CreateFromContent(ctx context.Context, userID, itemID int64) (CircleBrief, error)
 	Apply(ctx context.Context, circleID, userID int64) error
 	ApproveApply(ctx context.Context, circleID, ownerID, applicantID int64) error
 	InviteCode(ctx context.Context, circleID, userID int64) (string, time.Time, error)
@@ -191,6 +193,7 @@ type Facade interface {
 	// 挂载与到猫立方里办（§6.6/6.7）
 	Mount(ctx context.Context, circleID, userID int64, itemRef string) (Mount, bool, error)
 	ListMounts(ctx context.Context, circleID, viewerID int64) ([]Mount, error)
+	ListPendingMounts(ctx context.Context, ownerID int64) ([]Mount, error)
 	DecideMount(ctx context.Context, mountID, userID int64, approve bool) error
 	ToCube(ctx context.Context, circleID, demandID, cubeID, userID int64) (int64, error)
 	// ContentMounted 内容是否已挂载到该圈（分享归属校验，防伪造「来自 XX 圈」）。
@@ -216,9 +219,10 @@ type Mount struct {
 	Status         int16     `json:"status"`
 	CreatedAt      time.Time `json:"created_at"`
 	// 以下为列表展示增强字段（由 content 解析，失败时为空）。
-	Title     string `json:"title,omitempty"`
-	Kind      string `json:"kind,omitempty"`
-	StartAt   string `json:"start_at,omitempty"`
-	Location  string `json:"location,omitempty"`
-	CanDecide bool   `json:"can_decide,omitempty"` // 当前查看者是否为待确认内容的所有者
+	Title      string `json:"title,omitempty"`
+	Kind       string `json:"kind,omitempty"`
+	StartAt    string `json:"start_at,omitempty"`
+	Location   string `json:"location,omitempty"`
+	CanDecide  bool   `json:"can_decide,omitempty"`  // 当前查看者是否为待确认内容的所有者
+	CircleName string `json:"circle_name,omitempty"` // 待确认中心展示圈子名称
 }

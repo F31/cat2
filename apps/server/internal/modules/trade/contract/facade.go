@@ -46,6 +46,12 @@ type PayParams struct {
 	OutTradeNo string `json:"out_trade_no"`
 	PrepayID   string `json:"prepay_id"`
 	AmountFen  int64  `json:"amount_fen"`
+	// 微信支付调起参数（真实支付通道下发；开发态为空）。
+	TimeStamp string `json:"timeStamp,omitempty"`
+	NonceStr  string `json:"nonceStr,omitempty"`
+	Package   string `json:"package,omitempty"`
+	SignType  string `json:"signType,omitempty"`
+	PaySign   string `json:"paySign,omitempty"`
 }
 
 // NotifyResult 支付回调处理结果。

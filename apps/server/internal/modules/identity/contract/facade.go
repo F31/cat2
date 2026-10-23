@@ -67,6 +67,8 @@ type Facade interface {
 	Authenticate(ctx context.Context, accessToken string) (userID int64, authzVer int, err error)
 	SessionOf(ctx context.Context, userID int64) (activeSessions int, err error)
 	UserBrief(ctx context.Context, userID int64) (UserBrief, error)
+	// OpenID 返回用户当前微信 openid（支付 JSAPI 使用；空表示未绑定）。
+	OpenID(ctx context.Context, userID int64) (string, error)
 	// Deactivate 注销并匿名化（发布 identity.UserDeactivated，各模块自行处理本模块数据）。
 	Deactivate(ctx context.Context, userID int64) error
 	// AuthzBump 递增授权版本（会员到期/移出立方/封禁等触发，消除陈旧窗口）。

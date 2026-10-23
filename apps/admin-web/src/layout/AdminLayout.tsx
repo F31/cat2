@@ -14,6 +14,7 @@ type PasswordForm = { old_password: string; new_password: string; confirm_passwo
 // 拉取失败时的静态兜底（首页不占菜单；仅保证基本可用）。
 const FALLBACK: AdminMenu[] = [
   { key: 'content.list', label: '内容列表', path: '/contents', module: 'content', group: 'content', group_label: '内容管理', group_order: 2, order: 1 },
+  { key: 'content.products', label: '产品库', path: '/products', module: 'content', group: 'content', group_label: '内容管理', group_order: 2, order: 3 },
   { key: 'content.reviews', label: '审核队列', path: '/reviews', module: 'trust', group: 'content', group_label: '内容管理', group_order: 2, order: 2 },
   { key: 'content.certs', label: '认证审核', path: '/verify-certs', module: 'verify', group: 'content', group_label: '内容管理', group_order: 2, order: 3 },
   { key: 'trade.orders', label: '订单管理', path: '/orders', module: 'trade', group: 'trade', group_label: '交易与会员', group_order: 3, order: 1 },

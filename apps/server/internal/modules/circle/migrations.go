@@ -30,6 +30,8 @@ CREATE INDEX IF NOT EXISTS idx_cir_circle_owner ON cir_circle(owner_user_id, sta
 CREATE INDEX IF NOT EXISTS idx_cir_circle_end ON cir_circle(status, end_at);
 ALTER TABLE cir_circle ADD COLUMN IF NOT EXISTS prev_status smallint;
 ALTER TABLE cir_circle ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+ALTER TABLE cir_circle ADD COLUMN IF NOT EXISTS source_ref varchar(64);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cir_circle_source ON cir_circle(source_ref) WHERE source_ref IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS cir_member (
 	id bigint PRIMARY KEY,

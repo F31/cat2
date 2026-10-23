@@ -32,6 +32,7 @@ func defaultAdminMenus() []menu.Item {
 		// 内容管理 → 内容审核 / 内容配置
 		content("content.review", "", "内容审核", "/m/content/review", "content", 1),
 		content("content.contents", "content.review", "内容列表", "/contents", "content", 1),
+		content("content.products", "", "产品库", "/products", "content", 3),
 		content("trust.reviews", "content.review", "审核队列", "/reviews", "trust", 2),
 		content("verify.certs", "content.review", "认证审核", "/verify-certs", "verify", 3),
 		content("verify.badges", "content.review", "认证标识", "/badges", "verify", 4),

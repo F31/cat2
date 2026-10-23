@@ -82,6 +82,7 @@ func (m *Module) Register(r *module.Registry) error {
 	})
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles", Handler: m.auth(m.handleCreate)},
+		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/from-content", Handler: m.auth(m.handleCreateFromContent)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles", Handler: m.auth(m.handleListMine)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/discover", Handler: m.handleDiscover},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}", Handler: m.handleDetail},
@@ -111,6 +112,7 @@ func (m *Module) Register(r *module.Registry) error {
 		module.Route{Method: http.MethodDelete, Path: "/api/mp/v1/circles/{id}/feeds/{fid}", Handler: m.auth(m.handleDeleteFeed)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/mounts", Handler: m.auth(m.handleMount)},
 		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/{id}/mounts", Handler: m.auth(m.handleListMounts)},
+		module.Route{Method: http.MethodGet, Path: "/api/mp/v1/circles/mounts/pending", Handler: m.auth(m.handleListPendingMounts)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/mounts/{mid}/decide", Handler: m.auth(m.handleDecideMount)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/circles/{id}/demands/{did}/to-cube", Handler: m.auth(m.handleToCube)},
 	)
@@ -118,6 +120,10 @@ func (m *Module) Register(r *module.Registry) error {
 	r.EventSubs = append(r.EventSubs, eventbus.Subscription{
 		Topic: "cube.ProjectCreated.v1", Handler: func(ctx context.Context, e eventbus.Event) error {
 			return m.svc.HandleCubeProjectCreated(ctx, e.Payload)
+		},
+	}, eventbus.Subscription{
+		Topic: contentcontract.EventSignupCreated, Handler: func(ctx context.Context, e eventbus.Event) error {
+			return m.svc.JoinFromContentSignup(ctx, e.Payload)
 		},
 	})
 	r.AuditPoints = append(r.AuditPoints,
@@ -167,6 +173,9 @@ func (m *Module) Detail(ctx context.Context, viewerID, circleID int64) (contract
 func (m *Module) Create(ctx context.Context, userID int64, in contract.CreateInput) (contract.CircleBrief, error) {
 	return m.svc.Create(ctx, userID, in)
 }
+func (m *Module) CreateFromContent(ctx context.Context, userID, itemID int64) (contract.CircleBrief, error) {
+	return m.svc.CreateFromContent(ctx, userID, itemID)
+}
 func (m *Module) Apply(ctx context.Context, circleID, userID int64) error {
 	return m.svc.Apply(ctx, circleID, userID)
 }
@@ -210,6 +219,9 @@ func (m *Module) ListMounts(ctx context.Context, circleID, viewerID int64) ([]co
 }
 func (m *Module) DecideMount(ctx context.Context, mountID, userID int64, approve bool) error {
 	return m.svc.DecideMount(ctx, mountID, userID, approve)
+}
+func (m *Module) ListPendingMounts(ctx context.Context, ownerID int64) ([]contract.Mount, error) {
+	return m.svc.ListPendingMounts(ctx, ownerID)
 }
 func (m *Module) ToCube(ctx context.Context, circleID, demandID, cubeID, userID int64) (int64, error) {
 	return m.svc.ToCube(ctx, circleID, demandID, cubeID, userID)
@@ -333,6 +345,32 @@ func (m *Module) handleDetail(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	writeData(w, d)
+}
+
+func (m *Module) handleCreateFromContent(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		ContentRef string `json:"content_ref"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil || body.ContentRef == "" {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	parts := strings.SplitN(body.ContentRef, ":", 2)
+	if len(parts) != 2 || !strings.HasPrefix(parts[0], "content.") {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	id, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		writeErr(w, codeParamInvalid, "参数错误")
+		return
+	}
+	cb, err := m.svc.CreateFromContent(req.Context(), userIDFrom(req.Context()), id)
+	if err != nil {
+		writeCircleErr(w, err)
+		return
+	}
+	writeData(w, cb)
 }
 
 func (m *Module) handleApply(w http.ResponseWriter, req *http.Request) {
@@ -930,6 +968,15 @@ func (m *Module) handleMount(w http.ResponseWriter, req *http.Request) {
 
 func (m *Module) handleListMounts(w http.ResponseWriter, req *http.Request) {
 	items, err := m.svc.ListMounts(req.Context(), pathID(req, "id"), userIDFrom(req.Context()))
+	if err != nil {
+		writeCircleErr(w, err)
+		return
+	}
+	writeData(w, map[string]any{"items": items})
+}
+
+func (m *Module) handleListPendingMounts(w http.ResponseWriter, req *http.Request) {
+	items, err := m.svc.ListPendingMounts(req.Context(), userIDFrom(req.Context()))
 	if err != nil {
 		writeCircleErr(w, err)
 		return

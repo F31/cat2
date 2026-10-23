@@ -58,7 +58,14 @@ func (m *Module) Rank() module.Rank   { return module.RankR1 }
 func (m *Module) DependsOn() []string { return []string{"identity"} }
 
 func (m *Module) Register(r *module.Registry) error {
-	m.svc = app.New(app.Options{Repo: infra.NewStore(m.deps.Pool), Pool: m.deps.Pool, Bus: m.deps.Bus, Pay: m.deps.Pay})
+	var openID func(ctx context.Context, userID int64) (string, error)
+	if m.deps.Identity != nil {
+		openID = m.deps.Identity.OpenID
+	}
+	m.svc = app.New(app.Options{
+		Repo: infra.NewStore(m.deps.Pool), Pool: m.deps.Pool, Bus: m.deps.Bus, Pay: m.deps.Pay,
+		OpenID: openID,
+	})
 	r.Routes = append(r.Routes,
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/orders", Handler: m.auth(m.handleCreate)},
 		module.Route{Method: http.MethodPost, Path: "/api/mp/v1/orders/{id}/pay", Handler: m.auth(m.handlePay)},
@@ -206,7 +213,7 @@ func (m *Module) handleGet(w http.ResponseWriter, req *http.Request) {
 func (m *Module) handleNotify(w http.ResponseWriter, req *http.Request) {
 	body, _ := io.ReadAll(io.LimitReader(req.Body, 1<<20))
 	headers := map[string]string{}
-	for _, k := range []string{"Wechatpay-Signature", "Wechatpay-Timestamp", "Wechatpay-Nonce"} {
+	for _, k := range []string{"Wechatpay-Signature", "Wechatpay-Timestamp", "Wechatpay-Nonce", "Wechatpay-Serial"} {
 		headers[k] = req.Header.Get(k)
 	}
 	res, err := m.svc.HandleNotify(req.Context(), headers, body)

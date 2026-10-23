@@ -10,6 +10,7 @@ import (
 
 // Config 启动配置。
 type Config struct {
+	Env         string // development/production；production 启用强制安全校验
 	DatabaseURL string
 	HTTPAddr    string
 	Roles       []string // api / worker / scheduler / admin
@@ -18,6 +19,14 @@ type Config struct {
 	// 微信
 	WeChatAppID     string
 	WeChatAppSecret string
+
+	// 微信支付 V3（商户 API 证书；未配置时使用开发态支付，禁止生产使用）
+	WeChatPayMchID        string
+	WeChatPaySerialNo     string
+	WeChatPayPrivateKey   string // PEM 内容或 _FILE 读取
+	WeChatPayAPIv3Key     string
+	WeChatPayPlatformCert string // PEM 内容或 _FILE 读取（支持多证书轮换）
+	WeChatPayNotifyURL    string
 
 	// 后台口令登录（单管理员起步；哈希经 `catcube hash-password` 生成）
 	AdminPhone        string
@@ -69,38 +78,45 @@ type Config struct {
 // FromEnv 读取环境变量。
 func FromEnv() Config {
 	return Config{
-		DatabaseURL:          getenv("CATCUBE_DATABASE_URL", "postgres://catcube:catcube@localhost:5432/catcube?sslmode=disable"),
-		HTTPAddr:             getenv("CATCUBE_HTTP_ADDR", ":8080"),
-		Roles:                split(getenv("CATCUBE_ROLES", "api,worker,scheduler,admin")),
-		Modules:              split(getenv("CATCUBE_MODULES", "")),
-		AdminPhone:           getenv("CATCUBE_ADMIN_PHONE", ""),
-		AdminPasswordHash:    getenv("CATCUBE_ADMIN_PASSWORD_HASH", ""),
-		OSSEndpoint:          getenv("CATCUBE_OSS_ENDPOINT", ""),
-		OSSBucket:            getenv("CATCUBE_OSS_BUCKET", ""),
-		CDNHost:              getenv("CATCUBE_CDN_HOST", ""),
-		OSSAK:                getenv("CATCUBE_OSS_AK", ""),
-		OSSSK:                getenv("CATCUBE_OSS_SK", ""),
-		WeChatAppID:          getenv("CATCUBE_WECHAT_APPID", ""),
-		WeChatAppSecret:      getenv("CATCUBE_WECHAT_SECRET", ""),
-		IdentityEncKey:       getenv("CATCUBE_IDENTITY_ENC_KEY", ""),
-		BlindKey:             getenv("CATCUBE_BLIND_KEY", ""),
-		DevSMSCode:           getenv("CATCUBE_SMS_DEV_CODE", ""),
-		RealnameManualReview: getenvBool("CATCUBE_REALNAME_MANUAL_REVIEW", true),
-		DrainSeconds:         getenvInt("CATCUBE_DRAIN_SECONDS", 5),
-		Moderation:           getenv("CATCUBE_MODERATION", ""),
-		AlertOutboxBacklog:   getenvInt("CATCUBE_ALERT_OUTBOX_BACKLOG", 1000),
-		AlertOutboxOldestSec: getenvInt("CATCUBE_ALERT_OUTBOX_OLDEST_SECONDS", 300),
-		AlertOutboxDead:      getenvInt("CATCUBE_ALERT_OUTBOX_DEAD", 100),
-		AlertFulfillRetry:    int(getenvInt("CATCUBE_ALERT_FULFILL_RETRY", 5)),
-		ContactDailyLimit:    int(getenvInt("CATCUBE_CONTACT_DAILY_LIMIT", 200)),
-		AlertReviewBacklog:   int(getenvInt("CATCUBE_ALERT_REVIEW_BACKLOG", 200)),
-		RedisAddr:            getenv("CATCUBE_REDIS_ADDR", ""),
-		RedisPassword:        getenv("CATCUBE_REDIS_PASSWORD", ""),
-		OTelEnabled:          getenvBool("CATCUBE_OTEL_ENABLED", false),
-		OTelService:          getenv("CATCUBE_OTEL_SERVICE", "catcube"),
-		OTelEndpoint:         getenv("CATCUBE_OTEL_ENDPOINT", "otel-collector:4317"),
-		OTelInsecure:         getenvBool("CATCUBE_OTEL_INSECURE", true),
-		OTelSampleRatio:      getenvFloat("CATCUBE_OTEL_SAMPLE_RATIO", 1),
+		Env:                   getenv("CATCUBE_ENV", "development"),
+		DatabaseURL:           getenv("CATCUBE_DATABASE_URL", "postgres://catcube:catcube@localhost:5432/catcube?sslmode=disable"),
+		HTTPAddr:              getenv("CATCUBE_HTTP_ADDR", ":8080"),
+		Roles:                 split(getenv("CATCUBE_ROLES", "api,worker,scheduler,admin")),
+		Modules:               split(getenv("CATCUBE_MODULES", "")),
+		AdminPhone:            getenv("CATCUBE_ADMIN_PHONE", ""),
+		AdminPasswordHash:     getenv("CATCUBE_ADMIN_PASSWORD_HASH", ""),
+		OSSEndpoint:           getenv("CATCUBE_OSS_ENDPOINT", ""),
+		OSSBucket:             getenv("CATCUBE_OSS_BUCKET", ""),
+		CDNHost:               getenv("CATCUBE_CDN_HOST", ""),
+		OSSAK:                 getenv("CATCUBE_OSS_AK", ""),
+		OSSSK:                 getenv("CATCUBE_OSS_SK", ""),
+		WeChatAppID:           getenv("CATCUBE_WECHAT_APPID", ""),
+		WeChatAppSecret:       getenv("CATCUBE_WECHAT_SECRET", ""),
+		WeChatPayMchID:        getenv("CATCUBE_WECHAT_PAY_MCHID", ""),
+		WeChatPaySerialNo:     getenv("CATCUBE_WECHAT_PAY_SERIAL_NO", ""),
+		WeChatPayPrivateKey:   getenvOrFile("CATCUBE_WECHAT_PAY_PRIVATE_KEY", "CATCUBE_WECHAT_PAY_PRIVATE_KEY_FILE"),
+		WeChatPayAPIv3Key:     getenv("CATCUBE_WECHAT_PAY_API_V3_KEY", ""),
+		WeChatPayPlatformCert: getenvOrFile("CATCUBE_WECHAT_PAY_PLATFORM_CERT", "CATCUBE_WECHAT_PAY_PLATFORM_CERT_FILE"),
+		WeChatPayNotifyURL:    getenv("CATCUBE_WECHAT_PAY_NOTIFY_URL", ""),
+		IdentityEncKey:        getenv("CATCUBE_IDENTITY_ENC_KEY", ""),
+		BlindKey:              getenv("CATCUBE_BLIND_KEY", ""),
+		DevSMSCode:            getenv("CATCUBE_SMS_DEV_CODE", ""),
+		RealnameManualReview:  getenvBool("CATCUBE_REALNAME_MANUAL_REVIEW", true),
+		DrainSeconds:          getenvInt("CATCUBE_DRAIN_SECONDS", 5),
+		Moderation:            getenv("CATCUBE_MODERATION", ""),
+		AlertOutboxBacklog:    getenvInt("CATCUBE_ALERT_OUTBOX_BACKLOG", 1000),
+		AlertOutboxOldestSec:  getenvInt("CATCUBE_ALERT_OUTBOX_OLDEST_SECONDS", 300),
+		AlertOutboxDead:       getenvInt("CATCUBE_ALERT_OUTBOX_DEAD", 100),
+		AlertFulfillRetry:     int(getenvInt("CATCUBE_ALERT_FULFILL_RETRY", 5)),
+		ContactDailyLimit:     int(getenvInt("CATCUBE_CONTACT_DAILY_LIMIT", 200)),
+		AlertReviewBacklog:    int(getenvInt("CATCUBE_ALERT_REVIEW_BACKLOG", 200)),
+		RedisAddr:             getenv("CATCUBE_REDIS_ADDR", ""),
+		RedisPassword:         getenv("CATCUBE_REDIS_PASSWORD", ""),
+		OTelEnabled:           getenvBool("CATCUBE_OTEL_ENABLED", false),
+		OTelService:           getenv("CATCUBE_OTEL_SERVICE", "catcube"),
+		OTelEndpoint:          getenv("CATCUBE_OTEL_ENDPOINT", "otel-collector:4317"),
+		OTelInsecure:          getenvBool("CATCUBE_OTEL_INSECURE", true),
+		OTelSampleRatio:       getenvFloat("CATCUBE_OTEL_SAMPLE_RATIO", 1),
 	}
 }
 
@@ -125,6 +141,22 @@ func getenvFloat(k string, def float64) float64 {
 		return def
 	}
 	return f
+}
+
+// getenvOrFile 优先读取显式内容；未配置时按文件变量读取（生产密钥以文件挂载更安全）。
+func getenvOrFile(key, fileKey string) string {
+	if v := getenv(key, ""); v != "" {
+		return v
+	}
+	path := getenv(fileKey, "")
+	if path == "" {
+		return ""
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 func getenv(k, def string) string {
@@ -161,6 +193,15 @@ func (c Config) BlindKeyBytes() []byte {
 		}
 	}
 	return []byte("catcube-dev-blind-key-32bytes")
+}
+
+// IsProduction 是否生产环境（启用强制安全校验）。
+func (c Config) IsProduction() bool {
+	switch strings.ToLower(strings.TrimSpace(c.Env)) {
+	case "production", "prod":
+		return true
+	}
+	return false
 }
 
 // HasModule 是否启用某模块（空列表=全部启用）。

@@ -7,6 +7,18 @@
 | 业务配置 | `sys_settings` 表 | 后台改，热生效 | 限额、开关阈值 |
 | 特性开关 | `sys_feature_flag` 表 | 后台改，热生效（灰度/回滚） | 新功能按用户/比例放量 |
 
+## 定时任务运维
+
+```bash
+# 列出全部任务
+docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-compose.single.yml \
+  exec api catcube jobs
+# 单跑一个任务（排障/补偿）
+... exec api catcube jobs kernel.outbox_relay
+# 顺序跑全部（谨慎，生产优先单跑）
+... exec api catcube jobs all
+```
+
 ## 健康检查
 - `GET /healthz`：进程存活（负载存活探针）。
 - `GET /readyz`：DB 可连且启动就绪（负载就绪探针；未就绪返回 503，不接流量）。
@@ -36,6 +48,7 @@
 | `CATCUBE_ROLES` | api 实例 `api,admin`；worker 实例 `worker,scheduler` |
 | `CATCUBE_REDIS_ADDR` / `CATCUBE_REDIS_PASSWORD` | Redis 7（S1 推荐主从/哨兵）；未配置回退进程内缓存 |
 | `CATCUBE_WECHAT_APPID` / `CATCUBE_WECHAT_SECRET` | 小程序登录、手机号、小程序码；需配置服务器域名白名单 |
+| `CATCUBE_WECHAT_PAY_*` | 微信支付 V3 商户号/证书序列号/APIv3Key/回调 URL；私钥与平台证书支持 `_FILE` 挂载；未配置回退开发态 |
 | `CATCUBE_IDENTITY_ENC_KEY` / `CATCUBE_BLIND_KEY` | 32 字节 hex；必须由 KMS/密钥管理注入，丢失不可逆 |
 | `CATCUBE_OSS_ENDPOINT` / `_BUCKET` / `CATCUBE_CDN_HOST` / `_AK` / `_SK` | 对象存储与 CDN；未配置时本地 FS 回退（仅开发） |
 | `CATCUBE_MODERATION` | 留空=不机检；生产需接微信内容安全适配器（当前仅 dev/骨架） |
@@ -49,9 +62,9 @@
 
 | 能力 | 现状 | 云 S1 前需要 |
 | --- | --- | --- |
-| 微信支付 | `internal/adapters/pay` 仅 DevClient | 接入微信支付 V3 预下单/回调验签/退款，配置商户号与证书 |
+| 微信支付 | ✅ V3 适配器已实现（JSAPI 下单/回调验签解密/退款）；生产未配置时自动禁用支付，开发/测试才回退 DevClient | 配置商户号、证书、APIv3Key、回调域名并完成真实小额验证 |
 | 实名核验 | `internal/adapters/realname` 仅 DevClient | 第三方二要素供应商适配器与密钥 |
 | 短信 | 仅 `CATCUBE_SMS_DEV_CODE` | 短信服务商适配器 + 模板报备 |
-| 内容安全 | `moderation.Client` 文本已实现、媒体异步 TODO，且未装配 | 接入微信内容安全（文本/图片异步回调）并装配 |
-| 对象存储 | `oss.Client` 预签名/签名 TODO，未接供应商 | 实现 OSS/S3 兼容签名（预签名 PUT、访问 URL、CDN） |
+| 内容安全 | ✅ 微信文本机检已装配（`MODERATION=wechat`）；图片/音视频异步检测仍 TODO | 配置微信内容安全权限，补媒体异步检测回调 |
+| 对象存储 | ✅ 阿里云 OSS V1 签名已实现（预签名 PUT / 签名 Put/Delete / CDN URL）；未配置 endpoint 时本地兜底 | 配置 bucket/endpoint/AK/SK 并做真实上传验证；非阿里云需另接适配器 |
 | 小程序码 | `wechat.MiniProgramCode` 已实现 | 生产 appid/secret、页面路径白名单（圈名片依赖） |

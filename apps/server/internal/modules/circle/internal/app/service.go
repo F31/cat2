@@ -4,6 +4,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ type CubeFacade interface {
 type Repo interface {
 	CreateCircle(ctx context.Context, q infra.Querier, c infra.Circle) error
 	GetCircle(ctx context.Context, id int64) (infra.Circle, error)
+	GetBySource(ctx context.Context, sourceRef string) (infra.Circle, error)
 	ListByUser(ctx context.Context, userID int64) ([]infra.Circle, error)
 	ListDiscover(ctx context.Context, q, region string, typ int16, sort string, limit, offset int) ([]infra.Circle, error)
 	CountCreatedToday(ctx context.Context, userID int64) (int, error)
@@ -63,6 +65,7 @@ type Repo interface {
 	CountMounts(ctx context.Context, circleID int64) (int, error)
 	GetMount(ctx context.Context, id int64) (infra.Mount, error)
 	ListMounts(ctx context.Context, circleID int64) ([]infra.Mount, error)
+	ListPendingMounts(ctx context.Context, limit int) ([]infra.PendingMount, error)
 	SetMountApproval(ctx context.Context, q infra.Querier, id int64, approve bool) error
 	MarkDemandTransferred(ctx context.Context, demandID int64, ref string) error
 	IsMounted(ctx context.Context, circleID int64, itemRef string) (bool, error)
@@ -128,7 +131,7 @@ func (s *Service) Create(ctx context.Context, userID int64, in contract.CreateIn
 	c := infra.Circle{
 		ID: int64(ids.New()), Name: in.Name, Intro: in.Intro, CoverFileID: in.CoverFileID,
 		RegionCode: in.RegionCode, Industry: in.IndustryCodes, Type: in.Type,
-		DurationDays: int16(in.DurationDays), OwnerUserID: userID, OrgID: in.OrgID,
+		DurationDays: int16(in.DurationDays), OwnerUserID: userID, OrgID: in.OrgID, SourceRef: in.SourceRef,
 	}
 	if in.Type == 1 {
 		c.DurationDays = 0
@@ -148,6 +151,61 @@ func (s *Service) Create(ctx context.Context, userID int64, in contract.CreateIn
 		return contract.CircleBrief{}, err
 	}
 	return toBrief(c), nil
+}
+
+// CreateFromContent 活动/会议自动建圈：内容所有者、已展示、幂等；建圈后直接挂载内容。
+func (s *Service) CreateFromContent(ctx context.Context, userID, itemID int64) (contract.CircleBrief, error) {
+	if s.content == nil {
+		return contract.CircleBrief{}, domain.ErrInvalidInput
+	}
+	it, err := s.content.Get(ctx, userID, itemID)
+	if err != nil {
+		return contract.CircleBrief{}, err
+	}
+	if it.OwnerRef.ID != userID {
+		return contract.CircleBrief{}, domain.ErrNoPermission
+	}
+	if it.Kind != contentcontract.KindEvent && it.Kind != contentcontract.KindMeeting {
+		return contract.CircleBrief{}, domain.ErrInvalidInput
+	}
+	if it.Status != contentcontract.StatusPublished {
+		return contract.CircleBrief{}, domain.ErrNotFound
+	}
+	sourceRef := "content." + it.Kind + ":" + itoa64(itemID)
+	if old, err := s.repo.GetBySource(ctx, sourceRef); err == nil {
+		return toBrief(old), nil
+	} else if !errors.Is(err, infra.ErrNotFound) {
+		return contract.CircleBrief{}, err
+	}
+	name := truncateRunes(it.Title, 64)
+	if name == "" {
+		name = "活动圈"
+	}
+	intro := "由活动「" + name + "」自动创建"
+	if v, ok := it.Fields["intro"].(string); ok && strings.TrimSpace(v) != "" {
+		intro = truncateRunes(v, 500)
+	}
+	cb, err := s.Create(ctx, userID, contract.CreateInput{
+		Name: name, Intro: intro, CoverFileID: it.CoverFileID, RegionCode: it.RegionCode,
+		IndustryCodes: it.TagSet.Industry, Type: contract.TypePermanent, SourceRef: sourceRef,
+	})
+	if err != nil {
+		// 并发下唯一索引冲突：回查已建圈子。
+		if old, gerr := s.repo.GetBySource(ctx, sourceRef); gerr == nil {
+			return toBrief(old), nil
+		}
+		return contract.CircleBrief{}, err
+	}
+	_, _, _ = s.Mount(ctx, cb.ID, userID, sourceRef) // 自动挂载；失败不阻断建圈
+	return cb, nil
+}
+
+func truncateRunes(s string, n int) string {
+	r := []rune(strings.TrimSpace(s))
+	if len(r) > n {
+		r = r[:n]
+	}
+	return string(r)
 }
 
 // Brief 圈子摘要。
@@ -502,6 +560,34 @@ func (s *Service) JoinByInvite(ctx context.Context, userID int64, code string) (
 	}
 	_ = s.emitMemberJoined(ctx, circleID, userID, contract.ViaInvite)
 	return toBrief(c), nil
+}
+
+// JoinFromContentSignup 报名即入圈：按活动/会议来源找到自动圈，成员幂等加入。
+func (s *Service) JoinFromContentSignup(ctx context.Context, payload []byte) error {
+	var p contentcontract.SignupPayload
+	if err := json.Unmarshal(payload, &p); err != nil || p.ItemID == 0 || p.UserID == 0 {
+		return nil
+	}
+	sourceRef := "content." + p.Kind + ":" + itoa64(p.ItemID)
+	c, err := s.repo.GetBySource(ctx, sourceRef)
+	if errors.Is(err, infra.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if c.Status != contract.CircleActive || c.OwnerUserID == p.UserID {
+		return nil
+	}
+	return s.pool.InTx(ctx, func(tx db.Tx) error {
+		changed, err := s.repo.AddMember(ctx, tx, int64(ids.New()), c.ID, p.UserID, contract.ViaEvent)
+		if err != nil || !changed {
+			return err
+		}
+		return s.publish(ctx, tx, contract.NewMemberJoined(ids.New().String(), contract.MemberPayload{
+			CircleID: c.ID, UserID: p.UserID, Via: contract.ViaEvent,
+		}))
+	})
 }
 
 // Members 成员 ID 列表。
@@ -1041,6 +1127,41 @@ func (s *Service) ListMounts(ctx context.Context, circleID, viewerID int64) ([]c
 				}
 			}
 		}
+		out = append(out, cm)
+	}
+	return out, nil
+}
+
+// ListPendingMounts 内容所有者跨圈查看待确认挂载（不要求其为圈成员）。
+func (s *Service) ListPendingMounts(ctx context.Context, ownerID int64) ([]contract.Mount, error) {
+	rows, err := s.repo.ListPendingMounts(ctx, 100)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contract.Mount, 0, len(rows))
+	for _, r := range rows {
+		cm := toMount(r.Mount)
+		cm.CircleName = r.CircleName
+		if s.content == nil {
+			continue
+		}
+		id, err := itemIDFromRef(r.ItemRef)
+		if err != nil {
+			continue
+		}
+		it, err := s.content.Get(ctx, ownerID, id)
+		if err != nil || it.OwnerRef.ID != ownerID {
+			continue
+		}
+		cm.Title = it.Title
+		cm.Kind = it.Kind
+		if v, ok := it.Fields["start_at"].(string); ok {
+			cm.StartAt = v
+		}
+		if v, ok := it.Fields["location"].(string); ok {
+			cm.Location = v
+		}
+		cm.CanDecide = true
 		out = append(out, cm)
 	}
 	return out, nil

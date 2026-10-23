@@ -1,4 +1,4 @@
-// catcube 唯一入口：serve | migrate | jobs | seed
+// catcube 唯一入口：serve | migrate | jobs [name|all] | seed
 package main
 
 import (
@@ -20,7 +20,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("用法: catcube <serve|migrate|jobs|seed> [flags]")
+		fmt.Println("用法: catcube <serve|migrate|jobs [name|all]|seed> [flags]")
 		os.Exit(1)
 	}
 	// 全局日志：JSON 结构化 + 统一脱敏（session_key/手机号/证件号不入日志，p6 §5.2）
@@ -117,7 +117,38 @@ func main() {
 			os.Exit(1)
 		}
 	case "jobs":
-		fmt.Println("jobs：单跑一次定时任务（待实现）")
+		// 运维手动触发：jobs 列出任务；jobs <name> 单跑；jobs all 顺序跑全部。
+		a, err := app.Wire(ctx, cfg)
+		if err != nil {
+			fatal(err)
+		}
+		jobs := a.Sched.Jobs()
+		if len(os.Args) < 3 {
+			for _, j := range jobs {
+				fmt.Printf("%s\t%s\n", j.Name, j.Interval)
+			}
+			return
+		}
+		target := os.Args[2]
+		if target == "all" {
+			for _, j := range jobs {
+				fmt.Printf("run %s ...\n", j.Name)
+				if err := j.Run(ctx); err != nil {
+					fatal(fmt.Errorf("%s: %w", j.Name, err))
+				}
+			}
+			fmt.Println("全部任务执行完成")
+			return
+		}
+		ok, err := a.Sched.RunOnce(ctx, target)
+		if err != nil {
+			fatal(err)
+		}
+		if !ok {
+			fmt.Fprintln(os.Stderr, "未知任务:", target)
+			os.Exit(1)
+		}
+		fmt.Println("任务执行完成:", target)
 	case "hash-password":
 		if len(os.Args) < 3 {
 			fmt.Println("用法: catcube hash-password <password>")

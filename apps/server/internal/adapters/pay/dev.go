@@ -15,8 +15,8 @@ type DevClient struct{}
 func NewDevClient() *DevClient { return &DevClient{} }
 
 // Prepay 返回开发态预支付单号。
-func (d *DevClient) Prepay(_ context.Context, req ports.PayRequest) (string, error) {
-	return "dev-prepay-" + req.OutTradeNo, nil
+func (d *DevClient) Prepay(_ context.Context, req ports.PayRequest) (ports.PayPrepay, error) {
+	return ports.PayPrepay{PrepayID: "dev-prepay-" + req.OutTradeNo}, nil
 }
 
 // VerifyNotify 开发态验签：body 为 JSON {out_trade_no, amount_fen, sign}；sign != "ok" 视为验签失败。
@@ -39,6 +39,6 @@ func (d *DevClient) VerifyNotify(_ context.Context, _ map[string]string, body []
 }
 
 // Refund 开发态退款直接成功。
-func (d *DevClient) Refund(_ context.Context, _, _ string, _ int64) error { return nil }
+func (d *DevClient) Refund(_ context.Context, _, _ string, _, _ int64) error { return nil }
 
 var _ ports.Pay = (*DevClient)(nil)

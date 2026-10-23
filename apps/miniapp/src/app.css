@@ -775,3 +775,23 @@ page {
   font-size: 22rpx;
   color: #d4411e;
 }
+
+/* 日期时间选择 */
+.datetime-field {
+  display: flex;
+  gap: 16px;
+}
+.datetime-field__item {
+  flex: 1;
+  padding: 16px 20px;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 28px;
+}
+.datetime-field__value {
+  color: #1a1a1a;
+}
+.datetime-field__placeholder {
+  color: #9a9a9a;
+}

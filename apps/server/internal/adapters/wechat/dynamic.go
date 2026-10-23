@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"sync"
 
@@ -77,6 +78,15 @@ func (d *DynamicClient) GetPhoneNumber(ctx context.Context, sessionKey, encrypte
 
 func (d *DynamicClient) GetPhoneNumberByCode(ctx context.Context, code string) (string, error) {
 	return d.pick(ctx).GetPhoneNumberByCode(ctx, code)
+}
+
+// AccessToken 内容安全等能力复用 access_token；未配置真实 appid/secret 时明确失败。
+func (d *DynamicClient) AccessToken(ctx context.Context) (string, error) {
+	c, ok := d.pick(ctx).(*AuthClient)
+	if !ok {
+		return "", errors.New("wechat: 未配置 appid/secret，无法获取 access_token")
+	}
+	return c.AccessToken(ctx)
 }
 
 func (d *DynamicClient) MiniProgramCode(ctx context.Context, page, scene string) ([]byte, error) {

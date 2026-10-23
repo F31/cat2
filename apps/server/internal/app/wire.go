@@ -66,6 +66,14 @@ import (
 )
 
 // decodeHexKey 解析 hex 密钥；未配置时使用开发派生密钥并告警（生产必须配置）。
+func validHex32(hexKey string) bool {
+	if len(hexKey) != 64 {
+		return false
+	}
+	b, err := hex.DecodeString(hexKey)
+	return err == nil && len(b) == 32
+}
+
 func decodeHexKey(hexKey, devSeed string) []byte {
 	if hexKey != "" {
 		if b, err := hex.DecodeString(hexKey); err == nil && len(b) == 32 {
@@ -103,6 +111,14 @@ type App struct {
 
 // Wire 装配。
 func Wire(ctx context.Context, cfg config.Config) (*App, error) {
+	if cfg.IsProduction() {
+		if cfg.DevSMSCode != "" {
+			return nil, fmt.Errorf("生产环境禁止配置 CATCUBE_SMS_DEV_CODE")
+		}
+		if !validHex32(cfg.IdentityEncKey) || !validHex32(cfg.BlindKey) {
+			return nil, fmt.Errorf("生产环境必须配置 32 字节 hex 的 CATCUBE_IDENTITY_ENC_KEY/CATCUBE_BLIND_KEY")
+		}
+	}
 	pool, err := db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return nil, err
@@ -159,6 +175,32 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 	var miniCoder ports.MiniProgramCoder = wechatClient
 	storage := oss.NewClient(cfg.OSSEndpoint, cfg.OSSBucket, cfg.CDNHost, cfg.OSSAK, cfg.OSSSK)
 
+	// 微信支付：商户配置齐全时启用 V3 真实适配器；未配置才回退开发态。
+	var payClient ports.Pay = pay.NewDevClient()
+	if cfg.WeChatPayMchID != "" {
+		payAppID := strings.TrimSpace(cfg.WeChatAppID)
+		if payAppID == "" {
+			if v, err := settingsReg.Get(ctx, 1, "miniapp.appid"); err == nil {
+				payAppID = strings.TrimSpace(v)
+			}
+		}
+		pc, err := wechat.NewPayClient(wechat.PayConfig{
+			AppID: payAppID, MchID: cfg.WeChatPayMchID, SerialNo: cfg.WeChatPaySerialNo,
+			PrivateKey: cfg.WeChatPayPrivateKey, APIv3Key: cfg.WeChatPayAPIv3Key,
+			NotifyURL: cfg.WeChatPayNotifyURL, PlatformCert: cfg.WeChatPayPlatformCert,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("微信支付配置非法: %w", err)
+		}
+		payClient = pc
+		slog.Info("微信支付启用 V3 适配器", "mchid", cfg.WeChatPayMchID)
+	} else if cfg.IsProduction() {
+		payClient = pay.NewDisabledClient()
+		slog.Warn("微信支付未开通（生产），支付接口将明确失败")
+	} else {
+		slog.Warn("微信支付未配置商户号，使用开发态实现（仅限开发/测试）")
+	}
+
 	// 模块（shared + R0 + R1 + R2）
 	identityMod := identity.New(identityDeps)
 	// 鉴权函数：供 R0 trust 等无法依赖 identity 的同阶模块复用（经装配根注入）
@@ -174,14 +216,20 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		return uid, nil
 	}
 	var moderationClient ports.Moderation
-	if cfg.Moderation != "" {
-		moderationClient = moderation.NewDevClient() // dev/演练实现（生产接微信内容安全适配器）
+	switch cfg.Moderation {
+	case "wechat":
+		moderationClient = moderation.NewClient(wechatClient.AccessToken)
+		slog.Info("内容安全启用微信适配器")
+	case "":
+		// 未配置：不机检（开发/内测）；生产必须配置 wechat
+	default:
+		moderationClient = moderation.NewDevClient()
 		slog.Info("内容安全启用开发实现", "mode", cfg.Moderation)
 	}
 	trustMod := trust.New(trust.Deps{Pool: pool, Moderation: moderationClient, Bus: bus, Auth: authFunc, Audit: auditRec,
 		AlertReviewBacklog: cfg.AlertReviewBacklog})
 	dictMod := dict.New(pool)
-	mediaMod := media.New(pool, storage, identityMod.Facade())
+	mediaMod := media.New(pool, storage, authFunc)
 	entityReg := entityref.NewRegistry()
 	profileMod := profile.New(profile.Deps{
 		Pool: pool, Bus: bus, Media: mediaMod.Facade(), Dict: dictMod.Facade(),
@@ -210,7 +258,7 @@ func Wire(ctx context.Context, cfg config.Config) (*App, error) {
 		Pool: pool, Bus: bus, Identity: identityMod.Facade(), Settings: settingsReg, Outbox: outbox,
 	})
 	tradeMod := trade.New(trade.Deps{
-		Pool: pool, Bus: bus, Pay: pay.NewDevClient(), Identity: identityMod.Facade(), Audit: auditRec,
+		Pool: pool, Bus: bus, Pay: payClient, Identity: identityMod.Facade(), Audit: auditRec,
 		AlertRetryThreshold: cfg.AlertFulfillRetry,
 	})
 	membershipMod := membership.New(membership.Deps{

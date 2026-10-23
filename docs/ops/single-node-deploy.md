@@ -21,6 +21,7 @@ chmod 600 deploy/compose/.env.single
 ```
 
 必填：`POSTGRES_PASSWORD`、`REDIS_PASSWORD`、`IDENTITY_ENC_KEY`、`BLIND_KEY`、`WECHAT_APPID/SECRET`。
+真实收款还需：`WECHAT_PAY_MCHID`、`WECHAT_PAY_SERIAL_NO`、`WECHAT_PAY_API_V3_KEY`、`WECHAT_PAY_NOTIFY_URL`，以及挂载到 `deploy/compose/secrets/` 的商户私钥和微信支付平台证书。
 密码只用 `A-Z a-z 0-9`（避免连接串转义问题）。生产必须保持 `CATCUBE_SMS_DEV_CODE` 为空（compose 已固定为 `""`）。
 
 ## 3. 构建并启动
@@ -62,6 +63,19 @@ docker exec -i compose-db-1 psql -U catcube -d catcube \
 - `miniapp.env_version`：小程序码环境（`release`/`trial`/`develop`）
 
 保存后立即生效：微信登录、手机号获取、小程序码都按新配置重建客户端；未配置时回退 env `CATCUBE_WECHAT_APPID/SECRET`，仍为空则使用开发态实现。
+
+### 3.2 微信支付 V3（真实收款）
+
+1. 将商户 API 私钥、微信支付平台证书放入 `deploy/compose/secrets/`（已 gitignore）：
+   ```bash
+   mkdir -p deploy/compose/secrets
+   cp apiclient_key.pem deploy/compose/secrets/wechatpay_private_key.pem
+   cp wechatpay_platform_cert.pem deploy/compose/secrets/wechatpay_platform_cert.pem
+   chmod 600 deploy/compose/secrets/*.pem
+   ```
+2. 在 `deploy/compose/.env.single` 填写 `WECHAT_PAY_MCHID`、`WECHAT_PAY_SERIAL_NO`、`WECHAT_PAY_API_V3_KEY`、`WECHAT_PAY_NOTIFY_URL`，并保持两个 `_FILE` 路径指向 `/run/secrets/...`。
+3. 回调地址必须为公网 HTTPS：`https://<域名>/api/mp/v1/pay/notify`，并在微信支付商户平台配置。
+4. `CATCUBE_ENV=production` 时：未配置商户号会启用“支付未开通”占位（接口明确失败，不会回退可伪造回调）；配置了商户号但证书/密钥缺失会拒绝启动。开发/测试环境未配置时才使用 DevClient。
 
 后台登录使用手机号 + 密码（`ADMIN_PHONE` / `ADMIN_PASSWORD_HASH`），不再依赖开发态微信登录。
 
@@ -113,11 +127,11 @@ docker compose --env-file deploy/compose/.env.single -f deploy/compose/docker-co
 | 项 | 现状 | 影响 |
 | --- | --- | --- |
 | 后台登录 | 开发态手机号登录 | 配真实微信后无法登录；公网前必须补账号体系 |
-| 微信支付 | 仅 DevClient | 真实支付不可用 |
+| 微信支付 | V3 适配器已实现，未配置商户证书时回退 DevClient | 需配置商户号/证书/APIv3Key/回调 URL 并真实小额验证 |
 | 实名核验 | 仅 DevClient | 真实实名不可用 |
 | 短信 | 仅开发固定码 | 后台二次验证/通知短信不可用 |
-| 内容安全 | 微信适配器未装配、图片异步 TODO | 生产内容合规不达标 |
-| 对象存储 | 预签名/签名 TODO；后台组织资质材料有 `med_blob` 本地兜底 | 小程序直传与 CDN 不可用 |
+| 内容安全 | 微信文本机检已装配（`MODERATION=wechat`）；图片/音视频异步仍 TODO | 文本合规可用；媒体合规待补 |
+| 对象存储 | 阿里云 OSS V1 签名已实现（预签名 PUT / Put/Delete / CDN URL）；未配置时本地兜底 | 需配置 bucket/AK/SK 并真实上传验证；非阿里云需适配 |
 | 小程序审核/发版 | 外部 | 用户无法正式使用 |
 
 **结论**：该单机编排适合“内测/试运行 + 生产基础设施预演”；在补齐上述适配器与后台登录前，不要直接对外收取真实资金。

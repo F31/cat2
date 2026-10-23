@@ -39,6 +39,7 @@ type Circle struct {
 	MemberCount     int
 	RecommendableAt time.Time
 	Status          int16
+	SourceRef       string
 	CreatedAt       time.Time
 }
 
@@ -102,13 +103,13 @@ func NewStore(pool *db.Pool) *Store { return &Store{pool: pool} }
 
 const circleCols = `id, name, COALESCE(intro,''), COALESCE(cover_file_id,0), COALESCE(region_code,''),
 	industry_codes, type, duration_days, end_at, owner_user_id, COALESCE(org_id,0), member_count,
-	recommendable_at, status, created_at`
+	recommendable_at, status, COALESCE(source_ref,''), created_at`
 
 func scanCircle(row pgx.Row) (Circle, error) {
 	var c Circle
 	var ind []byte
 	err := row.Scan(&c.ID, &c.Name, &c.Intro, &c.CoverFileID, &c.RegionCode, &ind, &c.Type, &c.DurationDays,
-		&c.EndAt, &c.OwnerUserID, &c.OrgID, &c.MemberCount, &c.RecommendableAt, &c.Status, &c.CreatedAt)
+		&c.EndAt, &c.OwnerUserID, &c.OrgID, &c.MemberCount, &c.RecommendableAt, &c.Status, &c.SourceRef, &c.CreatedAt)
 	if err != nil {
 		return Circle{}, err
 	}
@@ -133,11 +134,20 @@ func (s *Store) CreateCircle(ctx context.Context, q Querier, c Circle) error {
 	ind, _ := json.Marshal(c.Industry)
 	_, err := q.Exec(ctx, `
 		INSERT INTO cir_circle (id, name, intro, cover_file_id, region_code, industry_codes, type,
-			duration_days, end_at, owner_user_id, org_id, member_count, recommendable_at, status)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,1,now()+interval '7 days',0)`,
+			duration_days, end_at, owner_user_id, org_id, member_count, recommendable_at, status, source_ref)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,1,now()+interval '7 days',0,$12)`,
 		c.ID, c.Name, nullStr(c.Intro), nullID(c.CoverFileID), nullStr(c.RegionCode), ind, c.Type,
-		c.DurationDays, c.EndAt, c.OwnerUserID, nullID(c.OrgID))
+		c.DurationDays, c.EndAt, c.OwnerUserID, nullID(c.OrgID), nullStr(c.SourceRef))
 	return err
+}
+
+// GetBySource 按来源引用查圈子（活动自动建圈幂等）。
+func (s *Store) GetBySource(ctx context.Context, sourceRef string) (Circle, error) {
+	c, err := scanCircle(s.pool.QueryRow(ctx, `SELECT `+circleCols+` FROM cir_circle WHERE source_ref=$1`, sourceRef))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Circle{}, ErrNotFound
+	}
+	return c, err
 }
 
 // GetCircle 取圈子。
@@ -627,6 +637,39 @@ func (s *Store) ListMounts(ctx context.Context, circleID int64) ([]Mount, error)
 			return nil, err
 		}
 		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// PendingMount 待确认挂载 + 圈子名称。
+type PendingMount struct {
+	Mount
+	CircleName string
+}
+
+// ListPendingMounts 待确认挂载（跨圈，供内容所有者处理）。
+func (s *Store) ListPendingMounts(ctx context.Context, limit int) ([]PendingMount, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT m.id, m.circle_id, m.item_ref, m.mounted_by, m.mount_type, m.approval_status,
+		       m.status, m.created_at, c.name
+		FROM cir_mount m JOIN cir_circle c ON c.id=m.circle_id
+		WHERE m.approval_status=0 AND m.status=0
+		ORDER BY m.created_at DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PendingMount
+	for rows.Next() {
+		var p PendingMount
+		if err := rows.Scan(&p.ID, &p.CircleID, &p.ItemRef, &p.MountedBy, &p.MountType,
+			&p.ApprovalStatus, &p.Status, &p.CreatedAt, &p.CircleName); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
 	}
 	return out, rows.Err()
 }

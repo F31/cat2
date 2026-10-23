@@ -778,11 +778,14 @@ type CircleMount struct {
 	ApprovalStatus int `json:"approval_status"`
 
 	// CanDecide 当前查看者是否为待确认内容所有者
-	CanDecide *bool      `json:"can_decide,omitempty"`
-	CircleId  string     `json:"circle_id"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
-	Id        string     `json:"id"`
-	ItemRef   string     `json:"item_ref"`
+	CanDecide *bool  `json:"can_decide,omitempty"`
+	CircleId  string `json:"circle_id"`
+
+	// CircleName 待确认中心展示圈子名称
+	CircleName *string    `json:"circle_name,omitempty"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	Id         string     `json:"id"`
+	ItemRef    string     `json:"item_ref"`
 
 	// Kind 内容类型 project/product/meeting/event
 	Kind     *string `json:"kind,omitempty"`
@@ -1307,10 +1310,25 @@ type Order struct {
 
 // PayParams defines model for PayParams.
 type PayParams struct {
-	AmountFen  int    `json:"amount_fen"`
-	OrderId    string `json:"order_id"`
-	OutTradeNo string `json:"out_trade_no"`
-	PrepayId   string `json:"prepay_id"`
+	AmountFen int `json:"amount_fen"`
+
+	// NonceStr 微信支付调起随机串
+	NonceStr   *string `json:"nonceStr,omitempty"`
+	OrderId    string  `json:"order_id"`
+	OutTradeNo string  `json:"out_trade_no"`
+
+	// Package prepay_id=...
+	Package *string `json:"package,omitempty"`
+
+	// PaySign 微信支付调起签名
+	PaySign  *string `json:"paySign,omitempty"`
+	PrepayId string  `json:"prepay_id"`
+
+	// SignType 签名类型（RSA）
+	SignType *string `json:"signType,omitempty"`
+
+	// TimeStamp 微信支付调起时间戳
+	TimeStamp *string `json:"timeStamp,omitempty"`
 }
 
 // ReportInput defines model for ReportInput.
@@ -1651,6 +1669,12 @@ type DiscoverCirclesParams struct {
 
 // DiscoverCirclesParamsSort defines parameters for DiscoverCircles.
 type DiscoverCirclesParamsSort string
+
+// CreateCircleFromContentJSONBody defines parameters for CreateCircleFromContent.
+type CreateCircleFromContentJSONBody struct {
+	// ContentRef content.event:<id> 或 content.meeting:<id>
+	ContentRef string `json:"content_ref"`
+}
 
 // JoinCircleJSONBody defines parameters for JoinCircle.
 type JoinCircleJSONBody struct {
@@ -2054,6 +2078,9 @@ type ChannelApplyJSONRequestBody ChannelApplyJSONBody
 // CreateCircleJSONRequestBody defines body for CreateCircle for application/json ContentType.
 type CreateCircleJSONRequestBody = CircleCreateInput
 
+// CreateCircleFromContentJSONRequestBody defines body for CreateCircleFromContent for application/json ContentType.
+type CreateCircleFromContentJSONRequestBody CreateCircleFromContentJSONBody
+
 // JoinCircleJSONRequestBody defines body for JoinCircle for application/json ContentType.
 type JoinCircleJSONRequestBody JoinCircleJSONBody
 
@@ -2302,9 +2329,15 @@ type ServerInterface interface {
 	// DiscoverCircles 发现圈子（公开；登录后带加入/申请状态）
 	// (GET /circles/discover)
 	DiscoverCircles(w http.ResponseWriter, r *http.Request, params DiscoverCirclesParams)
+	// CreateCircleFromContent 活动/会议自动建圈（内容所有者；幂等；自动挂载活动）
+	// (POST /circles/from-content)
+	CreateCircleFromContent(w http.ResponseWriter, r *http.Request)
 	// JoinCircle 凭邀请链接/二维码加入（=授权凭证直接加入）
 	// (POST /circles/join)
 	JoinCircle(w http.ResponseWriter, r *http.Request)
+	// ListPendingMounts 内容所有者待确认挂载（跨圈，不要求圈成员）
+	// (GET /circles/mounts/pending)
+	ListPendingMounts(w http.ResponseWriter, r *http.Request)
 	// DecideCircleMount 内容所有者确认/拒绝挂载申请
 	// (POST /circles/mounts/{mid}/decide)
 	DecideCircleMount(w http.ResponseWriter, r *http.Request, mid string)
@@ -3674,11 +3707,39 @@ func (siw *ServerInterfaceWrapper) DiscoverCircles(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// CreateCircleFromContent operation middleware
+func (siw *ServerInterfaceWrapper) CreateCircleFromContent(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCircleFromContent(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // JoinCircle operation middleware
 func (siw *ServerInterfaceWrapper) JoinCircle(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.JoinCircle(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPendingMounts operation middleware
+func (siw *ServerInterfaceWrapper) ListPendingMounts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPendingMounts(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7259,6 +7320,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles", wrapper.CreateCircle)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/discover", wrapper.DiscoverCircles)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/join", wrapper.JoinCircle)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/from-content", wrapper.CreateCircleFromContent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/mounts/pending", wrapper.ListPendingMounts)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/circles/{id}", wrapper.GetCircle)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/apply", wrapper.ApplyCircle)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/circles/{id}/invite", wrapper.InviteCircle)

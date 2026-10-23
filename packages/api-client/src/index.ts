@@ -550,6 +550,7 @@ export interface CircleMount {
   start_at?: string
   location?: string
   can_decide?: boolean
+  circle_name?: string
 }
 
 export interface Notice {
@@ -1039,6 +1040,12 @@ export function createClient(opts: ClientOptions) {
         'GET',
         `/circles/discover${qs({ q: p.q, region: p.region, type: p.type, sort: p.sort, cursor: p.cursor, limit: p.limit })}`,
       )
+    },
+    createCircleFromContent(contentRef: string) {
+      return call<Circle>('POST', '/circles/from-content', { content_ref: contentRef })
+    },
+    pendingMounts() {
+      return call<{ items: CircleMount[] }>('GET', '/circles/mounts/pending')
     },
     circleDetail(id: string) {
       return call<Circle>('GET', `/circles/${id}`)

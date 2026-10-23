@@ -46,12 +46,22 @@ type PayRequest struct {
 	OpenID     string
 }
 
+// PayPrepay 预支付结果：prepay_id 用于服务端记录；其余字段供小程序 requestPayment 直接调起。
+type PayPrepay struct {
+	PrepayID  string
+	TimeStamp string
+	NonceStr  string
+	Package   string
+	SignType  string
+	PaySign   string
+}
+
 // Pay 支付端口（微信）。
 type Pay interface {
-	Prepay(ctx context.Context, req PayRequest) (prepayID string, err error)
+	Prepay(ctx context.Context, req PayRequest) (PayPrepay, error)
 	// VerifyNotify 回调验签；返回 out_trade_no 与支付金额。
 	VerifyNotify(ctx context.Context, headers map[string]string, body []byte) (outTradeNo string, amountFen int64, err error)
-	Refund(ctx context.Context, outTradeNo, refundNo string, amountFen int64) error
+	Refund(ctx context.Context, outTradeNo, refundNo string, amountFen, totalFen int64) error
 }
 
 // ModerationRequest 内容检测请求。

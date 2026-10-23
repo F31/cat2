@@ -2620,6 +2620,58 @@ paths:
                   - type: object
                     properties: { data: { $ref: '#/components/schemas/Circle' } }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /circles/from-content:
+    post:
+      tags: [circle]
+      summary: 活动/会议自动建圈（内容所有者；幂等；自动挂载活动）
+      operationId: createCircleFromContent
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content_ref]
+              properties:
+                content_ref: { type: string, description: 'content.event:<id> 或 content.meeting:<id>' }
+      responses:
+        '200':
+          description: 圈子摘要
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Circle' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /circles/mounts/pending:
+    get:
+      tags: [circle]
+      summary: 内容所有者待确认挂载（跨圈，不要求圈成员）
+      operationId: listPendingMounts
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 待确认挂载列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/CircleMount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /circles/{id}:
     get:
       tags: [circle]
@@ -3722,6 +3774,7 @@ components:
         start_at: { type: string, description: 活动/会议开始时间（RFC3339） }
         location: { type: string }
         can_decide: { type: boolean, description: 当前查看者是否为待确认内容所有者 }
+        circle_name: { type: string, description: 待确认中心展示圈子名称 }
     CircleDemand:
       type: object
       required: [id, circle_id, author_id, title, content, status]
@@ -4011,6 +4064,11 @@ components:
         out_trade_no: { type: string }
         prepay_id: { type: string }
         amount_fen: { type: integer }
+        timeStamp: { type: string, description: 微信支付调起时间戳 }
+        nonceStr: { type: string, description: 微信支付调起随机串 }
+        package: { type: string, description: prepay_id=... }
+        signType: { type: string, description: 签名类型（RSA） }
+        paySign: { type: string, description: 微信支付调起签名 }
     TagSet:
       type: object
       properties:
